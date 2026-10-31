@@ -9,7 +9,7 @@
 use crabgrind::memcheck::{self, MemState};
 use crabgrind::valgrind::{self, RunningMode};
 use instant_acme::{CryptoProvider, JwkThumbFields};
-use rind::signature::{ECDSA_P256_SHA256_FIXED, UnparsedPublicKey};
+use rind::signature::{PublicKey, verify};
 use rind_instant_acme::DEFAULT_PROVIDER;
 
 /// Marks `value` secret: memcheck flags any branch or index that depends on it.
@@ -44,7 +44,8 @@ fn account_key() {
 
         let signature = key.sign(message).unwrap();
         public(&signature[..]);
-        UnparsedPublicKey::new(&ECDSA_P256_SHA256_FIXED, &point)
+        PublicKey::new(&verify::ECDSA_P256_SHA256_FIXED, &point)
+            .unwrap()
             .verify(message, &signature)
             .unwrap();
     }

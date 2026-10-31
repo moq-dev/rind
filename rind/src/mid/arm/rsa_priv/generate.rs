@@ -695,6 +695,11 @@ mod tests {
         let mut fixed_source = SliceRandomSource(&bytes);
         let mut retry_source = SystemRandom;
         let mut candidate_source = ChainRandomSource::First(&mut fixed_source, &mut retry_source);
-        generate_key(RsaKeySize::Rsa2048, &mut candidate_source, &mut SystemRandom).unwrap();
+        generate_key(
+            RsaKeySize::Rsa2048,
+            &mut candidate_source,
+            &mut SystemRandom,
+        )
+        .unwrap();
     }
 }

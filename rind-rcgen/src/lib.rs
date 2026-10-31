@@ -21,30 +21,38 @@
 
 use core::fmt;
 
-use rind::signature::{ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair as _};
+use rind::signature::{EcdsaKeyPair, PublicKey, sign};
 use rustls_pki_types::PrivatePkcs8KeyDer;
 
 /// An ECDSA P-256 key pair that signs rcgen certificates with SHA-256.
-pub struct KeyPair(EcdsaKeyPair);
+pub struct KeyPair {
+    key: EcdsaKeyPair,
+    // Kept for `der_bytes`, which lends its encoding.
+    public_key: PublicKey,
+}
 
 impl KeyPair {
     /// Generate a random key pair.
     pub fn generate() -> Result<Self, rind::Error> {
-        EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING).map(Self)
+        let key = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1)?;
+        Ok(Self {
+            public_key: key.public_key(),
+            key,
+        })
     }
 
     /// Encode the private key as PKCS#8 DER, the form rustls loads.
     pub fn to_pkcs8_der(&self) -> Result<PrivatePkcs8KeyDer<'static>, rind::Error> {
-        let mut buffer = [0u8; 256];
-        let der = self.0.to_pkcs8_der(&mut buffer)?;
-        Ok(PrivatePkcs8KeyDer::from(der.to_vec()))
+        Ok(PrivatePkcs8KeyDer::from(
+            self.key.to_pkcs8().as_ref().to_vec(),
+        ))
     }
 }
 
 impl rcgen::PublicKeyData for KeyPair {
     // rcgen takes the uncompressed point (0x04 || x || y) for EC keys.
     fn der_bytes(&self) -> &[u8] {
-        self.0.public_key().as_ref()
+        self.public_key.as_ref()
     }
 
     fn algorithm(&self) -> &'static rcgen::SignatureAlgorithm {
@@ -54,7 +62,10 @@ impl rcgen::PublicKeyData for KeyPair {
 
 impl rcgen::SigningKey for KeyPair {
     fn sign(&self, msg: &[u8]) -> Result<Vec<u8>, rcgen::Error> {
-        let signature = self.0.sign(msg).map_err(|_| rcgen::Error::RemoteKeyError)?;
+        let signature = self
+            .key
+            .sign(msg)
+            .map_err(|_| rcgen::Error::RemoteKeyError)?;
         Ok(signature.as_ref().to_vec())
     }
 }

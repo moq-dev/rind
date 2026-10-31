@@ -20,13 +20,8 @@ use jsonwebtoken::signature::{self, Signer, Verifier};
 use jsonwebtoken::{Algorithm, DecodingKey, DecodingKeyKind, EncodingKey};
 use pkcs1::der::Decode;
 use rind::signature::{
-    ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA256_FIXED_SIGNING, ECDSA_P384_SHA384_FIXED,
-    ECDSA_P384_SHA384_FIXED_SIGNING, ED25519, EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair,
-    KeyPair as _, ParsedPublicKey, RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_2048_8192_SHA384,
-    RSA_PKCS1_2048_8192_SHA512, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512,
-    RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384, RSA_PSS_2048_8192_SHA512, RSA_PSS_SHA256,
-    RSA_PSS_SHA384, RSA_PSS_SHA512, RsaKeyPair, RsaParameters, RsaPublicKeyComponents,
-    RsaSignatureEncoding, VerificationAlgorithm,
+    EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, PublicKey, RsaKeyPair,
+    RsaPublicKeyComponents, RsaSigningAlgorithm, VerificationAlgorithm, sign, verify,
 };
 use rind::{digest, hmac};
 
@@ -80,8 +75,8 @@ fn new_signer(algorithm: &Algorithm, key: &EncodingKey) -> Result<Box<dyn JwtSig
         let key = EcdsaKeyPair::from_pkcs8(signing, der).map_err(|_| ErrorKind::InvalidEcdsaKey)?;
         Ok(signer(algorithm, key))
     };
-    let rsa = |padding: &'static RsaSignatureEncoding| -> Result<Box<dyn JwtSigner>> {
-        let key = RsaKeyPair::from_der(der).map_err(invalid_rsa)?;
+    let rsa = |padding: &'static RsaSigningAlgorithm| -> Result<Box<dyn JwtSigner>> {
+        let key = RsaKeyPair::from_pkcs1(der).map_err(invalid_rsa)?;
         Ok(signer(algorithm, (key, padding)))
     };
 
@@ -90,18 +85,18 @@ fn new_signer(algorithm: &Algorithm, key: &EncodingKey) -> Result<Box<dyn JwtSig
         Algorithm::HS256 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA256, der)),
         Algorithm::HS384 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA384, der)),
         Algorithm::HS512 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA512, der)),
-        Algorithm::ES256 => ecdsa(&ECDSA_P256_SHA256_FIXED_SIGNING)?,
-        Algorithm::ES384 => ecdsa(&ECDSA_P384_SHA384_FIXED_SIGNING)?,
+        Algorithm::ES256 => ecdsa(&sign::ECDSA_P256_SHA256_FIXED)?,
+        Algorithm::ES384 => ecdsa(&sign::ECDSA_P384_SHA384_FIXED)?,
         Algorithm::EdDSA => signer(
             algorithm,
             Ed25519KeyPair::from_pkcs8(der).map_err(|_| ErrorKind::InvalidEddsaKey)?,
         ),
-        Algorithm::RS256 => rsa(&RSA_PKCS1_SHA256)?,
-        Algorithm::RS384 => rsa(&RSA_PKCS1_SHA384)?,
-        Algorithm::RS512 => rsa(&RSA_PKCS1_SHA512)?,
-        Algorithm::PS256 => rsa(&RSA_PSS_SHA256)?,
-        Algorithm::PS384 => rsa(&RSA_PSS_SHA384)?,
-        Algorithm::PS512 => rsa(&RSA_PSS_SHA512)?,
+        Algorithm::RS256 => rsa(&sign::RSA_PKCS1_SHA256)?,
+        Algorithm::RS384 => rsa(&sign::RSA_PKCS1_SHA384)?,
+        Algorithm::RS512 => rsa(&sign::RSA_PKCS1_SHA512)?,
+        Algorithm::PS256 => rsa(&sign::RSA_PSS_SHA256)?,
+        Algorithm::PS384 => rsa(&sign::RSA_PSS_SHA384)?,
+        Algorithm::PS512 => rsa(&sign::RSA_PSS_SHA512)?,
         _ => return Err(ErrorKind::InvalidAlgorithm.into()),
     })
 }
@@ -113,25 +108,25 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
 
     // Parsing here refuses a malformed key before any token arrives.
     let algorithm = *algorithm;
-    let parse = |verification: &'static dyn VerificationAlgorithm,
+    let parse = |verification: &'static VerificationAlgorithm,
                  der: &[u8],
                  invalid: ErrorKind|
      -> Result<Box<dyn JwtVerifier>> {
-        let key = ParsedPublicKey::new(verification, der).map_err(|_| invalid)?;
+        let key = PublicKey::new(verification, der).map_err(|_| invalid)?;
         Ok(verifier(algorithm, key))
     };
-    let ecdsa = |verification: &'static dyn VerificationAlgorithm| {
+    let ecdsa = |verification: &'static VerificationAlgorithm| {
         parse(
             verification,
             key.try_get_as_bytes()?,
             ErrorKind::InvalidEcdsaKey,
         )
     };
-    let rsa = |verification: &'static RsaParameters| -> Result<Box<dyn JwtVerifier>> {
+    let rsa = |verification: &'static VerificationAlgorithm| -> Result<Box<dyn JwtVerifier>> {
         let key = match key.kind() {
-            DecodingKeyKind::SecretOrDer(der) => ParsedPublicKey::new(verification, der),
+            DecodingKeyKind::SecretOrDer(der) => PublicKey::new(verification, der),
             DecodingKeyKind::RsaModulusExponent { n, e } => {
-                RsaPublicKeyComponents { n, e }.to_parsed_public_key(verification)
+                RsaPublicKeyComponents { n, e }.to_public_key(verification)
             }
         };
         Ok(verifier(algorithm, key.map_err(invalid_rsa)?))
@@ -146,19 +141,19 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
         Algorithm::HS256 => hmac(hmac::HMAC_SHA256)?,
         Algorithm::HS384 => hmac(hmac::HMAC_SHA384)?,
         Algorithm::HS512 => hmac(hmac::HMAC_SHA512)?,
-        Algorithm::ES256 => ecdsa(&ECDSA_P256_SHA256_FIXED)?,
-        Algorithm::ES384 => ecdsa(&ECDSA_P384_SHA384_FIXED)?,
+        Algorithm::ES256 => ecdsa(&verify::ECDSA_P256_SHA256_FIXED)?,
+        Algorithm::ES384 => ecdsa(&verify::ECDSA_P384_SHA384_FIXED)?,
         Algorithm::EdDSA => parse(
-            &ED25519,
+            &verify::ED25519,
             key.try_get_as_bytes()?,
             ErrorKind::InvalidEddsaKey,
         )?,
-        Algorithm::RS256 => rsa(&RSA_PKCS1_2048_8192_SHA256)?,
-        Algorithm::RS384 => rsa(&RSA_PKCS1_2048_8192_SHA384)?,
-        Algorithm::RS512 => rsa(&RSA_PKCS1_2048_8192_SHA512)?,
-        Algorithm::PS256 => rsa(&RSA_PSS_2048_8192_SHA256)?,
-        Algorithm::PS384 => rsa(&RSA_PSS_2048_8192_SHA384)?,
-        Algorithm::PS512 => rsa(&RSA_PSS_2048_8192_SHA512)?,
+        Algorithm::RS256 => rsa(&verify::RSA_PKCS1_SHA256)?,
+        Algorithm::RS384 => rsa(&verify::RSA_PKCS1_SHA384)?,
+        Algorithm::RS512 => rsa(&verify::RSA_PKCS1_SHA512)?,
+        Algorithm::PS256 => rsa(&verify::RSA_PSS_SHA256)?,
+        Algorithm::PS384 => rsa(&verify::RSA_PSS_SHA384)?,
+        Algorithm::PS512 => rsa(&verify::RSA_PSS_SHA512)?,
         _ => return Err(ErrorKind::InvalidAlgorithm.into()),
     })
 }
@@ -188,16 +183,14 @@ impl Sign for Ed25519KeyPair {
 }
 
 // An RSA key serves six algorithms, so it carries the padding it was made for.
-impl Sign for (RsaKeyPair, &'static RsaSignatureEncoding) {
+impl Sign for (RsaKeyPair, &'static RsaSigningAlgorithm) {
     fn sign_message(&self, message: &[u8]) -> RindResult<Vec<u8>> {
         let (key, padding) = self;
-        let mut signature = vec![0; key.public_modulus_len()];
-        key.sign(padding, message, &mut signature)?;
-        Ok(signature)
+        Ok(key.sign(padding, message)?.as_ref().to_vec())
     }
 }
 
-impl Verify for ParsedPublicKey {
+impl Verify for PublicKey {
     fn verify_message(&self, message: &[u8], signature: &[u8]) -> RindResult<()> {
         self.verify(message, signature)
     }
@@ -240,13 +233,14 @@ fn invalid_rsa(error: impl std::fmt::Display) -> Error {
 }
 
 fn rsa_pub_components_from_private_key(der: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
-    let key = RsaKeyPair::from_der(der).map_err(invalid_rsa)?;
-    rsa_pub_components_from_public_key(key.public_key().as_ref())
+    let key = RsaKeyPair::from_pkcs1(der).map_err(invalid_rsa)?;
+    // Every RSA algorithm's public key has the same encoding.
+    rsa_pub_components_from_public_key(key.public_key(&sign::RSA_PKCS1_SHA256).as_ref())
 }
 
 fn rsa_pub_components_from_public_key(der: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
     // Any RSA algorithm refuses the keys rind cannot verify with.
-    ParsedPublicKey::new(&RSA_PKCS1_2048_8192_SHA256, der).map_err(invalid_rsa)?;
+    PublicKey::new(&verify::RSA_PKCS1_SHA256, der).map_err(invalid_rsa)?;
     let key = pkcs1::RsaPublicKey::from_der(der).map_err(invalid_rsa)?;
     Ok((
         key.modulus.as_bytes().to_vec(),
@@ -259,14 +253,15 @@ fn ec_pub_components_from_private_key(
     algorithm: Algorithm,
 ) -> Result<(EllipticCurve, Vec<u8>, Vec<u8>)> {
     let (curve, signing) = match algorithm {
-        Algorithm::ES256 => (EllipticCurve::P256, &ECDSA_P256_SHA256_FIXED_SIGNING),
-        Algorithm::ES384 => (EllipticCurve::P384, &ECDSA_P384_SHA384_FIXED_SIGNING),
+        Algorithm::ES256 => (EllipticCurve::P256, &sign::ECDSA_P256_SHA256_FIXED),
+        Algorithm::ES384 => (EllipticCurve::P384, &sign::ECDSA_P384_SHA384_FIXED),
         _ => return Err(ErrorKind::InvalidEcdsaKey.into()),
     };
     let key = EcdsaKeyPair::from_pkcs8(signing, der).map_err(|_| ErrorKind::InvalidEcdsaKey)?;
 
     // An uncompressed point is 0x04 || x || y.
-    let point = &key.public_key().as_ref()[1..];
+    let public_key = key.public_key();
+    let point = &public_key.as_ref()[1..];
     let (x, y) = point.split_at(point.len() / 2);
     Ok((curve, x.to_vec(), y.to_vec()))
 }

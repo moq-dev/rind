@@ -111,7 +111,11 @@ fn is_prime(
     miller_rabin(candidate, size, rng)
 }
 
-fn miller_rabin(w: &MaxPosInt, size: RsaKeySize, rng: &mut dyn RandomSource) -> Result<bool, Error> {
+fn miller_rabin(
+    w: &MaxPosInt,
+    size: RsaKeySize,
+    rng: &mut dyn RandomSource,
+) -> Result<bool, Error> {
     // See FIPS186-5 B.3.1:
     // Steps 1 & 2:
     let mr = MillerRabinParams::new(w);
@@ -329,7 +333,12 @@ mod tests {
             let mut witness_source = SystemRandom;
 
             let start = Instant::now();
-            generate_key(RsaKeySize::Rsa2048, &mut candidate_source, &mut witness_source).unwrap();
+            generate_key(
+                RsaKeySize::Rsa2048,
+                &mut candidate_source,
+                &mut witness_source,
+            )
+            .unwrap();
             results.push(start.elapsed());
         }
         println!(
@@ -380,7 +389,12 @@ mod tests {
 
         let mut candidate_source = SliceRandomSource(&bytes);
         assert_eq!(
-            generate_key(RsaKeySize::Rsa2048, &mut candidate_source, &mut SystemRandom).err(),
+            generate_key(
+                RsaKeySize::Rsa2048,
+                &mut candidate_source,
+                &mut SystemRandom
+            )
+            .err(),
             Some(Error::RngFailed),
         );
     }
@@ -396,7 +410,12 @@ mod tests {
         let mut candidate_source = ChainRandomSource::First(&mut fixed_source, &mut retry_source);
         let mut witness_source = SystemRandom;
 
-        generate_key(RsaKeySize::Rsa2048, &mut candidate_source, &mut witness_source).unwrap();
+        generate_key(
+            RsaKeySize::Rsa2048,
+            &mut candidate_source,
+            &mut witness_source,
+        )
+        .unwrap();
     }
 
     #[test]

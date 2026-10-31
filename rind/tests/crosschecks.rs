@@ -859,7 +859,10 @@ mod rsa {
     }
 
     // Every verification algorithm, beside aws-lc-rs's of the same name.
-    const VERIFICATION: [(&rind::signature::VerificationAlgorithm, &signature::RsaParameters); 11] = [
+    const VERIFICATION: [(
+        &rind::signature::VerificationAlgorithm,
+        &signature::RsaParameters,
+    ); 11] = [
         (
             &verify::legacy::RSA_PKCS1_1024_SHA1,
             &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,

@@ -21,7 +21,7 @@ use object_store::client::{
     CryptoProvider, DigestAlgorithm, DigestContext, HmacContext, Signer, SigningAlgorithm,
 };
 use object_store::{Error, Result};
-use rind::signature::{RSA_PKCS1_SHA256, RsaKeyPair};
+use rind::signature::{RsaKeyPair, sign};
 use rind::{digest, hmac};
 use rustls_pki_types::PrivateKeyDer;
 use rustls_pki_types::pem::PemObject;
@@ -107,11 +107,11 @@ struct Rs256(RsaKeyPair);
 
 impl Signer for Rs256 {
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
-        let mut signature = vec![0; self.0.public_modulus_len()];
-        self.0
-            .sign(&RSA_PKCS1_SHA256, message, &mut signature)
+        let signature = self
+            .0
+            .sign(&sign::RSA_PKCS1_SHA256, message)
             .map_err(|err| generic(format!("RSA signing failed: {err}")))?;
-        Ok(signature)
+        Ok(signature.as_ref().to_vec())
     }
 }
 
@@ -119,7 +119,7 @@ impl Signer for Rs256 {
 fn rsa_key_from_pem(pem: &[u8]) -> Result<RsaKeyPair> {
     let key = match PrivateKeyDer::from_pem_slice(pem) {
         Ok(PrivateKeyDer::Pkcs8(key)) => RsaKeyPair::from_pkcs8(key.secret_pkcs8_der()),
-        Ok(PrivateKeyDer::Pkcs1(key)) => RsaKeyPair::from_der(key.secret_pkcs1_der()),
+        Ok(PrivateKeyDer::Pkcs1(key)) => RsaKeyPair::from_pkcs1(key.secret_pkcs1_der()),
         Ok(_) => return Err(generic("no RSA private key in PEM".into())),
         Err(err) => return Err(generic(format!("invalid PEM: {err}"))),
     };

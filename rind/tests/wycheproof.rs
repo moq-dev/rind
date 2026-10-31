@@ -517,8 +517,7 @@ fn test_rsa_pkcs1_verify() {
             summary.group(&group);
 
             // Each algorithm for this hash, with the smallest modulus it takes.
-            let algorithms: &[(&'static VerificationAlgorithm, usize)] = match group.sha.as_ref()
-            {
+            let algorithms: &[(&'static VerificationAlgorithm, usize)] = match group.sha.as_ref() {
                 "SHA-256" => &[
                     (&verify::RSA_PKCS1_SHA256, 2048),
                     (&legacy::RSA_PKCS1_1024_SHA256, 1024),
@@ -602,8 +601,7 @@ fn test_rsa_pkcs1_legacy_verify() {
             summary.group(&group);
 
             // Each algorithm for this hash, with the smallest modulus it takes.
-            let algorithms: &[(&'static VerificationAlgorithm, usize)] = match group.sha.as_ref()
-            {
+            let algorithms: &[(&'static VerificationAlgorithm, usize)] = match group.sha.as_ref() {
                 "SHA-1" => &[
                     (&legacy::RSA_PKCS1_1024_SHA1, 1024),
                     (&legacy::RSA_PKCS1_SHA1, 2048),

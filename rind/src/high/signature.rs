@@ -715,10 +715,7 @@ impl RsaKeyPair {
         // A key pair's modulus is at least `RSA_MIN_BITS`, the floor of the
         // algorithm that verifies `algorithm`'s signatures.
         PublicKey {
-            key: Parsed::Rsa(
-                self.key.public_key(),
-                RsaVerification::Scheme(algorithm.0),
-            ),
+            key: Parsed::Rsa(self.key.public_key(), RsaVerification::Scheme(algorithm.0)),
             encoding: self.public_key.0,
         }
     }
@@ -1080,18 +1077,54 @@ mod tests {
         use aws_lc_rs::signature as theirs;
 
         let algorithms: [(_, &'static theirs::EcdsaVerificationAlgorithm); 12] = [
-            (&verify::ECDSA_P256_SHA256_ASN1, &theirs::ECDSA_P256_SHA256_ASN1),
-            (&verify::ECDSA_P256_SHA384_ASN1, &theirs::ECDSA_P256_SHA384_ASN1),
-            (&verify::ECDSA_P256_SHA512_ASN1, &theirs::ECDSA_P256_SHA512_ASN1),
-            (&verify::ECDSA_P384_SHA256_ASN1, &theirs::ECDSA_P384_SHA256_ASN1),
-            (&verify::ECDSA_P384_SHA384_ASN1, &theirs::ECDSA_P384_SHA384_ASN1),
-            (&verify::ECDSA_P384_SHA512_ASN1, &theirs::ECDSA_P384_SHA512_ASN1),
-            (&verify::ECDSA_P521_SHA256_ASN1, &theirs::ECDSA_P521_SHA256_ASN1),
-            (&verify::ECDSA_P521_SHA384_ASN1, &theirs::ECDSA_P521_SHA384_ASN1),
-            (&verify::ECDSA_P521_SHA512_ASN1, &theirs::ECDSA_P521_SHA512_ASN1),
-            (&verify::ECDSA_P256_SHA256_FIXED, &theirs::ECDSA_P256_SHA256_FIXED),
-            (&verify::ECDSA_P384_SHA384_FIXED, &theirs::ECDSA_P384_SHA384_FIXED),
-            (&verify::ECDSA_P521_SHA512_FIXED, &theirs::ECDSA_P521_SHA512_FIXED),
+            (
+                &verify::ECDSA_P256_SHA256_ASN1,
+                &theirs::ECDSA_P256_SHA256_ASN1,
+            ),
+            (
+                &verify::ECDSA_P256_SHA384_ASN1,
+                &theirs::ECDSA_P256_SHA384_ASN1,
+            ),
+            (
+                &verify::ECDSA_P256_SHA512_ASN1,
+                &theirs::ECDSA_P256_SHA512_ASN1,
+            ),
+            (
+                &verify::ECDSA_P384_SHA256_ASN1,
+                &theirs::ECDSA_P384_SHA256_ASN1,
+            ),
+            (
+                &verify::ECDSA_P384_SHA384_ASN1,
+                &theirs::ECDSA_P384_SHA384_ASN1,
+            ),
+            (
+                &verify::ECDSA_P384_SHA512_ASN1,
+                &theirs::ECDSA_P384_SHA512_ASN1,
+            ),
+            (
+                &verify::ECDSA_P521_SHA256_ASN1,
+                &theirs::ECDSA_P521_SHA256_ASN1,
+            ),
+            (
+                &verify::ECDSA_P521_SHA384_ASN1,
+                &theirs::ECDSA_P521_SHA384_ASN1,
+            ),
+            (
+                &verify::ECDSA_P521_SHA512_ASN1,
+                &theirs::ECDSA_P521_SHA512_ASN1,
+            ),
+            (
+                &verify::ECDSA_P256_SHA256_FIXED,
+                &theirs::ECDSA_P256_SHA256_FIXED,
+            ),
+            (
+                &verify::ECDSA_P384_SHA384_FIXED,
+                &theirs::ECDSA_P384_SHA384_FIXED,
+            ),
+            (
+                &verify::ECDSA_P521_SHA512_FIXED,
+                &theirs::ECDSA_P521_SHA512_FIXED,
+            ),
         ];
         for (ours, theirs) in algorithms {
             let signing = Box::leak(Box::new(ecdsa_signing(ours)));
@@ -1390,7 +1423,10 @@ mod tests {
 
         let ed25519 = Ed25519KeyPair::generate().unwrap();
         let reloaded = Ed25519KeyPair::from_pkcs8(ed25519.to_pkcs8().as_ref()).unwrap();
-        assert_eq!(reloaded.public_key().as_ref(), ed25519.public_key().as_ref());
+        assert_eq!(
+            reloaded.public_key().as_ref(),
+            ed25519.public_key().as_ref()
+        );
         let spki = ed25519.to_spki();
         let parsed = pkix::SubjectPublicKeyInfo::from_bytes(spki.as_ref()).unwrap();
         assert_eq!(

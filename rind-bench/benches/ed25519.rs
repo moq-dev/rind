@@ -46,10 +46,9 @@ fn keygen(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        let mut buffer = [0; 128];
         b.iter(|| {
             let our_private_key = rind::signature::Ed25519KeyPair::generate().unwrap();
-            black_box(our_private_key.to_pkcs8_der(&mut buffer).unwrap());
+            black_box(our_private_key.to_pkcs8());
         })
     });
 }
@@ -94,11 +93,13 @@ fn verify(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        use rind::signature;
-        let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, public_key);
+        use rind::signature::{PublicKey, verify};
 
         b.iter(|| {
-            public_key.verify(message, signature).unwrap();
+            PublicKey::new(&verify::ED25519, public_key)
+                .unwrap()
+                .verify(message, signature)
+                .unwrap();
         })
     });
 }

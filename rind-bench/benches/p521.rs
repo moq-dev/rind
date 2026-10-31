@@ -93,12 +93,13 @@ fn ecdsa_verify(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        use rind::signature;
-        let public_key =
-            signature::UnparsedPublicKey::new(&signature::ECDSA_P521_SHA512_FIXED, &public_key);
+        use rind::signature::{PublicKey, verify};
 
         b.iter(|| {
-            public_key.verify(MESSAGE, &signature).unwrap();
+            PublicKey::new(&verify::ECDSA_P521_SHA512_FIXED, &public_key)
+                .unwrap()
+                .verify(MESSAGE, &signature)
+                .unwrap();
         })
     });
     group.finish();
@@ -119,10 +120,8 @@ fn ecdsa_verify(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        use rind::signature;
-        let public_key =
-            signature::ParsedPublicKey::new(&signature::ECDSA_P521_SHA512_FIXED, &public_key)
-                .unwrap();
+        use rind::signature::{PublicKey, verify};
+        let public_key = PublicKey::new(&verify::ECDSA_P521_SHA512_FIXED, &public_key).unwrap();
 
         b.iter(|| {
             public_key.verify(MESSAGE, &signature).unwrap();
@@ -155,8 +154,8 @@ fn ecdsa_sign(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        use rind::signature::{ECDSA_P521_SHA512_FIXED_SIGNING, EcdsaKeyPair};
-        let signing_key = EcdsaKeyPair::generate(&ECDSA_P521_SHA512_FIXED_SIGNING).unwrap();
+        use rind::signature::{EcdsaKeyPair, sign};
+        let signing_key = EcdsaKeyPair::generate(&sign::ECDSA_P521_SHA512_FIXED).unwrap();
 
         b.iter(|| {
             black_box(signing_key.sign(MESSAGE).unwrap());

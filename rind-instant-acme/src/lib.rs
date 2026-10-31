@@ -20,9 +20,7 @@ use instant_acme::{
     CryptoProvider, EcCurve, Error, HmacKey, HmacKeyProvider, Jwk, JwkThumbFields, Sha256,
     SigningAlgorithm, SigningKey, SigningKeyProvider,
 };
-use rind::signature::{
-    ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, EcdsaSigningAlgorithm, KeyPair as _,
-};
+use rind::signature::{EcdsaKeyPair, EcdsaSigningAlgorithm, PublicKey, sign};
 use rind::{digest, hmac};
 use rustls_pki_types::PrivatePkcs8KeyDer;
 
@@ -39,36 +37,46 @@ pub static DEFAULT_PROVIDER: CryptoProvider = CryptoProvider {
 struct P256KeyProvider;
 
 /// JWS's ES256: P-256 and SHA-256, with the fixed-length `r || s` encoding.
-const ES256: &EcdsaSigningAlgorithm = &ECDSA_P256_SHA256_FIXED_SIGNING;
+const ES256: &EcdsaSigningAlgorithm = &sign::ECDSA_P256_SHA256_FIXED;
 
 impl SigningKeyProvider for P256KeyProvider {
     fn load_key(&self, pkcs8: PrivatePkcs8KeyDer<'static>) -> Result<Box<dyn SigningKey>, Error> {
         let key = EcdsaKeyPair::from_pkcs8(ES256, pkcs8.secret_pkcs8_der())
             .map_err(|_| Error::KeyRejected)?;
-        Ok(Box::new(P256Key(key)))
+        Ok(Box::new(P256Key::new(key)))
     }
 
     fn generate_key(&self) -> Result<(Box<dyn SigningKey>, PrivatePkcs8KeyDer<'static>), Error> {
         let key = EcdsaKeyPair::generate(ES256).map_err(|_| Error::Crypto)?;
-        // A P-256 PKCS#8 encoding is under 150 bytes.
-        let mut buffer = [0u8; 256];
-        let pkcs8 = key.to_pkcs8_der(&mut buffer).map_err(|_| Error::Crypto)?;
-        let pkcs8 = PrivatePkcs8KeyDer::from(pkcs8.to_vec());
-        Ok((Box::new(P256Key(key)), pkcs8))
+        let pkcs8 = PrivatePkcs8KeyDer::from(key.to_pkcs8().as_ref().to_vec());
+        Ok((Box::new(P256Key::new(key)), pkcs8))
     }
 }
 
-struct P256Key(EcdsaKeyPair);
+struct P256Key {
+    key: EcdsaKeyPair,
+    // Kept for `as_jwk`, which lends its coordinates.
+    public_key: PublicKey,
+}
+
+impl P256Key {
+    fn new(key: EcdsaKeyPair) -> Self {
+        Self {
+            public_key: key.public_key(),
+            key,
+        }
+    }
+}
 
 impl SigningKey for P256Key {
     fn sign(&self, data: &[u8]) -> Result<Vec<u8>, Error> {
-        let signature = self.0.sign(data).map_err(|_| Error::Crypto)?;
+        let signature = self.key.sign(data).map_err(|_| Error::Crypto)?;
         Ok(signature.as_ref().to_vec())
     }
 
     fn as_jwk(&self) -> Jwk<'_> {
         // An uncompressed point is 0x04 || x || y.
-        let point = &self.0.public_key().as_ref()[1..];
+        let point = &self.public_key.as_ref()[1..];
         let (x, y) = point.split_at(32);
         Jwk {
             alg: SigningAlgorithm::Es256,
