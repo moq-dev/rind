@@ -1,11 +1,11 @@
 use rind::hmac;
 use rustls::crypto;
 
-pub struct Hmac(hmac::Algorithm);
+pub struct Hmac(&'static hmac::Algorithm);
 
-pub static SHA256: Hmac = Hmac(hmac::HMAC_SHA256);
+pub static SHA256: Hmac = Hmac(&hmac::HMAC_SHA256);
 
-pub static SHA384: Hmac = Hmac(hmac::HMAC_SHA384);
+pub static SHA384: Hmac = Hmac(&hmac::HMAC_SHA384);
 
 impl crypto::hmac::Hmac for Hmac {
     fn with_key(&self, key: &[u8]) -> Box<dyn crypto::hmac::Key> {

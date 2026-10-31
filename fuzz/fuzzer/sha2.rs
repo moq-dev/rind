@@ -70,8 +70,10 @@ fuzz_target!(|op: Operation| {
         }
         Operation::HmacSha256 { key, steps } => {
             let mut left = hmac::Context::with_key(&hmac::Key::new(hmac::HMAC_SHA256, &key));
-            let mut right =
-                rind::hmac::Context::with_key(&rind::hmac::Key::new(rind::hmac::HMAC_SHA256, &key));
+            let mut right = rind::hmac::Context::with_key(&rind::hmac::Key::new(
+                &rind::hmac::HMAC_SHA256,
+                &key,
+            ));
 
             for s in steps {
                 match s {
@@ -92,8 +94,10 @@ fuzz_target!(|op: Operation| {
         }
         Operation::HmacSha384 { key, steps } => {
             let mut left = hmac::Context::with_key(&hmac::Key::new(hmac::HMAC_SHA384, &key));
-            let mut right =
-                rind::hmac::Context::with_key(&rind::hmac::Key::new(rind::hmac::HMAC_SHA384, &key));
+            let mut right = rind::hmac::Context::with_key(&rind::hmac::Key::new(
+                &rind::hmac::HMAC_SHA384,
+                &key,
+            ));
 
             for s in steps {
                 match s {
@@ -114,8 +118,10 @@ fuzz_target!(|op: Operation| {
         }
         Operation::HmacSha512 { key, steps } => {
             let mut left = hmac::Context::with_key(&hmac::Key::new(hmac::HMAC_SHA512, &key));
-            let mut right =
-                rind::hmac::Context::with_key(&rind::hmac::Key::new(rind::hmac::HMAC_SHA512, &key));
+            let mut right = rind::hmac::Context::with_key(&rind::hmac::Key::new(
+                &rind::hmac::HMAC_SHA512,
+                &key,
+            ));
 
             for s in steps {
                 match s {

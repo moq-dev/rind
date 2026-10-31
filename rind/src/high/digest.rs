@@ -35,7 +35,7 @@ impl Algorithm {
 ///
 /// HMAC-SHA1 does not rely on collision resistance, and remains required by
 /// STUN (RFC 8489) and SRTP (RFC 3711). No signature algorithm accepts it.
-pub static SHA1_FOR_LEGACY_USE_ONLY: Algorithm = Algorithm {
+pub static SHA1: Algorithm = Algorithm {
     id: Id::Sha1,
     output_len: sha1::Sha1Context::OUTPUT_SZ,
 };
@@ -214,10 +214,7 @@ mod tests {
         }
 
         for (file, algorithm) in [
-            (
-                "../thirdparty/cavp-sha1/SHA1ShortMsg.rsp",
-                &SHA1_FOR_LEGACY_USE_ONLY,
-            ),
+            ("../thirdparty/cavp-sha1/SHA1ShortMsg.rsp", &SHA1),
             ("../thirdparty/cavp/sha2/SHA256ShortMsg.rsp", &SHA256),
             ("../thirdparty/cavp/sha2/SHA256LongMsg.rsp", &SHA256),
             ("../thirdparty/cavp/sha2/SHA384ShortMsg.rsp", &SHA384),
@@ -283,10 +280,7 @@ mod tests {
 
         if std::env::var_os("SLOW_TESTS").is_some() {
             for (file, algorithm) in [
-                (
-                    "../thirdparty/cavp-sha1/SHA1Monte.rsp",
-                    &SHA1_FOR_LEGACY_USE_ONLY,
-                ),
+                ("../thirdparty/cavp-sha1/SHA1Monte.rsp", &SHA1),
                 ("../thirdparty/cavp/sha2/SHA256Monte.rsp", &SHA256),
                 ("../thirdparty/cavp/sha2/SHA384Monte.rsp", &SHA384),
                 ("../thirdparty/cavp/sha2/SHA512Monte.rsp", &SHA512),

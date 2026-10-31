@@ -104,7 +104,7 @@ impl AesGcm {
         nonce: &[u8; 12],
         aad: &[u8],
         cipher_inout: &mut [u8],
-        tag: &[u8],
+        tag: &[u8; 16],
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
@@ -184,7 +184,8 @@ mod tests {
         let (cipher, tag) = expected.split_at(expected.len() - 16);
         let mut plain = cipher.to_vec();
 
-        t.decrypt(b"noncenonceno", b"aad", &mut plain, tag).unwrap();
+        t.decrypt(b"noncenonceno", b"aad", &mut plain, tag.try_into().unwrap())
+            .unwrap();
 
         assert_eq!(plain, &[b'p'; 4164]);
     }
@@ -235,8 +236,9 @@ mod tests {
                     }
                     "FAIL" => {
                         assert!(!self.encrypt);
-                        if self.nonce.len() != 12 {
-                            println!("skip unhandled nonce len");
+                        // A truncated tag never reaches `decrypt`: `aead::Tag` refuses it.
+                        if self.nonce.len() != 12 || self.tag.len() != 16 {
+                            println!("skip unhandled nonce/tag len");
                             return;
                         }
                         assert_eq!(
@@ -247,7 +249,7 @@ mod tests {
                                     &self.nonce[..].try_into().unwrap(),
                                     &self.aad,
                                     &mut self.ct,
-                                    &self.tag,
+                                    &self.tag[..].try_into().unwrap(),
                                 )
                                 .unwrap_err(),
                             Error::DecryptFailed,
@@ -265,7 +267,7 @@ mod tests {
                                 &self.nonce[..].try_into().expect("only 96-bit nonce"),
                                 &self.aad,
                                 &mut self.ct,
-                                &self.tag,
+                                &self.tag[..].try_into().unwrap(),
                             )
                             .unwrap();
                         assert_eq!(self.ct, value.bytes());

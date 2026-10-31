@@ -74,21 +74,21 @@ fn test_rc_sha384(key: &[u8], data: &[u8]) {
 
 fn test_rind_sha1(key: &[u8], data: &[u8]) {
     black_box(rind::hmac::sign(
-        &rind::hmac::Key::new(rind::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, key),
+        &rind::hmac::Key::new(&rind::hmac::legacy::HMAC_SHA1, key),
         data,
     ));
 }
 
 fn test_rind_sha256(key: &[u8], data: &[u8]) {
     black_box(rind::hmac::sign(
-        &rind::hmac::Key::new(rind::hmac::HMAC_SHA256, key),
+        &rind::hmac::Key::new(&rind::hmac::HMAC_SHA256, key),
         data,
     ));
 }
 
 fn test_rind_sha384(key: &[u8], data: &[u8]) {
     black_box(rind::hmac::sign(
-        &rind::hmac::Key::new(rind::hmac::HMAC_SHA384, key),
+        &rind::hmac::Key::new(&rind::hmac::HMAC_SHA384, key),
         data,
     ));
 }
@@ -129,7 +129,7 @@ fn sha1(c: &mut Criterion) {
             &input,
             |b, input| b.iter(|| black_box(aws_lc_rs::hmac::sign(&aws_key, input))),
         );
-        let rind_key = rind::hmac::Key::new(rind::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, &key);
+        let rind_key = rind::hmac::Key::new(&rind::hmac::legacy::HMAC_SHA1, &key);
         group.bench_with_input(
             BenchmarkId::new("rind/reused-key", size_name),
             &input,
@@ -168,7 +168,7 @@ fn sha256(c: &mut Criterion) {
             &input,
             |b, input| b.iter(|| black_box(aws_lc_rs::hmac::sign(&aws_key, input))),
         );
-        let rind_key = rind::hmac::Key::new(rind::hmac::HMAC_SHA256, &key);
+        let rind_key = rind::hmac::Key::new(&rind::hmac::HMAC_SHA256, &key);
         group.bench_with_input(
             BenchmarkId::new("rind/reused-key", size_name),
             &input,
@@ -207,7 +207,7 @@ fn sha384(c: &mut Criterion) {
             &input,
             |b, input| b.iter(|| black_box(aws_lc_rs::hmac::sign(&aws_key, input))),
         );
-        let rind_key = rind::hmac::Key::new(rind::hmac::HMAC_SHA384, &key);
+        let rind_key = rind::hmac::Key::new(&rind::hmac::HMAC_SHA384, &key);
         group.bench_with_input(
             BenchmarkId::new("rind/reused-key", size_name),
             &input,

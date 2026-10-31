@@ -22,7 +22,7 @@ use crate::mid::xchacha20poly1305::XChaCha20Poly1305;
 /// let sample = [
 ///     0xd1, 0xb1, 0xc9, 0x8d, 0xd7, 0x68, 0x9f, 0xb8, 0xec, 0x11, 0xd2, 0x42, 0xb1, 0x23, 0xdc, 0x9b,
 /// ];
-/// assert_eq!(key.new_mask(&sample), [0x43, 0x7b, 0x9a, 0xec, 0x36]);
+/// assert_eq!(key.mask(&sample), [0x43, 0x7b, 0x9a, 0xec, 0x36]);
 /// ```
 pub mod quic;
 
@@ -77,12 +77,15 @@ pub static CHACHA20_POLY1305: Algorithm = Algorithm {
     id: AlgorithmId::ChaCha20Poly1305,
 };
 
-/// An AEAD key, expanded once for its algorithm and wiped on drop.
+/// An AEAD key that seals with any nonce the caller gives it; wiped on drop.
 ///
-/// Bind it to a nonce policy, such as [`LessSafeKey`], to use it.
-pub struct UnboundKey(Key);
+/// The caller owns nonce uniqueness: sealing two messages with one nonce and
+/// key loses confidentiality and lets anyone forge messages. Derive nonces
+/// from protocol state that never repeats, such as a record sequence number,
+/// or use [`RandomizedNonceKey`].
+pub struct Key(Inner);
 
-impl UnboundKey {
+impl Key {
     /// Expands `key` for `algorithm`, failing with [`Error::WrongLength`] if
     /// it is not [`Algorithm::key_len`] bytes.
     pub fn new(algorithm: &'static Algorithm, key: &[u8]) -> Result<Self, Error> {
@@ -91,67 +94,11 @@ impl UnboundKey {
         }
 
         Ok(Self(match algorithm.id {
-            AlgorithmId::Aes128Gcm | AlgorithmId::Aes256Gcm => Key::AesGcm(AesGcm::new(key)?),
-            AlgorithmId::ChaCha20Poly1305 => Key::ChaCha20Poly1305(ChaCha20Poly1305::new(
+            AlgorithmId::Aes128Gcm | AlgorithmId::Aes256Gcm => Inner::AesGcm(AesGcm::new(key)?),
+            AlgorithmId::ChaCha20Poly1305 => Inner::ChaCha20Poly1305(ChaCha20Poly1305::new(
                 key.try_into().map_err(|_| Error::WrongLength)?,
             )),
         }))
-    }
-}
-
-// All-zero is the `AesGcm` variant with an all-zero key and table, which
-// `Zeroable` requires to be valid: every field is a plain integer or vector.
-//
-// Boxing the AES-GCM table would allocate for every key to save space only on
-// ChaCha20-Poly1305 keys; the 32-bit arm table is small, so the lint is allowed
-// rather than expected.
-#[allow(clippy::large_enum_variant)]
-#[repr(u8)]
-enum Key {
-    AesGcm(AesGcm),
-    ChaCha20Poly1305(ChaCha20Poly1305),
-}
-
-impl Key {
-    fn seal(&self, nonce: Nonce, aad: &[u8], in_out: &mut [u8]) -> Result<Tag, Error> {
-        let mut tag = [0u8; TAG_LEN];
-        match self {
-            Self::AesGcm(key) => key.encrypt(&nonce.0, aad, in_out, &mut tag),
-            Self::ChaCha20Poly1305(key) => key.encrypt(&nonce.0, aad, in_out, &mut tag),
-        }?;
-        Ok(Tag(tag))
-    }
-
-    fn open(&self, nonce: Nonce, aad: &[u8], tag: &[u8], in_out: &mut [u8]) -> Result<(), Error> {
-        match self {
-            Self::AesGcm(key) => key.decrypt(&nonce.0, aad, in_out, tag),
-            Self::ChaCha20Poly1305(key) => key.decrypt(&nonce.0, aad, in_out, tag),
-        }
-    }
-}
-
-impl Drop for Key {
-    fn drop(&mut self) {
-        // Wipes the discriminant and the space a smaller variant leaves unused,
-        // not only the variant's own key.
-        zeroise_value(self);
-    }
-}
-
-impl Zeroable for Key {}
-
-/// An AEAD key that seals with any nonce the caller gives it.
-///
-/// The caller owns nonce uniqueness: sealing two messages with one nonce and
-/// key loses confidentiality and lets anyone forge messages. Derive nonces
-/// from protocol state that never repeats, such as a record sequence number,
-/// or use [`RandomizedNonceKey`].
-pub struct LessSafeKey(UnboundKey);
-
-impl LessSafeKey {
-    /// Binds `key` to caller-provided nonces.
-    pub fn new(key: UnboundKey) -> Self {
-        Self(key)
     }
 
     /// Encrypts `in_out` in place and returns the tag.
@@ -160,26 +107,30 @@ impl LessSafeKey {
     /// `in_out` or `aad` is past the algorithm's limit: 2^36 - 32 and 2^61 - 1
     /// bytes for AES-GCM, and 2^38 - 64 bytes of `in_out` for
     /// ChaCha20-Poly1305.
-    pub fn seal_in_place_separate_tag<A: AsRef<[u8]>>(
+    pub fn seal_in_place_separate_tag(
         &self,
         nonce: Nonce,
-        aad: Aad<A>,
+        aad: &[u8],
         in_out: &mut [u8],
     ) -> Result<Tag, Error> {
-        self.0.0.seal(nonce, aad.0.as_ref(), in_out)
+        let mut tag = [0u8; TAG_LEN];
+        match &self.0 {
+            Inner::AesGcm(key) => key.encrypt(&nonce.0, aad, in_out, &mut tag),
+            Inner::ChaCha20Poly1305(key) => key.encrypt(&nonce.0, aad, in_out, &mut tag),
+        }?;
+        Ok(Tag(tag))
     }
 
     /// Encrypts `in_out` in place and appends the tag to it.
     ///
     /// Fails as [`Self::seal_in_place_separate_tag`] does.
-    pub fn seal_in_place_append_tag<A, InOut>(
+    pub fn seal_in_place_append_tag<InOut>(
         &self,
         nonce: Nonce,
-        aad: Aad<A>,
+        aad: &[u8],
         in_out: &mut InOut,
     ) -> Result<(), Error>
     where
-        A: AsRef<[u8]>,
         InOut: AsMut<[u8]> + for<'a> Extend<&'a u8>,
     {
         let tag = self.seal_in_place_separate_tag(nonce, aad, in_out.as_mut())?;
@@ -193,19 +144,14 @@ impl LessSafeKey {
     /// Fails with [`Error::DecryptFailed`] if `in_out` is shorter than a tag or
     /// does not verify, clearing the ciphertext in the latter case, and with
     /// [`Error::WrongLength`] past the sealing limits.
-    pub fn open_in_place<'a, A: AsRef<[u8]>>(
+    pub fn open_in_place<'a>(
         &self,
         nonce: Nonce,
-        aad: Aad<A>,
+        aad: &[u8],
         in_out: &'a mut [u8],
     ) -> Result<&'a mut [u8], Error> {
-        let len = in_out
-            .len()
-            .checked_sub(TAG_LEN)
-            .ok_or(Error::DecryptFailed)?;
-        let (in_out, tag) = in_out.split_at_mut(len);
-        self.0.0.open(nonce, aad.0.as_ref(), tag, in_out)?;
-        Ok(in_out)
+        let (in_out, tag) = in_out.split_last_chunk_mut().ok_or(Error::DecryptFailed)?;
+        self.open_in_place_separate_tag(nonce, aad, Tag(*tag), in_out)
     }
 
     /// Decrypts and verifies `in_out` against the separate `tag`, and returns
@@ -213,17 +159,43 @@ impl LessSafeKey {
     ///
     /// Fails with [`Error::DecryptFailed`], clearing `in_out`, if it does not
     /// verify, and with [`Error::WrongLength`] past the sealing limits.
-    pub fn open_in_place_separate_tag<'a, A: AsRef<[u8]>>(
+    pub fn open_in_place_separate_tag<'a>(
         &self,
         nonce: Nonce,
-        aad: Aad<A>,
-        tag: &[u8],
+        aad: &[u8],
+        tag: Tag,
         in_out: &'a mut [u8],
     ) -> Result<&'a mut [u8], Error> {
-        self.0.0.open(nonce, aad.0.as_ref(), tag, in_out)?;
+        match &self.0 {
+            Inner::AesGcm(key) => key.decrypt(&nonce.0, aad, in_out, &tag.0),
+            Inner::ChaCha20Poly1305(key) => key.decrypt(&nonce.0, aad, in_out, &tag.0),
+        }?;
         Ok(in_out)
     }
 }
+
+// All-zero is the `AesGcm` variant with an all-zero key and table, which
+// `Zeroable` requires to be valid: every field is a plain integer or vector.
+//
+// Boxing the AES-GCM table would allocate for every key to save space only on
+// ChaCha20-Poly1305 keys; the 32-bit arm table is small, so the lint is allowed
+// rather than expected.
+#[allow(clippy::large_enum_variant)]
+#[repr(u8)]
+enum Inner {
+    AesGcm(AesGcm),
+    ChaCha20Poly1305(ChaCha20Poly1305),
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        // Wipes the discriminant and the space a smaller variant leaves unused,
+        // not only the variant's own key.
+        zeroise_value(self);
+    }
+}
+
+impl Zeroable for Inner {}
 
 /// A 96-bit nonce, which the caller promises seals only once under a key.
 ///
@@ -237,24 +209,8 @@ impl Nonce {
     }
 }
 
-/// Additional authenticated data: authenticated but not encrypted.
-pub struct Aad<A: AsRef<[u8]>>(A);
-
-impl<A: AsRef<[u8]>> Aad<A> {
-    /// Wraps `aad`.
-    pub fn from(aad: A) -> Self {
-        Self(aad)
-    }
-}
-
-impl Aad<[u8; 0]> {
-    /// No additional authenticated data.
-    pub fn empty() -> Self {
-        Self([])
-    }
-}
-
-/// An authentication tag, as sealing returns it.
+/// An authentication tag: returned by sealing, or parsed from received bytes for opening.
+#[derive(Clone, Copy, Debug)]
 pub struct Tag([u8; TAG_LEN]);
 
 impl AsRef<[u8]> for Tag {
@@ -263,13 +219,19 @@ impl AsRef<[u8]> for Tag {
     }
 }
 
+/// Fails with [`Error::WrongLength`] unless `tag` is [`Algorithm::tag_len`] bytes.
+impl TryFrom<&[u8]> for Tag {
+    type Error = Error;
+
+    fn try_from(tag: &[u8]) -> Result<Self, Error> {
+        tag.try_into().map(Self).map_err(|_| Error::WrongLength)
+    }
+}
+
 /// An XChaCha20-Poly1305 key that picks a random 192-bit nonce for every seal.
 ///
 /// A 192-bit nonce is long enough that random ones never collide in
-/// practice, so the caller tracks no nonce state. aws-lc-rs builds this key
-/// on AES-GCM, whose random 96-bit nonces risk a collision after about 2^32
-/// seals; rind builds it on XChaCha20-Poly1305 alone, so it takes no
-/// algorithm.
+/// practice, so the caller tracks no nonce state.
 pub struct RandomizedNonceKey(XChaCha20Poly1305);
 
 impl RandomizedNonceKey {
@@ -284,20 +246,18 @@ impl RandomizedNonceKey {
     /// Fails with [`Error::RngFailed`] if the system random source does, or
     /// with [`Error::WrongLength`], leaving `in_out` unchanged, if it is longer
     /// than 2^38 - 64 bytes.
-    pub fn seal_in_place_append_tag<A, InOut>(
+    pub fn seal_in_place_append_tag<InOut>(
         &self,
-        aad: Aad<A>,
+        aad: &[u8],
         in_out: &mut InOut,
     ) -> Result<RandomNonce, Error>
     where
-        A: AsRef<[u8]>,
         InOut: AsMut<[u8]> + for<'a> Extend<&'a u8>,
     {
         let mut nonce = [0u8; 24];
         SystemRandom.fill(&mut nonce)?;
         let mut tag = [0u8; TAG_LEN];
-        self.0
-            .encrypt(&nonce, aad.0.as_ref(), in_out.as_mut(), &mut tag)?;
+        self.0.encrypt(&nonce, aad, in_out.as_mut(), &mut tag)?;
         in_out.extend(&tag);
         Ok(RandomNonce(nonce))
     }
@@ -305,19 +265,15 @@ impl RandomizedNonceKey {
     /// Decrypts and verifies `in_out`, the ciphertext followed by its tag,
     /// sealed under `nonce`, and returns the plaintext at its front.
     ///
-    /// Fails as [`LessSafeKey::open_in_place`] does.
-    pub fn open_in_place<'a, A: AsRef<[u8]>>(
+    /// Fails as [`Key::open_in_place`] does.
+    pub fn open_in_place<'a>(
         &self,
         nonce: RandomNonce,
-        aad: Aad<A>,
+        aad: &[u8],
         in_out: &'a mut [u8],
     ) -> Result<&'a mut [u8], Error> {
-        let len = in_out
-            .len()
-            .checked_sub(TAG_LEN)
-            .ok_or(Error::DecryptFailed)?;
-        let (in_out, tag) = in_out.split_at_mut(len);
-        self.0.decrypt(&nonce.0, aad.0.as_ref(), in_out, tag)?;
+        let (in_out, tag) = in_out.split_last_chunk_mut().ok_or(Error::DecryptFailed)?;
+        self.0.decrypt(&nonce.0, aad, in_out, tag)?;
         Ok(in_out)
     }
 }
@@ -351,7 +307,7 @@ mod tests {
         for algorithm in ALGORITHMS {
             for len in 0..=key.len() {
                 assert_eq!(
-                    UnboundKey::new(algorithm, &key[..len]).is_ok(),
+                    Key::new(algorithm, &key[..len]).is_ok(),
                     len == algorithm.key_len(),
                     "{algorithm:?} len {len}"
                 );
@@ -362,43 +318,35 @@ mod tests {
     #[test]
     fn seal_and_open() {
         for algorithm in ALGORITHMS {
-            let key = LessSafeKey::new(
-                UnboundKey::new(algorithm, &[7u8; 32][..algorithm.key_len()]).unwrap(),
-            );
+            let key = Key::new(algorithm, &[7u8; 32][..algorithm.key_len()]).unwrap();
             let nonce = || Nonce::assume_unique_for_key([9; 12]);
 
             let mut sealed = b"hello".to_vec();
-            key.seal_in_place_append_tag(nonce(), Aad::from(b"aad"), &mut sealed)
+            key.seal_in_place_append_tag(nonce(), b"aad", &mut sealed)
                 .unwrap();
             assert_eq!(sealed.len(), 5 + algorithm.tag_len());
 
             let mut separate = b"hello".to_vec();
             let tag = key
-                .seal_in_place_separate_tag(nonce(), Aad::from(b"aad"), &mut separate)
+                .seal_in_place_separate_tag(nonce(), b"aad", &mut separate)
                 .unwrap();
             assert_eq!([&separate[..], tag.as_ref()].concat(), sealed);
 
             let mut opened = sealed.clone();
             assert_eq!(
-                key.open_in_place(nonce(), Aad::from(b"aad"), &mut opened)
-                    .unwrap(),
+                key.open_in_place(nonce(), b"aad", &mut opened).unwrap(),
                 b"hello"
             );
             assert_eq!(
-                key.open_in_place_separate_tag(
-                    nonce(),
-                    Aad::from(b"aad"),
-                    tag.as_ref(),
-                    &mut separate
-                )
-                .unwrap(),
+                key.open_in_place_separate_tag(nonce(), b"aad", tag, &mut separate)
+                    .unwrap(),
                 b"hello"
             );
 
             // A wrong AAD fails and clears the ciphertext, leaving the tag.
             let mut wrong = sealed.clone();
             assert_eq!(
-                key.open_in_place(nonce(), Aad::empty(), &mut wrong),
+                key.open_in_place(nonce(), &[], &mut wrong),
                 Err(Error::DecryptFailed)
             );
             assert_eq!(wrong[..5], [0; 5]);
@@ -409,19 +357,25 @@ mod tests {
     #[test]
     fn open_refuses_input_shorter_than_tag() {
         for algorithm in ALGORITHMS {
-            let key = LessSafeKey::new(
-                UnboundKey::new(algorithm, &[7u8; 32][..algorithm.key_len()]).unwrap(),
-            );
+            let key = Key::new(algorithm, &[7u8; 32][..algorithm.key_len()]).unwrap();
             let mut short = [0xaau8; TAG_LEN - 1];
             assert_eq!(
-                key.open_in_place(
-                    Nonce::assume_unique_for_key([0; 12]),
-                    Aad::empty(),
-                    &mut short
-                ),
+                key.open_in_place(Nonce::assume_unique_for_key([0; 12]), &[], &mut short),
                 Err(Error::DecryptFailed)
             );
             assert_eq!(short, [0xaa; TAG_LEN - 1]);
+        }
+    }
+
+    #[test]
+    fn tag_must_be_whole() {
+        let bytes = [0u8; TAG_LEN + 1];
+        for len in 0..=bytes.len() {
+            assert_eq!(
+                Tag::try_from(&bytes[..len]).is_ok(),
+                len == TAG_LEN,
+                "len {len}"
+            );
         }
     }
 
@@ -430,28 +384,23 @@ mod tests {
         let key = RandomizedNonceKey::new(&[3u8; 32]);
 
         let mut first = b"ticket".to_vec();
-        let nonce = key
-            .seal_in_place_append_tag(Aad::from(b"name"), &mut first)
-            .unwrap();
+        let nonce = key.seal_in_place_append_tag(b"name", &mut first).unwrap();
         let mut second = b"ticket".to_vec();
-        let other = key
-            .seal_in_place_append_tag(Aad::from(b"name"), &mut second)
-            .unwrap();
+        let other = key.seal_in_place_append_tag(b"name", &mut second).unwrap();
         assert_ne!(nonce.as_ref(), other.as_ref());
         assert_ne!(first, second);
 
         let received = RandomNonce::from(<[u8; 24]>::try_from(nonce.as_ref()).unwrap());
         assert_eq!(
-            key.open_in_place(received, Aad::from(b"name"), &mut first)
-                .unwrap(),
+            key.open_in_place(received, b"name", &mut first).unwrap(),
             b"ticket"
         );
         assert_eq!(
-            key.open_in_place(nonce, Aad::from(b"name"), &mut second),
+            key.open_in_place(nonce, b"name", &mut second),
             Err(Error::DecryptFailed)
         );
         assert_eq!(
-            key.open_in_place(nonce, Aad::empty(), &mut [0u8; TAG_LEN - 1]),
+            key.open_in_place(nonce, &[], &mut [0u8; TAG_LEN - 1]),
             Err(Error::DecryptFailed)
         );
     }

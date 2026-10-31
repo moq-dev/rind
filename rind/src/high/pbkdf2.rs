@@ -12,42 +12,37 @@ use crate::Error;
 use crate::low::{ct, ct_equal};
 
 /// A PBKDF2 algorithm, chosen by one of this module's constants.
-#[derive(Clone, Copy, Debug)]
-pub struct Algorithm(hmac::Algorithm);
+#[derive(Debug)]
+pub struct Algorithm(&'static hmac::Algorithm);
 
 /// PBKDF2-HMAC-SHA1, for legacy formats only.
 ///
 /// PBKDF2 does not rely on SHA-1's broken collision resistance, and formats
 /// such as WPA2 and older PKCS#12 files still require it.
-pub static PBKDF2_HMAC_SHA1: Algorithm = Algorithm(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY);
+pub static PBKDF2_HMAC_SHA1: Algorithm = Algorithm(&hmac::HMAC_SHA1);
 
 /// PBKDF2-HMAC-SHA256.
-pub static PBKDF2_HMAC_SHA256: Algorithm = Algorithm(hmac::HMAC_SHA256);
+pub static PBKDF2_HMAC_SHA256: Algorithm = Algorithm(&hmac::HMAC_SHA256);
 
 /// PBKDF2-HMAC-SHA384.
-pub static PBKDF2_HMAC_SHA384: Algorithm = Algorithm(hmac::HMAC_SHA384);
+pub static PBKDF2_HMAC_SHA384: Algorithm = Algorithm(&hmac::HMAC_SHA384);
 
 /// PBKDF2-HMAC-SHA512.
-pub static PBKDF2_HMAC_SHA512: Algorithm = Algorithm(hmac::HMAC_SHA512);
+pub static PBKDF2_HMAC_SHA512: Algorithm = Algorithm(&hmac::HMAC_SHA512);
 
 /// A secret, such as a password, keyed once for every salt it derives with; wiped on drop.
-///
-/// aws-lc-rs's `derive` and `verify` instead take the algorithm, iteration
-/// count, salt, secret, and output as five arguments; rind keeps calls to
-/// three, as [`crate::hkdf::Salt`] does.
 pub struct Secret(hmac::Key);
 
 impl Secret {
     /// Keys `algorithm` with `secret`, which may be any length.
-    pub fn new(algorithm: Algorithm, secret: &[u8]) -> Self {
+    pub fn new(algorithm: &'static Algorithm, secret: &[u8]) -> Self {
         Self(hmac::Key::new(algorithm.0, secret))
     }
 
     /// Fills `out` with the key derived from `salt` over `iterations` rounds.
     ///
     /// Fails with [`Error::WrongLength`], leaving `out` unchanged, if `out`
-    /// is empty or longer than PBKDF2 allows, rather than panicking as
-    /// aws-lc-rs does.
+    /// is empty or longer than PBKDF2 allows.
     pub fn derive(&self, iterations: NonZeroU32, salt: &[u8], out: &mut [u8]) -> Result<(), Error> {
         self.check_len(out.len())?;
         self.blocks(iterations, salt, out.len(), |offset, block| {
@@ -61,10 +56,8 @@ impl Secret {
     /// The key derived is as long as `previously_derived`. Fails with
     /// [`Error::WrongLength`] if that is shorter than the HMAC output or
     /// longer than PBKDF2 allows, and with [`Error::BadSignature`] if the keys
-    /// differ.
-    ///
-    /// ring and aws-lc-rs accept any non-empty prefix of the key, so a
-    /// truncated stored value, which is easier to match, still verifies.
+    /// differ. A truncated stored value is refused because it is easier to
+    /// match.
     pub fn verify(
         &self,
         iterations: NonZeroU32,
@@ -151,14 +144,16 @@ mod tests {
 
     const ONE: NonZeroU32 = NonZeroU32::MIN;
 
+    static ALGORITHMS: [&Algorithm; 4] = [
+        &PBKDF2_HMAC_SHA1,
+        &PBKDF2_HMAC_SHA256,
+        &PBKDF2_HMAC_SHA384,
+        &PBKDF2_HMAC_SHA512,
+    ];
+
     #[test]
     fn lengths() {
-        for algorithm in [
-            PBKDF2_HMAC_SHA1,
-            PBKDF2_HMAC_SHA256,
-            PBKDF2_HMAC_SHA384,
-            PBKDF2_HMAC_SHA512,
-        ] {
+        for algorithm in ALGORITHMS {
             let secret = Secret::new(algorithm, b"password");
             assert_eq!(
                 secret.derive(ONE, b"salt", &mut []),
@@ -185,7 +180,7 @@ mod tests {
         // Two whole SHA-256 blocks and a partial third, so a flip in any
         // block, including the partial one, must be caught.
         let iterations = NonZeroU32::new(3).unwrap();
-        let secret = Secret::new(PBKDF2_HMAC_SHA256, b"password");
+        let secret = Secret::new(&PBKDF2_HMAC_SHA256, b"password");
         let mut key = [0u8; 70];
         secret.derive(iterations, b"salt", &mut key).unwrap();
         assert_eq!(secret.verify(iterations, b"salt", &key), Ok(()));
@@ -216,12 +211,7 @@ mod tests {
         // verify's answer is declassified. Passwords longer than a block are
         // hashed first.
         let iterations = NonZeroU32::new(3).unwrap();
-        for algorithm in [
-            PBKDF2_HMAC_SHA1,
-            PBKDF2_HMAC_SHA256,
-            PBKDF2_HMAC_SHA384,
-            PBKDF2_HMAC_SHA512,
-        ] {
+        for algorithm in ALGORITHMS {
             for password_len in [16, 200] {
                 let password = vec![0x5a; password_len];
                 let mut wanted = [0u8; 100];

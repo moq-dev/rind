@@ -7,7 +7,7 @@ fuzz_target!(|op: Operation| {
     match op {
         Operation::Sha1(steps) => {
             let mut left = digest::Context::new(&digest::SHA1_FOR_LEGACY_USE_ONLY);
-            let mut right = rind::digest::Context::new(&rind::digest::SHA1_FOR_LEGACY_USE_ONLY);
+            let mut right = rind::digest::Context::new(&rind::digest::legacy::SHA1);
 
             for s in steps {
                 match s {
@@ -30,7 +30,7 @@ fuzz_target!(|op: Operation| {
             let mut left =
                 hmac::Context::with_key(&hmac::Key::new(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, &key));
             let mut right = rind::hmac::Context::with_key(&rind::hmac::Key::new(
-                rind::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
+                &rind::hmac::legacy::HMAC_SHA1,
                 &key,
             ));
 

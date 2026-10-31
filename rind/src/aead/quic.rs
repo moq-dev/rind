@@ -63,10 +63,7 @@ impl HeaderProtectionKey {
 
     /// Computes the mask for `sample`: its first byte masks the packet's first
     /// byte, and the rest mask the packet number.
-    ///
-    /// Unlike aws-lc-rs, which takes a slice and fails unless it is 16 bytes,
-    /// the sample is an array, so this cannot fail.
-    pub fn new_mask(&self, sample: &[u8; SAMPLE_LEN]) -> [u8; 5] {
+    pub fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> [u8; 5] {
         match &self.0 {
             // RFC 9001 section 5.4.3
             Key::Aes(key) => {
@@ -146,7 +143,7 @@ mod tests {
         ] {
             let key = HeaderProtectionKey::new(algorithm, &hex::decode(key).unwrap()).unwrap();
             let sample = hex::decode(sample).unwrap().try_into().unwrap();
-            assert_eq!(hex::encode(key.new_mask(&sample)), mask);
+            assert_eq!(hex::encode(key.mask(&sample)), mask);
         }
     }
 }

@@ -5,7 +5,7 @@ use dimpl::crypto::{
     SupportedDtls12CipherSuite, SupportedDtls13CipherSuite, TmpBuf,
 };
 use dimpl::{CryptoError, CryptoOperation};
-use rind::aead::{self, LessSafeKey, UnboundKey};
+use rind::aead;
 use rind::cipher::{self, Aes, ChaCha20};
 
 const TAG_LEN: usize = 16;
@@ -29,11 +29,11 @@ impl Algorithm {
 
     fn cipher(self, key: &[u8]) -> Result<Box<dyn Cipher>, CryptoError> {
         let actual = key.len().min(u16::MAX as usize) as u16;
-        let key = UnboundKey::new(self.aead(), key).map_err(|_| match self {
+        let key = aead::Key::new(self.aead(), key).map_err(|_| match self {
             Self::Aes128Gcm | Self::Aes256Gcm => CryptoError::InvalidAesGcmKeySize { actual },
             Self::ChaCha20Poly1305 => CryptoError::InvalidChacha20Poly1305KeySize { actual },
         })?;
-        Ok(Box::new(Aead(LessSafeKey::new(key))))
+        Ok(Box::new(Aead(key)))
     }
 
     /// DTLS 1.3 record number protection (RFC 9147 section 4.2.3).
@@ -63,7 +63,7 @@ impl Algorithm {
     }
 }
 
-struct Aead(LessSafeKey);
+struct Aead(aead::Key);
 
 impl fmt::Debug for Aead {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -74,11 +74,7 @@ impl fmt::Debug for Aead {
 impl Cipher for Aead {
     fn encrypt(&mut self, plaintext: &mut Buf, aad: Aad, nonce: Nonce) -> Result<(), CryptoError> {
         self.0
-            .seal_in_place_append_tag(
-                aead::Nonce::assume_unique_for_key(nonce.0),
-                aead::Aad::from(&aad[..]),
-                plaintext,
-            )
+            .seal_in_place_append_tag(aead::Nonce::assume_unique_for_key(nonce.0), &aad, plaintext)
             .map_err(|_| CryptoError::OperationFailed(CryptoOperation::Encrypt))
     }
 
@@ -99,7 +95,7 @@ impl Cipher for Aead {
         self.0
             .open_in_place(
                 aead::Nonce::assume_unique_for_key(nonce.0),
-                aead::Aad::from(&aad[..]),
+                &aad,
                 ciphertext.as_mut(),
             )
             .map_err(|_| CryptoError::OperationFailed(CryptoOperation::Decrypt))?;
