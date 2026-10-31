@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! HKDF (HMAC-based Key Derivation Function), following aws-lc-rs's `hkdf`.
+//! HKDF (HMAC-based Key Derivation Function).
 //!
 //! HKDF is standardized in [RFC 5869](https://datatracker.ietf.org/doc/html/rfc5869).
 

@@ -8,17 +8,19 @@
 
 rind began as a fork of [Graviola](https://github.com/ctz/graviola) by Joe
 Birr-Pixton, and no longer tracks it. It adds what MoQ needs to drop C
-cryptography entirely; the plan lives in [`quest/`](quest/README.md).
+cryptography entirely; the plan lives in [`quest/`][quests]. Coming from
+ring or aws-lc-rs? [MIGRATING.md][migrating] maps their API to rind's.
 
 *High quality*: rind incorporates assembler routines
 from the [s2n-bignum] project.  These have been formally proven
 to correctly implement the desired mathematical operation.
 
 *Fast*: rind beats or is competitive with other cryptography
-libraries for Rust.  See [performance comparison][performance].
+libraries for Rust.  `cargo bench` compares it with aws-lc-rs, *ring*,
+and RustCrypto.
 
 *Easy and fast to build*: no C compiler, assembler or other tooling
-needed: just the Rust compiler.  Compiles in less than one second.
+needed: just the Rust compiler.  Compiles in seconds.
 
 ## Status
 
@@ -33,7 +35,7 @@ but there is also a public API for general-purpose use.
 ## Goals
 
 - [x] Fast and simple compilation
-    - [x] `cargo build` takes less than one second, and requires only rustc
+    - [x] `cargo build` takes seconds, and requires only rustc
 - [x] Competitive performance (with *ring*, aws-lc-rs, and rustcrypto)
 - [x] Uses formally-verified code from other projects (where it is as fast)
 - [x] Intended to provide algorithms in wide use on web
@@ -95,7 +97,7 @@ Each cell names whose code runs for that algorithm on that backend: the
 intrinsics. A ✓ marks code its source formally verifies, to the extent
 [Sources](#sources) states. A ⚡ marks unverified code chosen because it
 measured faster than a verified alternative; other unverified code has none,
-or a [quest](quest/README.md) covers it. The table describes
+or a [quest][quests] covers it. The table describes
 `main`, and changes alongside the code it describes.
 
 | Algorithm | x86_64 | aarch64 | armv7 |
@@ -156,15 +158,15 @@ different one, updates this table and [LICENSE] in the same PR.
 [libcrux-aes]: https://github.com/cryspen/libcrux/tree/main/crates/algorithms/aes
 [libcrux]: https://github.com/cryspen/libcrux
 [aws-lc]: https://github.com/aws/aws-lc
-[aws-lc-rs]: https://github.com/aws/aws-lc-rs
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
-[performance]: https://jbp.io/rind/
 [rind-rustls]: https://crates.io/crates/rind-rustls
+[quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
+[migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
 
 ## Assorted technical details
 
@@ -184,8 +186,9 @@ Only RSA signing and verification are provided.  Signing keys have 2048- to
 8192-bit moduli; verification also takes 1024-bit moduli and SHA-1, but only
 under `signature::verify::legacy`.  Every key refuses an even public exponent
 or one of 1, and a private key whose components disagree is refused when it
-loads, as aws-lc's `RSA_check_key` does.  Our policy on RSA encryption is:
-"These are not made. They should never be made. We will not make them. We will not help make them."
+loads, as aws-lc's `RSA_check_key` does.  RSA encryption is not provided:
+OAEP waits on a consumer, and PKCS#1 v1.5 encryption, which invites
+padding-oracle attacks, is refused.
 
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
 All generated keys have e = 0x10001.  Unlike other private key operations in rind,
@@ -199,6 +202,8 @@ s2n-bignum, and the rest of this section describes those backends.
 P256 base point multiplication uses a 7-bit exponent window with Booth encoding
 (this costs a 148KB constant table).
 Variable point multiplication uses a 5-bit exponent window with Booth encoding.
+Both use the same exponent representations for "public" and "secret" exponents --
+however the table selection for "public" exponents is specialized at compile-time.
 
 P384 base point multiplication uses a comb of 20 tables of 16 affine points
 (a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable
@@ -215,9 +220,6 @@ window over the point's cached multiples measured faster for that one.
 s2n-bignum's P521 point addition requires points that are not at infinity,
 equal, or opposite, so the comb and the window keep to that, and select or
 branch around the cases they reach.
-
-Both use the same exponent representations for "public" and "secret" exponents --
-however the table selection for "public" exponents is specialized at compile-time.
 
 ECDSA follows RFC6979 for generation of `k`, but adds additional non-critical random input.
 We do this to avoid the theoretical fragility of RFC6979 under fault conditions.
@@ -294,10 +296,26 @@ HACL*'s verified Poly1305 without NEON.
 
 ## Architecture
 
-The public API follows [aws-lc-rs]'s module names and shapes: each algorithm module
-takes an algorithm constant, such as `aead::AES_128_GCM` or
-`signature::verify::ECDSA_P256_SHA256_ASN1`, and has one key type per role. Where
-rind deviates, the item's docs say why.
+rind's API is its own, shaped so that misuse fails to compile rather than at
+run time. [MIGRATING.md][migrating] maps each ring and aws-lc-rs item to it.
+
+- Each module takes an algorithm as a `&'static` constant, such as
+  `aead::AES_128_GCM` or `signature::verify::ECDSA_P256_SHA256_ASN1`, and has
+  one key type per role.
+- Algorithms only old protocols should use sit in `legacy` submodules, such
+  as `digest::legacy::SHA1`.
+- Key pairs name the DER format they load or encode (`from_pkcs8`,
+  `from_sec1`, `to_spki`), and every private key returns its public half
+  from `public_key()`.
+- Encodings, signatures, and shared secrets are owned values of fixed
+  capacity, such as `signature::Pkcs8`, rather than caller buffers or
+  allocations. Keys wipe their secrets on drop.
+- No call takes a random source: rind draws from the system's when it needs
+  one, and `rand::fill` gives callers the same.
+- Fallible calls return `rind::Error`, whose variant says which kind of call
+  failed, such as `KeyRejected` or `BadSignature`.
+
+The modules:
 
 - `aead`: AES-GCM and ChaCha20-Poly1305 keys with caller nonces, an
   XChaCha20-Poly1305 key that picks random nonces, and QUIC header-protection

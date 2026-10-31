@@ -3,8 +3,8 @@
 
 /// Why a rind call failed.
 ///
-/// Unlike aws-lc-rs's opaque `Unspecified`, each variant comes from one kind
-/// of call, so a caller can tell, say, a bad key from a bad signature.
+/// Each variant comes from one kind of call, so a caller can tell, say, a bad
+/// key from a bad signature.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
