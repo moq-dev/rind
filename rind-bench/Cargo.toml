@@ -107,3 +107,7 @@ harness = false
 [[bench]]
 name = "cipher"
 harness = false
+
+[[bench]]
+name = "pbkdf2"
+harness = false

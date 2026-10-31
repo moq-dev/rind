@@ -72,6 +72,14 @@ impl<H: Hash> Hmac<H> {
         zeroise(inner_output.as_mut());
         self.outer.finish()
     }
+
+    /// The tag of `message`, at most one hash output long, under a key no message has been added to.
+    ///
+    /// Each hash then finishes in one block, from a copy of its keyed state.
+    pub(crate) fn sign_block(&self, message: &[u8]) -> Digest {
+        let inner = self.inner.finish_block(message);
+        self.outer.finish_block(inner.as_ref())
+    }
 }
 
 /// An HMAC algorithm, chosen by one of this module's constants.

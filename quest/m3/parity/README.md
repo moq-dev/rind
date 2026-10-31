@@ -31,7 +31,6 @@ Decided by the maintainer on 2026-10-30:
 
 ## Required
 
-- [PBKDF2](/quest/m3/parity/pbkdf2.md) - PBKDF2-HMAC with SHA-1, SHA-256, SHA-384, and SHA-512
 - [rustls provider parity](/quest/m3/parity/rustls.md) - rind-rustls offers what aws-lc-rs's provider does
 - [rind-ring](/quest/m3/parity/rind-ring.md) - ring's API on rind, for a drop-in swap
 - [Adapter survey](/quest/m3/parity/adapter-survey.md) - which crates with pluggable crypto need a `rind-*` adapter
