@@ -808,6 +808,108 @@ mod rsa {
         }
     }
 
+    // Every verification algorithm, beside aws-lc-rs's of the same name.
+    const VERIFICATION: [(&rind::signature::RsaParameters, &signature::RsaParameters); 11] = [
+        (
+            &rind::signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+        ),
+        (
+            &rind::signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+            &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+        ),
+        (
+            &rind::signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+            &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+        ),
+        (
+            &rind::signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+        ),
+        (
+            &rind::signature::RSA_PKCS1_2048_8192_SHA256,
+            &signature::RSA_PKCS1_2048_8192_SHA256,
+        ),
+        (
+            &rind::signature::RSA_PKCS1_2048_8192_SHA384,
+            &signature::RSA_PKCS1_2048_8192_SHA384,
+        ),
+        (
+            &rind::signature::RSA_PKCS1_2048_8192_SHA512,
+            &signature::RSA_PKCS1_2048_8192_SHA512,
+        ),
+        (
+            &rind::signature::RSA_PKCS1_3072_8192_SHA384,
+            &signature::RSA_PKCS1_3072_8192_SHA384,
+        ),
+        (
+            &rind::signature::RSA_PSS_2048_8192_SHA256,
+            &signature::RSA_PSS_2048_8192_SHA256,
+        ),
+        (
+            &rind::signature::RSA_PSS_2048_8192_SHA384,
+            &signature::RSA_PSS_2048_8192_SHA384,
+        ),
+        (
+            &rind::signature::RSA_PSS_2048_8192_SHA512,
+            &signature::RSA_PSS_2048_8192_SHA512,
+        ),
+    ];
+
+    /// Both accept and refuse the same signatures under every algorithm, for
+    /// keys as DER or as components. aws-lc-rs signs neither SHA-1 nor
+    /// 1024-bit keys, so the signatures are Wycheproof's.
+    #[test]
+    fn verification_agrees() {
+        for file in [
+            "rsa_pkcs1_1024_sig_gen_test.json",
+            "rsa_pkcs1_2048_sig_gen_test.json",
+        ] {
+            let path = format!("../thirdparty/wycheproof/testvectors_v1/{file}");
+            let tests: serde_json::Value =
+                serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+            for group in tests["testGroups"].as_array().unwrap() {
+                let hex = |value: &serde_json::Value| hex::decode(value.as_str().unwrap()).unwrap();
+                let der = hex(&group["keyAsn"]);
+                let modulus = hex(&group["privateKey"]["modulus"]);
+                let e = hex(&group["privateKey"]["publicExponent"]);
+                // A leading zero, as the DER sign byte leaves, is refused.
+                let n = modulus.strip_prefix(&[0]).unwrap();
+
+                for (i, test) in group["tests"].as_array().unwrap().iter().enumerate() {
+                    let message = hex(&test["msg"]);
+                    let signature = hex(&test["sig"]);
+                    let other = [&message[..], b"!"].concat();
+                    // Another message is refused alike, so checking it once
+                    // per group keeps this fast under emulation.
+                    let messages = match i {
+                        0 => &[&message[..], &other][..],
+                        _ => &[&message[..]],
+                    };
+
+                    for message in messages {
+                        for (ours, theirs) in VERIFICATION {
+                            let case = format!("{file} {i} {ours:?}");
+                            for n in [n, &modulus] {
+                                let ours = rind::signature::RsaPublicKeyComponents { n, e: &e }
+                                    .verify(ours, message, &signature);
+                                let theirs = signature::RsaPublicKeyComponents { n, e: &e }
+                                    .verify(theirs, message, &signature);
+                                assert_eq!(ours.is_ok(), theirs.is_ok(), "{case} {ours:?}");
+                            }
+
+                            let ours = rind::signature::UnparsedPublicKey::new(ours, &der)
+                                .verify(message, &signature);
+                            let theirs =
+                                UnparsedPublicKey::new(theirs, &der).verify(message, &signature);
+                            assert_eq!(ours.is_ok(), theirs.is_ok(), "{case} {ours:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn refuses_modulus_below_2048_bits() {
         let private = include_bytes!("../src/high/rsa/rsa2047.pkcs8.der");
