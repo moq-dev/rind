@@ -9,9 +9,8 @@ armv7 backend, and every `rind-*` adapter. Each adapter's operations pass
 rind's tests on x86_64, aarch64, and armv7 alike; an operation missing on one
 arch does not count as covered.
 
-MoQ's side waits on this epic:
-[moq-dev/moq `quest/m2/rind/covered.md`](https://github.com/moq-dev/moq/blob/main/quest/m2/rind/covered.md)
-checks this directory for remaining quests and crates.io for the release.
+MoQ's [migration epic](https://github.com/moq-dev/moq/blob/main/quest/m2/rind/README.md)
+switches each area once the rind pieces it uses are on crates.io.
 
 ## Plan
 
@@ -72,4 +71,3 @@ RustCrypto dependency.
 - [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
 - [libcrux releases its bignum constant-time fix](/quest/m1/moq/libcrux-ct-fixes.md) - waiting on libcrux's fix, then dropping its armv7 ctgrind suppression
 - [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish
-- [Release](/quest/m1/moq/release.md) - publish the rind release MoQ switches to
