@@ -81,6 +81,7 @@ proptest! {
             (&rind::digest::SHA256, &digest::SHA256),
             (&rind::digest::SHA384, &digest::SHA384),
             (&rind::digest::SHA512, &digest::SHA512),
+            (&rind::digest::SHA512_256, &digest::SHA512_256),
         ] {
             let mut ctx = rind::digest::Context::new(ours);
             ctx.update(&message[..split]);
