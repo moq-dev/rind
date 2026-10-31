@@ -86,6 +86,12 @@ pub(crate) trait HashContext: Clone {
 
     /// Complete the computation.
     fn finish(self) -> Digest;
+
+    /// The digest of the input so far followed by `tail`, leaving this context as it was.
+    ///
+    /// The input so far must be whole blocks, and `tail` must leave room for
+    /// the padding in one more.
+    fn finish_block(&self, tail: &[u8]) -> Digest;
 }
 
 /// SHA-1, for legacy protocols only.
@@ -118,6 +124,10 @@ impl HashContext for sha1::Sha1Context {
     fn finish(self) -> Digest {
         Digest::new(LegacySha1::ALGORITHM, &Self::finish(self))
     }
+
+    fn finish_block(&self, tail: &[u8]) -> Digest {
+        Digest::new(LegacySha1::ALGORITHM, &Self::finish_block(self, tail))
+    }
 }
 
 /// SHA-256.
@@ -148,6 +158,10 @@ impl HashContext for sha2::Sha256Context {
 
     fn finish(self) -> Digest {
         Digest::new(Sha256::ALGORITHM, &Self::finish(self))
+    }
+
+    fn finish_block(&self, tail: &[u8]) -> Digest {
+        Digest::new(Sha256::ALGORITHM, &Self::finish_block(self, tail))
     }
 }
 
@@ -180,6 +194,10 @@ impl HashContext for sha2::Sha384Context {
     fn finish(self) -> Digest {
         Digest::new(Sha384::ALGORITHM, &Self::finish(self))
     }
+
+    fn finish_block(&self, tail: &[u8]) -> Digest {
+        Digest::new(Sha384::ALGORITHM, &Self::finish_block(self, tail))
+    }
 }
 
 /// SHA-512.
@@ -211,6 +229,10 @@ impl HashContext for sha2::Sha512Context {
     fn finish(self) -> Digest {
         Digest::new(Sha512::ALGORITHM, &Self::finish(self))
     }
+
+    fn finish_block(&self, tail: &[u8]) -> Digest {
+        Digest::new(Sha512::ALGORITHM, &Self::finish_block(self, tail))
+    }
 }
 
 // SHA-512/256 has no `Hash` impl: no HMAC or signature uses it.
@@ -221,5 +243,9 @@ impl HashContext for sha2::Sha512_256Context {
 
     fn finish(self) -> Digest {
         Digest::new(&SHA512_256, &Self::finish(self))
+    }
+
+    fn finish_block(&self, tail: &[u8]) -> Digest {
+        Digest::new(&SHA512_256, &Self::finish_block(self, tail))
     }
 }
