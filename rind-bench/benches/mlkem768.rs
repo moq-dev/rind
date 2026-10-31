@@ -221,10 +221,10 @@ fn mlkem768_encaps(c: &mut Criterion) {
 
         let encaps = DecapsulationKey::generate(&ML_KEM_768)
             .unwrap()
-            .encapsulation_key();
+            .public_key();
 
         b.iter(|| {
-            let encaps = EncapsulationKey::new(&ML_KEM_768, encaps.key_bytes()).unwrap();
+            let encaps = EncapsulationKey::new(&ML_KEM_768, encaps.as_ref()).unwrap();
             black_box(encaps.encapsulate().unwrap());
         });
     });
@@ -295,10 +295,10 @@ fn mlkem768_decaps(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let decaps = DecapsulationKey::generate(&ML_KEM_768).unwrap();
-                let (ciphertext, _secret) = decaps.encapsulation_key().encapsulate().unwrap();
+                let (ciphertext, _secret) = decaps.public_key().encapsulate().unwrap();
                 (decaps, ciphertext)
             },
-            |(decaps, ciphertext)| black_box(decaps.decapsulate(ciphertext).unwrap()),
+            |(decaps, ciphertext)| black_box(decaps.decapsulate(ciphertext.as_ref()).unwrap()),
             BatchSize::SmallInput,
         );
     });
@@ -379,10 +379,10 @@ fn mlkem768_combined(c: &mut Criterion) {
 
         b.iter(|| {
             let decaps = DecapsulationKey::generate(&ML_KEM_768).unwrap();
-            let encaps_encoded = decaps.encapsulation_key();
-            let encaps = EncapsulationKey::new(&ML_KEM_768, encaps_encoded.key_bytes()).unwrap();
+            let encaps_encoded = decaps.public_key();
+            let encaps = EncapsulationKey::new(&ML_KEM_768, encaps_encoded.as_ref()).unwrap();
             let (ciphertext, _secret) = encaps.encapsulate().unwrap();
-            black_box(decaps.decapsulate(ciphertext).unwrap());
+            black_box(decaps.decapsulate(ciphertext.as_ref()).unwrap());
         });
     });
 }

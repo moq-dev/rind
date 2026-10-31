@@ -573,20 +573,13 @@ macro_rules! ec_crosschecks {
 
                 #[test]
                 fn ecdh(_case in any::<u8>()) {
-                    let ours = rind::agreement::EphemeralPrivateKey::generate(&rind::agreement::$ecdh)
+                    let ours = rind::agreement::PrivateKey::generate(&rind::agreement::$ecdh)
                         .unwrap();
-                    let ours_public = ours.compute_public_key();
+                    let ours_public = ours.public_key();
                     let theirs = EphemeralPrivateKey::generate(&$ecdh, &SystemRandom::new()).unwrap();
                     let theirs_public = theirs.compute_public_key().unwrap();
 
-                    let ours_secret = rind::agreement::agree_ephemeral(
-                        ours,
-                        &rind::agreement::UnparsedPublicKey::new(
-                            &rind::agreement::$ecdh,
-                            theirs_public.as_ref(),
-                        ),
-                    )
-                    .unwrap();
+                    let ours_secret = ours.agree(theirs_public.as_ref()).unwrap();
                     let theirs_secret = agreement::agree_ephemeral(
                         theirs,
                         agreement::UnparsedPublicKey::new(&$ecdh, ours_public.as_ref()),

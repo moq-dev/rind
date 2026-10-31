@@ -15,7 +15,7 @@ impl SupportedKxGroup for MlKem768 {
     fn start(&self) -> Result<Box<dyn ActiveKeyExchange>, Error> {
         let decaps_key = kem::DecapsulationKey::generate(&kem::ML_KEM_768)
             .map_err(|_| Error::FailedToGetRandomBytes)?;
-        let encaps_key_bytes = decaps_key.encapsulation_key().key_bytes().to_vec();
+        let encaps_key_bytes = decaps_key.public_key().as_ref().to_vec();
 
         Ok(Box::new(Active {
             decaps_key,
@@ -60,7 +60,7 @@ impl ActiveKeyExchange for Active {
     fn complete(self: Box<Self>, peer_pub_key: &[u8]) -> Result<SharedSecret, Error> {
         let shared_secret = self
             .decaps_key
-            .decapsulate(kem::Ciphertext::from(peer_pub_key))
+            .decapsulate(peer_pub_key)
             .map_err(|_| INVALID_KEY_SHARE)?;
 
         Ok(SharedSecret::from(shared_secret.as_ref()))

@@ -38,7 +38,7 @@ impl DecapsulationKey {
     }
 
     /// Returns the encapsulation key to send to the peer.
-    pub fn encapsulation_key(&self) -> EncapsulationKey {
+    pub fn public_key(&self) -> EncapsulationKey {
         EncapsulationKey::wrap(self.0.encapsulation_key())
     }
 
@@ -47,14 +47,8 @@ impl DecapsulationKey {
     /// A ciphertext of the wrong length is refused. Any other tampering
     /// yields an unrelated secret (FIPS-203's implicit rejection), so the
     /// peer learns nothing until the secret is used.
-    ///
-    /// Unlike aws-lc-rs, this consumes the key, as ephemeral key agreement
-    /// does: rind's only consumer is a TLS key share, used once.
-    pub fn decapsulate(self, ciphertext: Ciphertext<'_>) -> Result<SharedSecret, Error> {
-        let ciphertext: [u8; 1088] = ciphertext
-            .as_ref()
-            .try_into()
-            .map_err(|_| Error::WrongLength)?;
+    pub fn decapsulate(self, ciphertext: &[u8]) -> Result<SharedSecret, Error> {
+        let ciphertext: [u8; 1088] = ciphertext.try_into().map_err(|_| Error::WrongLength)?;
         Ok(SharedSecret(
             self.0.decaps(&mlkem768::Ciphertext::from(ciphertext)),
         ))
@@ -95,54 +89,35 @@ impl EncapsulationKey {
         }
     }
 
-    /// Returns the key's encoding.
-    pub fn key_bytes(&self) -> &[u8] {
-        &self.bytes
-    }
-
     /// Encapsulates a fresh random secret, returning the ciphertext to send
     /// to the key's holder and the secret.
-    pub fn encapsulate(&self) -> Result<(Ciphertext<'static>, SharedSecret), Error> {
+    pub fn encapsulate(&self) -> Result<(Ciphertext, SharedSecret), Error> {
         let (secret, ciphertext) = self.key.encaps()?;
-        Ok((
-            Ciphertext(CiphertextBytes::Owned(ciphertext)),
-            SharedSecret(secret),
-        ))
+        Ok((Ciphertext(ciphertext), SharedSecret(secret)))
+    }
+}
+
+impl AsRef<[u8]> for EncapsulationKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
     }
 }
 
 impl fmt::Debug for EncapsulationKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("EncapsulationKey")
-            .field(&self.key_bytes())
+            .field(&self.as_ref())
             .finish()
     }
 }
 
-/// A ciphertext carrying an encapsulated secret.
+/// A ciphertext carrying an encapsulated secret, to send to the key's holder.
 #[derive(Clone, Debug)]
-pub struct Ciphertext<'a>(CiphertextBytes<'a>);
+pub struct Ciphertext(mlkem768::Ciphertext);
 
-// Boxing the owned ciphertext would allocate, which rind's API does not.
-#[allow(clippy::large_enum_variant)]
-#[derive(Clone, Debug)]
-enum CiphertextBytes<'a> {
-    Borrowed(&'a [u8]),
-    Owned(mlkem768::Ciphertext),
-}
-
-impl<'a> From<&'a [u8]> for Ciphertext<'a> {
-    fn from(bytes: &'a [u8]) -> Self {
-        Self(CiphertextBytes::Borrowed(bytes))
-    }
-}
-
-impl AsRef<[u8]> for Ciphertext<'_> {
+impl AsRef<[u8]> for Ciphertext {
     fn as_ref(&self) -> &[u8] {
-        match &self.0 {
-            CiphertextBytes::Borrowed(bytes) => bytes,
-            CiphertextBytes::Owned(ciphertext) => ciphertext.as_ref(),
-        }
+        self.0.as_ref()
     }
 }
 
@@ -204,7 +179,7 @@ mod tests {
             let key = mlkem768::DecapKey::keygen_internal(&test.seed.try_into().unwrap());
             assert_eq!(&low::ct::into_public(key.as_bytes())[..], &test.dk);
             let key = DecapsulationKey(key);
-            assert_eq!(key.encapsulation_key().key_bytes(), &test.ek);
+            assert_eq!(key.public_key().as_ref(), &test.ek);
         }
     }
 
@@ -237,10 +212,8 @@ mod tests {
             };
 
             let key = DecapsulationKey(mlkem768::DecapKey::keygen_internal(&seed));
-            assert_eq!(key.encapsulation_key().key_bytes(), &test.ek, "{}", test.id);
-            let result = key
-                .decapsulate(Ciphertext::from(&test.c[..]))
-                .map(|secret| secret_bytes(&secret));
+            assert_eq!(key.public_key().as_ref(), &test.ek, "{}", test.id);
+            let result = key.decapsulate(&test.c).map(|secret| secret_bytes(&secret));
             match (test.result, &result) {
                 (Expected::Valid, Ok(secret)) => assert_eq!(secret, &test.k, "{}", test.id),
                 (Expected::Invalid, Err(Error::WrongLength)) => {}
@@ -274,7 +247,7 @@ mod tests {
                 )
                 .unwrap();
                 let (ciphertext, secret) =
-                    kem::EncapsulationKey::new(&ML_KEM_768, ours.encapsulation_key().key_bytes())
+                    kem::EncapsulationKey::new(&ML_KEM_768, ours.public_key().as_ref())
                         .unwrap()
                         .encapsulate()
                         .unwrap();
@@ -285,7 +258,7 @@ mod tests {
                     ciphertext[index] ^= xor;
                 }
                 let theirs_secret = theirs.decapsulate(kem::Ciphertext::from(&ciphertext[..])).unwrap();
-                let ours_secret = secret_bytes(&ours.decapsulate(Ciphertext::from(&ciphertext[..])).unwrap());
+                let ours_secret = secret_bytes(&ours.decapsulate(&ciphertext).unwrap());
                 prop_assert_eq!(&ours_secret[..], theirs_secret.as_ref());
                 prop_assert_eq!(&ours_secret[..] == secret.as_ref(), alter.is_none());
             }
