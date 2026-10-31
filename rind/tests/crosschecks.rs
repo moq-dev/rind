@@ -81,6 +81,7 @@ proptest! {
             (&rind::digest::SHA256, &digest::SHA256),
             (&rind::digest::SHA384, &digest::SHA384),
             (&rind::digest::SHA512, &digest::SHA512),
+            (&rind::digest::SHA512_256, &digest::SHA512_256),
         ] {
             let mut ctx = rind::digest::Context::new(ours);
             ctx.update(&message[..split]);
@@ -112,6 +113,31 @@ proptest! {
             let got = ctx.sign();
             prop_assert_eq!(got.as_ref(), wanted.as_ref());
             prop_assert_eq!(rind::hmac::verify(&ours, &message, wanted.as_ref()), Ok(()));
+        }
+    }
+
+    #[test]
+    fn slice_comparison_matches_aws_lc_rs(
+        a in vec(any::<u8>(), 0..64),
+        other in vec(any::<u8>(), 0..64),
+        flip in any::<prop::sample::Index>(),
+    ) {
+        let mut flipped = a.clone();
+        if !flipped.is_empty() {
+            flipped[flip.index(a.len())] ^= 1;
+        }
+        for b in [&a, &flipped, &other] {
+            let ours = rind::constant_time::verify_slices_are_equal(&a, b);
+            let theirs = aws_lc_rs::constant_time::verify_slices_are_equal(&a, b);
+            prop_assert_eq!(ours.is_ok(), theirs.is_ok());
+            let wanted = if a.len() != b.len() {
+                Err(rind::Error::WrongLength)
+            } else if a != *b {
+                Err(rind::Error::NotEqual)
+            } else {
+                Ok(())
+            };
+            prop_assert_eq!(ours, wanted);
         }
     }
 }
@@ -198,22 +224,25 @@ mod cipher {
         }
 
         #[test]
-        fn chacha20_header_protection_mask(key in any::<[u8; 32]>(), sample in any::<[u8; 16]>()) {
-            let (counter, nonce) = sample.split_at(4);
-            let mut ours = [0u8; 5];
-            ChaCha20::new(key)
-                .apply_keystream(
-                    nonce.try_into().unwrap(),
-                    u32::from_le_bytes(counter.try_into().unwrap()),
-                    &mut ours,
-                )
-                .unwrap();
+        fn quic_header_protection_mask(
+            algorithm in 0..3usize,
+            key in any::<[u8; 32]>(),
+            sample in any::<[u8; 16]>(),
+        ) {
+            use rind::aead::quic as ours;
+            let (algorithm, theirs) = [
+                (&ours::AES_128, &quic::AES_128),
+                (&ours::AES_256, &quic::AES_256),
+                (&ours::CHACHA20, &quic::CHACHA20),
+            ][algorithm];
+            let key = &key[..algorithm.key_len()];
 
-            let theirs = quic::HeaderProtectionKey::new(&quic::CHACHA20, &key)
+            let mask = ours::HeaderProtectionKey::new(algorithm, key).unwrap().new_mask(&sample);
+            let wanted = quic::HeaderProtectionKey::new(theirs, key)
                 .unwrap()
                 .new_mask(&sample)
                 .unwrap();
-            prop_assert_eq!(ours, theirs);
+            prop_assert_eq!(mask, wanted);
         }
 
         // ChaCha20-Poly1305's ciphertext is the plaintext XORed with the
