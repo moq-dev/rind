@@ -254,6 +254,7 @@ fn signing() {
         "rsa-4096",
         "ecdsa-p256",
         "ecdsa-p384",
+        "ecdsa-p521",
         "ed25519",
     ] {
         let path = format!("{}/tests/keys/{slug}/end.key", env!("CARGO_MANIFEST_DIR"));

@@ -24,15 +24,40 @@ pub static SECP384R1: &dyn SupportedKxGroup = &KxGroup {
     algorithm: &agreement::ECDH_P384,
 };
 
+/// Key exchange with ECDH on P-521, also known as secp521r1.
+pub static SECP521R1: &dyn SupportedKxGroup = &KxGroup {
+    name: rustls::NamedGroup::secp521r1,
+    algorithm: &agreement::ECDH_P521,
+};
+
 /// Hybrid key exchange with X25519 and ML-KEM-768, for TLS 1.3 only.
 pub static X25519MLKEM768: &dyn SupportedKxGroup = &hybrid::Hybrid {
     classical: X25519,
-    classical_share_len: 32,
-    post_quantum: &mlkem::MlKem768,
-    post_quantum_client_share_len: mlkem::MlKem768::ENCAPS_LEN,
-    post_quantum_server_share_len: mlkem::MlKem768::CIPHERTEXT_LEN,
+    post_quantum: MLKEM768,
+    layout: hybrid::Layout {
+        classical_share_len: 32,
+        post_quantum_client_share_len: mlkem::MlKem768::ENCAPS_LEN,
+        post_quantum_server_share_len: mlkem::MlKem768::CIPHERTEXT_LEN,
+        post_quantum_first: true,
+    },
     name: rustls::NamedGroup::X25519MLKEM768,
 };
+
+/// Hybrid key exchange with ECDH on P-256 and ML-KEM-768, for TLS 1.3 only.
+pub static SECP256R1MLKEM768: &dyn SupportedKxGroup = &hybrid::Hybrid {
+    classical: SECP256R1,
+    post_quantum: MLKEM768,
+    layout: hybrid::Layout {
+        classical_share_len: 65,
+        post_quantum_client_share_len: mlkem::MlKem768::ENCAPS_LEN,
+        post_quantum_server_share_len: mlkem::MlKem768::CIPHERTEXT_LEN,
+        post_quantum_first: false,
+    },
+    name: rustls::NamedGroup::secp256r1MLKEM768,
+};
+
+/// Key exchange with ML-KEM-768 alone, for TLS 1.3 only.
+pub static MLKEM768: &dyn SupportedKxGroup = &mlkem::MlKem768;
 
 /// An elliptic-curve key exchange group.
 #[derive(Debug)]
@@ -103,6 +128,7 @@ mod tests {
             (X25519, NamedGroup::X25519, &agreement::X25519),
             (SECP256R1, NamedGroup::secp256r1, &agreement::ECDH_P256),
             (SECP384R1, NamedGroup::secp384r1, &agreement::ECDH_P384),
+            (SECP521R1, NamedGroup::secp521r1, &agreement::ECDH_P521),
         ] {
             assert_eq!(group.name(), name);
             assert_eq!(group.ffdhe_group(), None);
@@ -124,16 +150,45 @@ mod tests {
 
     #[test]
     fn hybrid_refuses_shares_of_the_wrong_length() {
-        let client_len = mlkem::MlKem768::ENCAPS_LEN + 32;
-        let server_len = mlkem::MlKem768::CIPHERTEXT_LEN + 32;
-        assert_eq!(X25519MLKEM768.start().unwrap().pub_key().len(), client_len);
+        for (group, classical_len) in [(X25519MLKEM768, 32), (SECP256R1MLKEM768, 65)] {
+            let client_len = mlkem::MlKem768::ENCAPS_LEN + classical_len;
+            let server_len = mlkem::MlKem768::CIPHERTEXT_LEN + classical_len;
+            assert_eq!(group.start().unwrap().pub_key().len(), client_len);
 
-        for len in [0, client_len - 1, client_len + 1] {
-            assert!(X25519MLKEM768.start_and_complete(&vec![0; len]).is_err());
+            for len in [0, client_len - 1, client_len + 1] {
+                assert!(group.start_and_complete(&vec![0; len]).is_err());
+            }
+            for len in [0, server_len - 1, server_len + 1] {
+                let active = group.start().unwrap();
+                assert!(active.complete(&vec![0; len]).is_err());
+            }
         }
-        for len in [0, server_len - 1, server_len + 1] {
-            let active = X25519MLKEM768.start().unwrap();
-            assert!(active.complete(&vec![0; len]).is_err());
+    }
+
+    // X25519MLKEM768 puts ML-KEM first in its shares and secret, and
+    // SECP256R1MLKEM768 puts ECDH first, so each hybrid's classical part sits
+    // where its own layout says.
+    #[test]
+    fn hybrid_layouts() {
+        for (group, classical, classical_len, post_quantum_first) in [
+            (X25519MLKEM768, X25519, 32, true),
+            (SECP256R1MLKEM768, SECP256R1, 65, false),
+        ] {
+            let client = group.start().unwrap();
+            let (classical_group, classical_share) = client.hybrid_component().unwrap();
+            assert_eq!(classical_group, classical.name());
+            let share = client.pub_key();
+            let at = match post_quantum_first {
+                true => share.len() - classical_len,
+                false => 0,
+            };
+            assert_eq!(&share[at..at + classical_len], classical_share);
+
+            // A server choosing the classical group alone completes against
+            // the classical part the client offered.
+            let server = classical.start_and_complete(classical_share).unwrap();
+            let secret = client.complete_hybrid_component(&server.pub_key).unwrap();
+            assert_eq!(secret.secret_bytes(), server.secret.secret_bytes());
         }
     }
 }

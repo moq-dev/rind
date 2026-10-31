@@ -1,13 +1,15 @@
 use std::io::{Read, Write};
 use std::sync::Arc;
 
-use rustls::crypto::{CryptoProvider, SupportedKxGroup};
-use rustls::crypto::{aws_lc_rs, ring};
+use aws_lc_rs::agreement;
+use rustls::crypto::{ActiveKeyExchange, CryptoProvider, SharedSecret, SupportedKxGroup};
+use rustls::crypto::{aws_lc_rs as aws_lc_rs_provider, ring};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::sign::CertifiedKey;
 use rustls::{
-    ClientConfig, ClientConnection, HandshakeKind, RootCertStore, ServerConfig, ServerConnection,
+    ClientConfig, ClientConnection, HandshakeKind, NamedGroup, RootCertStore, ServerConfig,
+    ServerConnection,
 };
 
 #[test]
@@ -66,9 +68,22 @@ fn all_key_exchanges() {
     let tls13 = rind_rustls::cipher_suite::TLS13_AES_128_GCM_SHA256;
     let tls12 = rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256;
 
-    // X25519MLKEM768 not supported by *ring*, and TLS 1.3 only
-    for other in [OtherProvider::BaselineAwsLcRs, OtherProvider::SelfTest] {
-        test_key_exchange(rind_rustls::kx_group::X25519MLKEM768, tls13, other);
+    // Not supported by *ring*, and TLS 1.3 only.
+    for group in [
+        rind_rustls::kx_group::X25519MLKEM768,
+        rind_rustls::kx_group::SECP256R1MLKEM768,
+        rind_rustls::kx_group::MLKEM768,
+    ] {
+        for other in [OtherProvider::BaselineAwsLcRs, OtherProvider::SelfTest] {
+            test_key_exchange(group, tls13, other);
+        }
+    }
+
+    // Not supported by *ring*.
+    for suite in [tls13, tls12] {
+        for other in [OtherProvider::BaselineAwsLcRs, OtherProvider::SelfTest] {
+            test_key_exchange(rind_rustls::kx_group::SECP521R1, suite, other);
+        }
     }
 
     for other in OtherProvider::OTHERS {
@@ -80,6 +95,8 @@ fn all_key_exchanges() {
     }
 }
 
+/// Runs a handshake each way between `kx` and `other` offering only its own
+/// group of the same name.
 fn test_key_exchange(
     kx: &'static dyn SupportedKxGroup,
     suite: rustls::SupportedCipherSuite,
@@ -92,7 +109,12 @@ fn test_key_exchange(
         ..rind_rustls::default_provider().unwrap()
     }
     .into();
-    test_client(provider.clone(), other, key_type);
+    let other: Arc<_> = CryptoProvider {
+        kx_groups: vec![other.kx_group(kx.name())],
+        ..Arc::unwrap_or_clone(other.into_provider())
+    }
+    .into();
+    test_client(provider.clone(), other.clone(), key_type);
     test_server(provider, other, key_type);
 }
 
@@ -102,14 +124,14 @@ fn test_suite(suite: rustls::SupportedCipherSuite, key_type: KeyType) {
         ..rind_rustls::default_provider().unwrap()
     }
     .into();
-    for other in OtherProvider::OTHERS {
-        test_client(provider.clone(), *other, key_type);
-        test_server(provider.clone(), *other, key_type);
+    for other in key_type.others() {
+        test_client(provider.clone(), other.into_provider(), key_type);
+        test_server(provider.clone(), other.into_provider(), key_type);
     }
 }
 
-fn test_client(provider: Arc<CryptoProvider>, other: OtherProvider, key_type: KeyType) {
-    let server_config = server_config(other.into_provider(), key_type);
+fn test_client(provider: Arc<CryptoProvider>, other: Arc<CryptoProvider>, key_type: KeyType) {
+    let server_config = server_config(other, key_type);
     let client_config = client_config(provider.clone(), key_type);
 
     assert!(matches!(
@@ -125,9 +147,9 @@ fn test_client(provider: Arc<CryptoProvider>, other: OtherProvider, key_type: Ke
     println!("RESUMED: client with {provider:?} {key_type:?} OK");
 }
 
-fn test_server(provider: Arc<CryptoProvider>, other: OtherProvider, key_type: KeyType) {
+fn test_server(provider: Arc<CryptoProvider>, other: Arc<CryptoProvider>, key_type: KeyType) {
     let server_config = server_config(provider.clone(), key_type);
-    let client_config = client_config(other.into_provider(), key_type);
+    let client_config = client_config(other, key_type);
 
     assert!(matches!(
         exercise(client_config.clone(), server_config.clone()),
@@ -209,6 +231,7 @@ enum KeyType {
     Rsa4096,
     EcdsaP256,
     EcdsaP384,
+    EcdsaP521,
     Ed25519,
 }
 
@@ -219,11 +242,25 @@ impl KeyType {
         Self::Rsa4096,
         Self::EcdsaP256,
         Self::EcdsaP384,
+        Self::EcdsaP521,
         Self::Ed25519,
     ];
     const RSA: &[Self] = &[Self::Rsa2048, Self::Rsa3072, Self::Rsa4096];
     // TLS 1.2's ECDHE_ECDSA suites also carry Ed25519 (RFC 8422).
-    const ECDSA: &[Self] = &[Self::EcdsaP256, Self::EcdsaP384, Self::Ed25519];
+    const ECDSA: &[Self] = &[
+        Self::EcdsaP256,
+        Self::EcdsaP384,
+        Self::EcdsaP521,
+        Self::Ed25519,
+    ];
+
+    /// The providers that can sign and verify with this key: *ring* has no P-521.
+    fn others(self) -> &'static [OtherProvider] {
+        match self {
+            Self::EcdsaP521 => &[OtherProvider::BaselineAwsLcRs],
+            _ => OtherProvider::OTHERS,
+        }
+    }
 
     fn slug(self) -> &'static str {
         match self {
@@ -232,6 +269,7 @@ impl KeyType {
             Self::Rsa4096 => "rsa-4096",
             Self::EcdsaP256 => "ecdsa-p256",
             Self::EcdsaP384 => "ecdsa-p384",
+            Self::EcdsaP521 => "ecdsa-p521",
             Self::Ed25519 => "ed25519",
         }
     }
@@ -270,10 +308,60 @@ impl OtherProvider {
     fn into_provider(self) -> Arc<CryptoProvider> {
         match self {
             Self::BaselineRing => ring::default_provider().into(),
-            Self::BaselineAwsLcRs => aws_lc_rs::default_provider().into(),
+            Self::BaselineAwsLcRs => aws_lc_rs_provider::default_provider().into(),
             Self::SelfTest => rind_rustls::default_provider().unwrap().into(),
         }
     }
 
     const OTHERS: &[Self] = &[Self::BaselineRing, Self::BaselineAwsLcRs];
+
+    /// This provider's own key exchange group named `name`.
+    fn kx_group(self, name: NamedGroup) -> &'static dyn SupportedKxGroup {
+        let all = match self {
+            Self::BaselineRing => ring::ALL_KX_GROUPS,
+            // rustls's aws-lc-rs provider leaves out secp521r1.
+            Self::BaselineAwsLcRs if name == NamedGroup::secp521r1 => return &AwsLcRsSecp521r1,
+            Self::BaselineAwsLcRs => aws_lc_rs_provider::ALL_KX_GROUPS,
+            Self::SelfTest => rind_rustls::ALL_KX_GROUPS,
+        };
+        *all.iter().find(|group| group.name() == name).unwrap()
+    }
+}
+
+/// secp521r1 on aws-lc-rs's ECDH, which rustls's aws-lc-rs provider leaves out.
+#[derive(Debug)]
+struct AwsLcRsSecp521r1;
+
+impl SupportedKxGroup for AwsLcRsSecp521r1 {
+    fn start(&self) -> Result<Box<dyn ActiveKeyExchange>, rustls::Error> {
+        let rng = aws_lc_rs::rand::SystemRandom::new();
+        let key = agreement::EphemeralPrivateKey::generate(&agreement::ECDH_P521, &rng).unwrap();
+        let pub_key = key.compute_public_key().unwrap().as_ref().to_vec();
+        Ok(Box::new(AwsLcRsSecp521r1Active { key, pub_key }))
+    }
+
+    fn name(&self) -> NamedGroup {
+        NamedGroup::secp521r1
+    }
+}
+
+struct AwsLcRsSecp521r1Active {
+    key: agreement::EphemeralPrivateKey,
+    pub_key: Vec<u8>,
+}
+
+impl ActiveKeyExchange for AwsLcRsSecp521r1Active {
+    fn complete(self: Box<Self>, peer: &[u8]) -> Result<SharedSecret, rustls::Error> {
+        let peer = agreement::UnparsedPublicKey::new(&agreement::ECDH_P521, peer);
+        agreement::agree_ephemeral(self.key, peer, (), |secret| Ok(SharedSecret::from(secret)))
+            .map_err(|()| rustls::PeerMisbehaved::InvalidKeyShare.into())
+    }
+
+    fn pub_key(&self) -> &[u8] {
+        &self.pub_key
+    }
+
+    fn group(&self) -> NamedGroup {
+        NamedGroup::secp521r1
+    }
 }
