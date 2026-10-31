@@ -5,6 +5,7 @@
 
 pub(super) mod agreement;
 pub(super) mod asn1;
+pub(super) mod constant_time;
 pub(super) mod curve;
 pub(super) mod digest;
 pub(super) mod ecdsa;
