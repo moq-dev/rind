@@ -127,7 +127,7 @@ impl sealed::Len for &'static hmac::Algorithm {
     }
 }
 
-/// Key material from [`Prk::expand`], sized by `L`: fill a buffer with it, or convert it into a key.
+/// Key material from [`Prk::expand`], sized by `L`: fill a buffer for a `usize` length, or convert it into the key an algorithm names.
 pub struct Okm<'a, L: KeyType> {
     prk: &'a Prk,
     info: &'a [&'a [u8]],
