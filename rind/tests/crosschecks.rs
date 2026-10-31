@@ -385,7 +385,7 @@ mod pbkdf2 {
     use aws_lc_rs::pbkdf2 as theirs;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use rind::pbkdf2;
+    use rind::{Error, pbkdf2};
 
     // Passwords either side of both block sizes (64 and 128), and keys of
     // several blocks with a partial last one.
@@ -398,11 +398,11 @@ mod pbkdf2 {
             len in 1..200usize,
         ) {
             let iterations = NonZeroU32::new(iterations).unwrap();
-            for (ours, theirs) in [
-                (pbkdf2::PBKDF2_HMAC_SHA1, theirs::PBKDF2_HMAC_SHA1),
-                (pbkdf2::PBKDF2_HMAC_SHA256, theirs::PBKDF2_HMAC_SHA256),
-                (pbkdf2::PBKDF2_HMAC_SHA384, theirs::PBKDF2_HMAC_SHA384),
-                (pbkdf2::PBKDF2_HMAC_SHA512, theirs::PBKDF2_HMAC_SHA512),
+            for (ours, theirs, hash_len) in [
+                (pbkdf2::PBKDF2_HMAC_SHA1, theirs::PBKDF2_HMAC_SHA1, 20),
+                (pbkdf2::PBKDF2_HMAC_SHA256, theirs::PBKDF2_HMAC_SHA256, 32),
+                (pbkdf2::PBKDF2_HMAC_SHA384, theirs::PBKDF2_HMAC_SHA384, 48),
+                (pbkdf2::PBKDF2_HMAC_SHA512, theirs::PBKDF2_HMAC_SHA512, 64),
             ] {
                 let mut wanted = vec![0u8; len];
                 theirs::derive(theirs, iterations, &salt, &password, &mut wanted);
@@ -411,7 +411,12 @@ mod pbkdf2 {
                 let mut got = vec![0u8; len];
                 secret.derive(iterations, &salt, &mut got).unwrap();
                 prop_assert_eq!(&got, &wanted);
-                prop_assert_eq!(secret.verify(iterations, &salt, &wanted), Ok(()));
+                // Unlike aws-lc-rs, rind refuses to verify a key shorter than the HMAC output.
+                let verified = match len < hash_len {
+                    true => Err(Error::WrongLength),
+                    false => Ok(()),
+                };
+                prop_assert_eq!(secret.verify(iterations, &salt, &wanted), verified);
             }
         }
     }

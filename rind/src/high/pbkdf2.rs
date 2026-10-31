@@ -59,14 +59,21 @@ impl Secret {
     /// Checks in constant time that `previously_derived` is what [`Secret::derive`] makes for `salt` and `iterations`.
     ///
     /// The key derived is as long as `previously_derived`. Fails with
-    /// [`Error::WrongLength`] if that is empty or longer than PBKDF2 allows,
-    /// and with [`Error::BadSignature`] if the keys differ.
+    /// [`Error::WrongLength`] if that is shorter than the HMAC output or
+    /// longer than PBKDF2 allows, and with [`Error::BadSignature`] if the keys
+    /// differ.
+    ///
+    /// ring and aws-lc-rs accept any non-empty prefix of the key, so a
+    /// truncated stored value, which is easier to match, still verifies.
     pub fn verify(
         &self,
         iterations: NonZeroU32,
         salt: &[u8],
         previously_derived: &[u8],
     ) -> Result<(), Error> {
+        if previously_derived.len() < self.0.algorithm().tag_len() {
+            return Err(Error::WrongLength);
+        }
         self.check_len(previously_derived.len())?;
         // Block by block, so verifying needs no buffer as long as the key.
         let mut equal = true;
@@ -146,12 +153,31 @@ mod tests {
 
     #[test]
     fn lengths() {
-        let secret = Secret::new(PBKDF2_HMAC_SHA256, b"password");
-        assert_eq!(
-            secret.derive(ONE, b"salt", &mut []),
-            Err(Error::WrongLength)
-        );
-        assert_eq!(secret.verify(ONE, b"salt", &[]), Err(Error::WrongLength));
+        for algorithm in [
+            PBKDF2_HMAC_SHA1,
+            PBKDF2_HMAC_SHA256,
+            PBKDF2_HMAC_SHA384,
+            PBKDF2_HMAC_SHA512,
+        ] {
+            let secret = Secret::new(algorithm, b"password");
+            assert_eq!(
+                secret.derive(ONE, b"salt", &mut []),
+                Err(Error::WrongLength)
+            );
+
+            // Derive takes any non-empty length, but verify refuses a stored
+            // key shorter than the HMAC output, even a true prefix.
+            let hash_len = algorithm.0.tag_len();
+            let mut key = vec![0u8; hash_len + 1];
+            secret.derive(ONE, b"salt", &mut key).unwrap();
+            assert_eq!(secret.verify(ONE, b"salt", &[]), Err(Error::WrongLength));
+            assert_eq!(
+                secret.verify(ONE, b"salt", &key[..hash_len - 1]),
+                Err(Error::WrongLength)
+            );
+            assert_eq!(secret.verify(ONE, b"salt", &key[..hash_len]), Ok(()));
+            assert_eq!(secret.verify(ONE, b"salt", &key), Ok(()));
+        }
     }
 
     #[test]
@@ -181,9 +207,6 @@ mod tests {
             secret.verify(iterations, b"pepper", &key),
             Err(Error::BadSignature)
         );
-
-        // The stored key's length is the derived one's, so its prefix verifies too.
-        assert_eq!(secret.verify(iterations, b"salt", &key[..33]), Ok(()));
     }
 
     #[test]

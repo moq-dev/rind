@@ -250,11 +250,23 @@ fn pbkdf2_tests() {
     }
 
     // SHA-224, which rind does not offer, has its own file and is skipped.
-    for (file, algorithm) in [
-        ("pbkdf2_hmacsha1_test.json", pbkdf2::PBKDF2_HMAC_SHA1),
-        ("pbkdf2_hmacsha256_test.json", pbkdf2::PBKDF2_HMAC_SHA256),
-        ("pbkdf2_hmacsha384_test.json", pbkdf2::PBKDF2_HMAC_SHA384),
-        ("pbkdf2_hmacsha512_test.json", pbkdf2::PBKDF2_HMAC_SHA512),
+    for (file, algorithm, algorithm_len) in [
+        ("pbkdf2_hmacsha1_test.json", pbkdf2::PBKDF2_HMAC_SHA1, 20),
+        (
+            "pbkdf2_hmacsha256_test.json",
+            pbkdf2::PBKDF2_HMAC_SHA256,
+            32,
+        ),
+        (
+            "pbkdf2_hmacsha384_test.json",
+            pbkdf2::PBKDF2_HMAC_SHA384,
+            48,
+        ),
+        (
+            "pbkdf2_hmacsha512_test.json",
+            pbkdf2::PBKDF2_HMAC_SHA512,
+            64,
+        ),
     ] {
         let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
             .unwrap_or_else(|_| panic!("failed to open data file {file}"));
@@ -275,7 +287,12 @@ fn pbkdf2_tests() {
                 let mut dk = vec![0u8; test.dk.len()];
                 secret.derive(iterations, &test.salt, &mut dk).unwrap();
                 assert_eq!(dk, test.dk);
-                assert_eq!(secret.verify(iterations, &test.salt, &test.dk), Ok(()));
+                // rind verifies only keys at least as long as the HMAC output.
+                let wanted = match test.dk.len() < algorithm_len {
+                    true => Err(Error::WrongLength),
+                    false => Ok(()),
+                };
+                assert_eq!(secret.verify(iterations, &test.salt, &test.dk), wanted);
             }
         }
     }
