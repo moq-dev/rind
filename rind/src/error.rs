@@ -43,6 +43,7 @@ pub struct KeyRejected(KeyFormatError);
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum KeyFormatError {
     Asn1(crate::high::asn1::Error),
+    LeadingZero,
     MismatchedAgreementAlgorithm,
     UnsupportedPkcs8Version,
     MismatchedPkcs8Algorithm,
@@ -63,6 +64,7 @@ impl core::fmt::Display for KeyRejected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.0 {
             KeyFormatError::Asn1(e) => write!(f, "an ASN.1 decoding error: {e}"),
+            KeyFormatError::LeadingZero => write!(f, "an integer with a leading zero byte"),
             KeyFormatError::MismatchedAgreementAlgorithm => {
                 write!(f, "mismatched key agreement algorithm")
             }

@@ -182,6 +182,10 @@ impl MessageDecrypter for ChaChaTls12Cipher {
             .open_in_place(nonce(&self.1, seq), Aad::from(aad), &mut m.payload)
             .map_err(|_| rustls::Error::DecryptError)?;
 
+        if cipher_len > MAX_FRAGMENT_LEN {
+            return Err(rustls::Error::PeerSentOversizedRecord);
+        }
+
         m.payload.truncate(cipher_len);
         Ok(m.into_plain_message())
     }
@@ -498,5 +502,55 @@ mod tests {
 
         test_aes_gcm_tls12(128);
         test_aes_gcm_tls12(256);
+    }
+
+    /// rustls bounds TLS 1.2 plaintext only through the decrypter, so each
+    /// must refuse a record over 2^14 bytes that its encrypter would seal.
+    #[test]
+    fn tls12_refuses_oversized_records() {
+        // rustls only builds a 32-byte `AeadKey`; AES-128-GCM shares the GCM decrypter.
+        let algorithms: [&dyn Tls12AeadAlgorithm; 2] = [&Chacha20Poly1305, &AES_256_GCM];
+        for algorithm in algorithms {
+            let shape = algorithm.key_block_shape();
+            let key = random_bytes::<32>().unwrap();
+            let block = random_bytes::<20>().unwrap();
+            let (iv, explicit) = block.split_at(shape.fixed_iv_len);
+            let explicit = &explicit[..shape.explicit_nonce_len];
+            let mut encrypter = algorithm.encrypter(AeadKey::from(key), iv, explicit);
+            let mut decrypter = algorithm.decrypter(AeadKey::from(key), iv);
+
+            for (seq, len) in [MAX_FRAGMENT_LEN, MAX_FRAGMENT_LEN + 1]
+                .into_iter()
+                .enumerate()
+            {
+                let plain = vec![0x42; len];
+                let sealed = encrypter
+                    .encrypt(
+                        OutboundPlainMessage {
+                            typ: ContentType::ApplicationData,
+                            version: ProtocolVersion::TLSv1_2,
+                            payload: plain.as_slice().into(),
+                        },
+                        seq as u64,
+                    )
+                    .unwrap();
+                let mut payload = sealed.payload.as_ref().to_vec();
+                let opened = decrypter.decrypt(
+                    InboundOpaqueMessage::new(sealed.typ, sealed.version, &mut payload),
+                    seq as u64,
+                );
+
+                match opened {
+                    Ok(m) => assert!(
+                        len <= MAX_FRAGMENT_LEN && m.payload == plain,
+                        "{len}-byte record opened"
+                    ),
+                    Err(e) => assert!(
+                        len > MAX_FRAGMENT_LEN && e == Error::PeerSentOversizedRecord,
+                        "{len}-byte record: {e:?}"
+                    ),
+                }
+            }
+        }
     }
 }

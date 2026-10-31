@@ -15,4 +15,3 @@ Decided by the maintainer on 2026-10-30, planning ring and aws-lc-rs parity.
 
 ## Required
 
-- [Legacy RSA verification](/quest/m3/parity/rsa-legacy.md) - ring's legacy RSA
