@@ -57,6 +57,7 @@ macro_rules! big_endian {
             r
         }
 
+        #[allow(dead_code)]
         pub(crate) fn $fn_slice_to(bytes: &[u8]) -> Option<[u64; $N]> {
             let as_array: [u8; $N * 8] = bytes.try_into().ok()?;
             Some($fn_array_to(&as_array))
@@ -119,4 +120,11 @@ big_endian!(
     big_endian_slice_to_u64x6,
     big_endian_slice_any_size_to_u64x6,
     u64x6_to_big_endian
+);
+big_endian!(
+    [u64; 9],
+    big_endian_to_u64x9,
+    big_endian_slice_to_u64x9,
+    big_endian_slice_any_size_to_u64x9,
+    u64x9_to_big_endian
 );

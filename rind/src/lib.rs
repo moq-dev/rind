@@ -61,7 +61,7 @@ pub mod doc {
     pub use super::low::inline_assembly_safety;
 }
 
-/// Ephemeral key agreement: X25519, and ECDH on P-256 and P-384.
+/// Ephemeral key agreement: X25519, and ECDH on P-256, P-384, and P-521.
 ///
 /// ```
 /// use rind::agreement::*;
@@ -83,7 +83,7 @@ pub mod doc {
 /// ```
 pub mod agreement {
     pub use crate::high::agreement::{
-        Algorithm, ECDH_P256, ECDH_P384, PrivateKey, PublicKey, SharedSecret, X25519,
+        Algorithm, ECDH_P256, ECDH_P384, ECDH_P521, PrivateKey, PublicKey, SharedSecret, X25519,
     };
 }
 
@@ -116,7 +116,7 @@ pub mod kem {
     };
 }
 
-/// Public key signatures: ECDSA on P-256 and P-384, RSA, and Ed25519.
+/// Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, and Ed25519.
 ///
 /// A key pair is bound to its signing algorithm when loaded, and a peer's
 /// public key is verified against a verification algorithm constant:
@@ -138,8 +138,10 @@ pub mod signature {
         ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA256_FIXED,
         ECDSA_P256_SHA256_FIXED_SIGNING, ECDSA_P256_SHA384_ASN1, ECDSA_P256_SHA512_ASN1,
         ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_ASN1_SIGNING,
-        ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA384_FIXED_SIGNING, ECDSA_P384_SHA512_ASN1, ED25519,
-        EcdsaKeyPair, EcdsaPublicKey, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm,
+        ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA384_FIXED_SIGNING, ECDSA_P384_SHA512_ASN1,
+        ECDSA_P521_SHA256_ASN1, ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1,
+        ECDSA_P521_SHA512_ASN1_SIGNING, ECDSA_P521_SHA512_FIXED, ECDSA_P521_SHA512_FIXED_SIGNING,
+        ED25519, EcdsaKeyPair, EcdsaPublicKey, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm,
         Ed25519KeyPair, Ed25519PublicKey, EdDSAParameters, KeyPair, KeySize, ParsedPublicKey,
         RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
         RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,

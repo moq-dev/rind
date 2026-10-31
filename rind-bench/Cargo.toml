@@ -53,6 +53,10 @@ name = "p384"
 harness = false
 
 [[bench]]
+name = "p521"
+harness = false
+
+[[bench]]
 name = "sha1"
 harness = false
 

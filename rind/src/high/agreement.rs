@@ -4,7 +4,7 @@ use core::fmt;
 
 use crate::error::Error;
 use crate::low;
-use crate::mid::{p256, p384, x25519};
+use crate::mid::{p256, p384, p521, x25519};
 
 /// A key agreement algorithm: a curve and its public key encoding.
 pub struct Algorithm {
@@ -16,6 +16,7 @@ enum AlgorithmId {
     X25519,
     EcdhP256,
     EcdhP384,
+    EcdhP521,
 }
 
 impl fmt::Debug for Algorithm {
@@ -45,6 +46,13 @@ pub static ECDH_P384: Algorithm = Algorithm {
     id: AlgorithmId::EcdhP384,
 };
 
+/// ECDH on P-521, with X9.62 uncompressed public keys.
+///
+/// P-521 is also known as "NISTP521", or "secp521r1".
+pub static ECDH_P521: Algorithm = Algorithm {
+    id: AlgorithmId::EcdhP521,
+};
+
 /// A private key used for one key agreement, wiped on drop.
 ///
 /// There is no static private key: no consumer agrees twice with one key.
@@ -58,6 +66,7 @@ enum Private {
     X25519(x25519::PrivateKey),
     P256(p256::PrivateKey),
     P384(p384::PrivateKey),
+    P521(p521::PrivateKey),
 }
 
 impl low::Zeroable for Private {}
@@ -69,6 +78,7 @@ impl PrivateKey {
             AlgorithmId::X25519 => Private::X25519(x25519::PrivateKey::new_random()?),
             AlgorithmId::EcdhP256 => Private::P256(p256::PrivateKey::new_random()?),
             AlgorithmId::EcdhP384 => Private::P384(p384::PrivateKey::new_random()?),
+            AlgorithmId::EcdhP521 => Private::P521(p521::PrivateKey::new_random()?),
         }))
     }
 
@@ -82,6 +92,7 @@ impl PrivateKey {
             Private::X25519(key) => &key.public_key().as_bytes(),
             Private::P256(key) => &key.public_key_uncompressed(),
             Private::P384(key) => &key.public_key_uncompressed(),
+            Private::P521(key) => &key.public_key_uncompressed(),
         };
         public.bytes[..encoded.len()].copy_from_slice(encoded);
         public.len = encoded.len();
@@ -104,6 +115,9 @@ impl PrivateKey {
             }
             Private::P384(key) => {
                 Secret::P384(key.diffie_hellman(&p384::PublicKey::from_x962_uncompressed(peer)?)?)
+            }
+            Private::P521(key) => {
+                Secret::P521(key.diffie_hellman(&p521::PublicKey::from_x962_uncompressed(peer)?)?)
             }
         }))
     }
@@ -129,8 +143,8 @@ pub struct PublicKey {
 }
 
 impl PublicKey {
-    // P-384's uncompressed point.
-    const MAX_LEN: usize = 97;
+    // P-521's uncompressed point.
+    const MAX_LEN: usize = p521::PublicKey::BYTES;
 }
 
 impl AsRef<[u8]> for PublicKey {
@@ -152,6 +166,7 @@ enum Secret {
     X25519(x25519::SharedSecret),
     P256(p256::SharedSecret),
     P384(p384::SharedSecret),
+    P521(p521::SharedSecret),
 }
 
 impl AsRef<[u8]> for SharedSecret {
@@ -160,6 +175,7 @@ impl AsRef<[u8]> for SharedSecret {
             Secret::X25519(secret) => &secret.0,
             Secret::P256(secret) => &secret.0,
             Secret::P384(secret) => &secret.0,
+            Secret::P521(secret) => &secret.0,
         }
     }
 }
@@ -180,7 +196,7 @@ mod tests {
 
     #[test]
     fn agrees() {
-        for algorithm in [&X25519, &ECDH_P256, &ECDH_P384] {
+        for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
             let alice = PrivateKey::generate(algorithm).unwrap();
             let bob = PrivateKey::generate(algorithm).unwrap();
             let alice_public = alice.public_key();
@@ -248,6 +264,15 @@ mod tests {
         check_nist_ecdh("ecdh_secp384r1_ecpoint_test.json", |test| {
             let private = p384::StaticPrivateKey::from_bytes(&test.private).unwrap();
             let peer = p384::PublicKey::from_x962_uncompressed(&test.public)?;
+            Ok(low::ct::into_public(private.diffie_hellman(&peer)?.0).to_vec())
+        });
+    }
+
+    #[test]
+    fn wycheproof_p521() {
+        check_nist_ecdh("ecdh_secp521r1_ecpoint_test.json", |test| {
+            let private = p521::StaticPrivateKey::from_bytes(&test.private).unwrap();
+            let peer = p521::PublicKey::from_x962_uncompressed(&test.public)?;
             Ok(low::ct::into_public(private.diffie_hellman(&peer)?.0).to_vec())
         });
     }

@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use super::curve::{Curve, MAX_SCALAR_LEN, MAX_UNCOMPRESSED_PUBLIC_KEY_LEN, P256, P384};
+use super::curve::{Curve, MAX_SCALAR_LEN, MAX_UNCOMPRESSED_PUBLIC_KEY_LEN, P256, P384, P521};
 use super::ecdsa;
 use super::ed25519::{Ed25519SigningKey, Ed25519VerifyingKey};
 use super::hash::{Sha256, Sha384, Sha512};
@@ -92,6 +92,7 @@ pub struct ParsedPublicKey {
 enum Parsed {
     EcdsaP256(ecdsa::VerifyingKey<P256>, Ecdsa),
     EcdsaP384(ecdsa::VerifyingKey<P384>, Ecdsa),
+    EcdsaP521(ecdsa::VerifyingKey<P521>, Ecdsa),
     Rsa(rsa::VerifyingKey, RsaVerification),
     Ed25519(Ed25519VerifyingKey),
 }
@@ -116,6 +117,7 @@ impl ParsedPublicKey {
         match &self.key {
             Parsed::EcdsaP256(key, algorithm) => algorithm.verify(key, message, signature),
             Parsed::EcdsaP384(key, algorithm) => algorithm.verify(key, message, signature),
+            Parsed::EcdsaP521(key, algorithm) => algorithm.verify(key, message, signature),
             Parsed::Rsa(key, verification) => verification.verify(key, message, signature),
             Parsed::Ed25519(key) => key.verify(signature, message),
         }
@@ -147,8 +149,9 @@ pub struct Signature {
 }
 
 impl Signature {
-    // A DER `SEQUENCE` of two P-384 `INTEGER`s, each with a sign byte.
-    const MAX_LEN: usize = 2 + 2 * (2 + MAX_SCALAR_LEN + 1);
+    // A DER `SEQUENCE`, whose length takes two bytes, of two P-521
+    // `INTEGER`s, each with a sign byte.
+    const MAX_LEN: usize = 3 + 2 * (2 + MAX_SCALAR_LEN + 1);
 
     fn new() -> Self {
         Self {
@@ -175,6 +178,7 @@ impl fmt::Debug for Signature {
 enum CurveId {
     P256,
     P384,
+    P521,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -223,6 +227,10 @@ impl sealed::Sealed for EcdsaVerificationAlgorithm {
                 ecdsa::VerifyingKey::from_x962_uncompressed(public_key)?,
                 self.0,
             ),
+            CurveId::P521 => Parsed::EcdsaP521(
+                ecdsa::VerifyingKey::from_x962_uncompressed(public_key)?,
+                self.0,
+            ),
         }))
     }
 }
@@ -253,6 +261,18 @@ pub static ECDSA_P384_SHA384_ASN1: EcdsaVerificationAlgorithm =
 pub static ECDSA_P384_SHA512_ASN1: EcdsaVerificationAlgorithm =
     ecdsa_algorithm(CurveId::P384, HashId::Sha512, EcdsaEncoding::Asn1);
 
+/// ECDSA on P-521 with SHA-256, ASN.1 signatures.
+pub static ECDSA_P521_SHA256_ASN1: EcdsaVerificationAlgorithm =
+    ecdsa_algorithm(CurveId::P521, HashId::Sha256, EcdsaEncoding::Asn1);
+
+/// ECDSA on P-521 with SHA-384, ASN.1 signatures.
+pub static ECDSA_P521_SHA384_ASN1: EcdsaVerificationAlgorithm =
+    ecdsa_algorithm(CurveId::P521, HashId::Sha384, EcdsaEncoding::Asn1);
+
+/// ECDSA on P-521 with SHA-512, ASN.1 signatures.
+pub static ECDSA_P521_SHA512_ASN1: EcdsaVerificationAlgorithm =
+    ecdsa_algorithm(CurveId::P521, HashId::Sha512, EcdsaEncoding::Asn1);
+
 /// ECDSA on P-256 with SHA-256, fixed-length `r || s` signatures (JWS's ES256).
 pub static ECDSA_P256_SHA256_FIXED: EcdsaVerificationAlgorithm =
     ecdsa_algorithm(CurveId::P256, HashId::Sha256, EcdsaEncoding::Fixed);
@@ -260,6 +280,10 @@ pub static ECDSA_P256_SHA256_FIXED: EcdsaVerificationAlgorithm =
 /// ECDSA on P-384 with SHA-384, fixed-length `r || s` signatures (JWS's ES384).
 pub static ECDSA_P384_SHA384_FIXED: EcdsaVerificationAlgorithm =
     ecdsa_algorithm(CurveId::P384, HashId::Sha384, EcdsaEncoding::Fixed);
+
+/// ECDSA on P-521 with SHA-512, fixed-length `r || s` signatures (JWS's ES512).
+pub static ECDSA_P521_SHA512_FIXED: EcdsaVerificationAlgorithm =
+    ecdsa_algorithm(CurveId::P521, HashId::Sha512, EcdsaEncoding::Fixed);
 
 const fn ecdsa_algorithm(
     curve: CurveId,
@@ -285,6 +309,10 @@ pub static ECDSA_P256_SHA256_ASN1_SIGNING: EcdsaSigningAlgorithm =
 pub static ECDSA_P384_SHA384_ASN1_SIGNING: EcdsaSigningAlgorithm =
     EcdsaSigningAlgorithm(ECDSA_P384_SHA384_ASN1.0);
 
+/// Signs as [`ECDSA_P521_SHA512_ASN1`] verifies.
+pub static ECDSA_P521_SHA512_ASN1_SIGNING: EcdsaSigningAlgorithm =
+    EcdsaSigningAlgorithm(ECDSA_P521_SHA512_ASN1.0);
+
 /// Signs as [`ECDSA_P256_SHA256_FIXED`] verifies.
 pub static ECDSA_P256_SHA256_FIXED_SIGNING: EcdsaSigningAlgorithm =
     EcdsaSigningAlgorithm(ECDSA_P256_SHA256_FIXED.0);
@@ -292,6 +320,10 @@ pub static ECDSA_P256_SHA256_FIXED_SIGNING: EcdsaSigningAlgorithm =
 /// Signs as [`ECDSA_P384_SHA384_FIXED`] verifies.
 pub static ECDSA_P384_SHA384_FIXED_SIGNING: EcdsaSigningAlgorithm =
     EcdsaSigningAlgorithm(ECDSA_P384_SHA384_FIXED.0);
+
+/// Signs as [`ECDSA_P521_SHA512_FIXED`] verifies.
+pub static ECDSA_P521_SHA512_FIXED_SIGNING: EcdsaSigningAlgorithm =
+    EcdsaSigningAlgorithm(ECDSA_P521_SHA512_FIXED.0);
 
 /// An ECDSA private key and its public key, bound to one signing algorithm.
 pub struct EcdsaKeyPair {
@@ -305,6 +337,7 @@ pub struct EcdsaKeyPair {
 enum EcdsaKey {
     P256(ecdsa::SigningKey<P256>),
     P384(ecdsa::SigningKey<P384>),
+    P521(ecdsa::SigningKey<P521>),
 }
 
 /// Loads a key on `$curve` with `SigningKey::$load`.
@@ -313,6 +346,7 @@ macro_rules! load_ecdsa {
         match $curve {
             CurveId::P256 => EcdsaKey::P256(ecdsa::SigningKey::$load($($arg),*)?),
             CurveId::P384 => EcdsaKey::P384(ecdsa::SigningKey::$load($($arg),*)?),
+            CurveId::P521 => EcdsaKey::P521(ecdsa::SigningKey::$load($($arg),*)?),
         }
     };
 }
@@ -323,6 +357,7 @@ macro_rules! on_ecdsa {
         match &$pair.key {
             EcdsaKey::P256($key) => $body,
             EcdsaKey::P384($key) => $body,
+            EcdsaKey::P521($key) => $body,
         }
     };
 }
@@ -977,11 +1012,13 @@ mod tests {
     use super::*;
     use crate::high::asn1::{Type, pkix};
 
-    const ECDSA_SIGNING: [&EcdsaSigningAlgorithm; 4] = [
+    const ECDSA_SIGNING: [&EcdsaSigningAlgorithm; 6] = [
         &ECDSA_P256_SHA256_ASN1_SIGNING,
         &ECDSA_P256_SHA256_FIXED_SIGNING,
         &ECDSA_P384_SHA384_ASN1_SIGNING,
         &ECDSA_P384_SHA384_FIXED_SIGNING,
+        &ECDSA_P521_SHA512_ASN1_SIGNING,
+        &ECDSA_P521_SHA512_FIXED_SIGNING,
     ];
 
     fn rejected(result: Result<impl fmt::Debug, Error>) -> Error {
@@ -995,6 +1032,8 @@ mod tests {
             &ECDSA_P256_SHA256_FIXED,
             &ECDSA_P384_SHA384_ASN1,
             &ECDSA_P384_SHA384_FIXED,
+            &ECDSA_P521_SHA512_ASN1,
+            &ECDSA_P521_SHA512_FIXED,
         ];
         for (i, signing) in ECDSA_SIGNING.into_iter().enumerate() {
             let pair = EcdsaKeyPair::generate(signing).unwrap();
@@ -1014,20 +1053,25 @@ mod tests {
 
     // Signing as a verify-only constant, such as a cross-hash pair, needs
     // crate access, so this differential test lives here rather than in
-    // `tests/crosschecks.rs`. Wycheproof has no P-256 with SHA-384 vectors.
+    // `tests/crosschecks.rs`. Wycheproof has no P-256 with SHA-384 vectors,
+    // nor P-521 with SHA-256 or SHA-384.
     #[test]
     fn ecdsa_verification_matches_aws_lc_rs() {
         use aws_lc_rs::signature as theirs;
 
-        let algorithms: [(_, &'static theirs::EcdsaVerificationAlgorithm); 8] = [
+        let algorithms: [(_, &'static theirs::EcdsaVerificationAlgorithm); 12] = [
             (&ECDSA_P256_SHA256_ASN1, &theirs::ECDSA_P256_SHA256_ASN1),
             (&ECDSA_P256_SHA384_ASN1, &theirs::ECDSA_P256_SHA384_ASN1),
             (&ECDSA_P256_SHA512_ASN1, &theirs::ECDSA_P256_SHA512_ASN1),
             (&ECDSA_P384_SHA256_ASN1, &theirs::ECDSA_P384_SHA256_ASN1),
             (&ECDSA_P384_SHA384_ASN1, &theirs::ECDSA_P384_SHA384_ASN1),
             (&ECDSA_P384_SHA512_ASN1, &theirs::ECDSA_P384_SHA512_ASN1),
+            (&ECDSA_P521_SHA256_ASN1, &theirs::ECDSA_P521_SHA256_ASN1),
+            (&ECDSA_P521_SHA384_ASN1, &theirs::ECDSA_P521_SHA384_ASN1),
+            (&ECDSA_P521_SHA512_ASN1, &theirs::ECDSA_P521_SHA512_ASN1),
             (&ECDSA_P256_SHA256_FIXED, &theirs::ECDSA_P256_SHA256_FIXED),
             (&ECDSA_P384_SHA384_FIXED, &theirs::ECDSA_P384_SHA384_FIXED),
+            (&ECDSA_P521_SHA512_FIXED, &theirs::ECDSA_P521_SHA512_FIXED),
         ];
         for (ours, theirs) in algorithms {
             let signing = Box::leak(Box::new(EcdsaSigningAlgorithm(ours.0)));
@@ -1083,6 +1127,7 @@ mod tests {
             let len = match signing.0.curve {
                 CurveId::P256 => 32,
                 CurveId::P384 => 48,
+                CurveId::P521 => 66,
             };
             let mut buffer = [0u8; MAX_SCALAR_LEN];
             assert_eq!(
@@ -1152,10 +1197,14 @@ mod tests {
     fn ecdsa_key_is_bound_to_its_curve() {
         let p256 = include_bytes!("ecdsa/secp256r1.pkcs8.der");
         let p384 = include_bytes!("ecdsa/secp384r1.pkcs8.der");
+        let p521 = include_bytes!("ecdsa/secp521r1.pkcs8.der");
         EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, p256).unwrap();
         EcdsaKeyPair::from_pkcs8(&ECDSA_P384_SHA384_ASN1_SIGNING, p384).unwrap();
+        EcdsaKeyPair::from_pkcs8(&ECDSA_P521_SHA512_ASN1_SIGNING, p521).unwrap();
         assert!(EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, p384).is_err());
         assert!(EcdsaKeyPair::from_pkcs8(&ECDSA_P384_SHA384_ASN1_SIGNING, p256).is_err());
+        assert!(EcdsaKeyPair::from_pkcs8(&ECDSA_P384_SHA384_ASN1_SIGNING, p521).is_err());
+        assert!(EcdsaKeyPair::from_pkcs8(&ECDSA_P521_SHA512_ASN1_SIGNING, p384).is_err());
 
         let p256 = include_bytes!("ecdsa/secp256r1.der");
         let p384 = include_bytes!("ecdsa/secp384r1.der");

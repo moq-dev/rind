@@ -115,6 +115,7 @@ or a [quest](quest/README.md) covers it. The table describes
 | Ed25519 | [s2n-bignum] point and scalar arithmetic ✓; Graviola EdDSA ⚡; SHA-512 as in its row | [s2n-bignum] point and scalar arithmetic ✓; Graviola EdDSA ⚡; [aws-lc] SHA-512 ✓ | [curve25519-dalek] point and scalar arithmetic ⚡; rind EdDSA ⚡; SHA-512 as in its row |
 | P-256 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and secret scalar multiplication ✓; Graviola verification's scalar multiplication ⚡ and ECDSA ⚡ | [s2n-bignum] field and point arithmetic, and secret scalar multiplication ✓; Graviola verification's scalar multiplication ⚡ and ECDSA ⚡ | [HACL\*] ✓; Graviola ECDSA nonce |
 | P-384 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [fiat-crypto] field and scalar arithmetic ✓; scalar multiplication over it ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator, and Graviola other scalar multiplication; Graviola ECDSA |
+| P-521 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡, and verification's other scalar multiplication ⚡; Graviola ECDSA | [fiat-crypto] field arithmetic ✓; rind arithmetic mod the group order ⚡; scalar multiplication over them ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator; Graviola ECDSA |
 | ML-KEM-768 | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 and AVX-512 sampling ⚡ | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 ⚡ | [libcrux-ml-kem] ✓, except its SHA-3 |
 | RSA PKCS#1 v1.5 and PSS signatures, key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
 
@@ -200,6 +201,16 @@ Variable point multiplication uses a 5-bit exponent window with Booth encoding.
 P384 base and variable point multiplication both use a 5-bit exponent window with Booth encoding.
 (This means we're leaving a some P384 base point performance on the table, in exchange for code space.
 P384 performance seems to be less important than P256.)
+
+P521's prime is a Mersenne prime, so its field arithmetic is direct rather
+than Montgomery's. Base point multiplication uses a comb of 27 tables of 16
+affine points (a 62KB constant table) over 5-bit Booth windows, as aws-lc
+does. Variable point multiplication is s2n-bignum's `p521_jscalarmul`, for
+ECDSA verification's public scalar too, except on aarch64, where a 5-bit Booth
+window over the point's cached multiples measured faster for that one.
+s2n-bignum's P521 point addition requires points that are not at infinity,
+equal, or opposite, so the comb and the window keep to that, and select or
+branch around the cases they reach.
 
 Both use the same exponent representations for "public" and "secret" exponents --
 however the table selection for "public" exponents is specialized at compile-time.
@@ -289,9 +300,9 @@ rind deviates, the item's docs say why.
   keys.
 - `cipher`: bare AES, AES-CTR, and ChaCha20, for DTLS record number
   protection and SRTP.
-- `agreement`: ephemeral X25519 and ECDH on P-256 and P-384.
+- `agreement`: ephemeral X25519 and ECDH on P-256, P-384, and P-521.
 - `kem`: ML-KEM-768.
-- `signature`: ECDSA on P-256 and P-384, RSA PKCS#1 v1.5 and PSS, and
+- `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification, plus RSA keys given as their
   components, and SHA-1 and 1024-bit RSA for verifying old signatures.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, and SHA-512/256.

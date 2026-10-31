@@ -10,7 +10,3 @@ Decided by the maintainer on 2026-10-30, planning ring and aws-lc-rs parity.
 
 - Compare with the rustls version rind-rustls targets, and list anything
   aws-lc-rs offers only behind a feature.
-
-## Required
-
-- [P-521](/quest/m3/parity/p521.md) - secp521r1 and ECDSA P-521

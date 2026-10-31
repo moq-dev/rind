@@ -455,6 +455,25 @@ mod tests {
             SigningKey::<curve::P384>::from_sec1_der(include_bytes!("ecdsa/secp256r1.der")).err(),
             Some(KeyFormatError::MismatchedSec1Curve.into()),
         );
+
+        check_sign_verify::<curve::P521>(
+            SigningKey::<curve::P521>::from_pkcs8_der(include_bytes!("ecdsa/secp521r1.pkcs8.der"))
+                .unwrap()
+                .private_key,
+        );
+        check_pairwise_pkcs8::<curve::P521>(include_bytes!("ecdsa/secp521r1.pkcs8.der"));
+
+        check_sign_verify::<curve::P521>(
+            SigningKey::<curve::P521>::from_sec1_der(include_bytes!("ecdsa/secp521r1.der"))
+                .unwrap()
+                .private_key,
+        );
+        check_pairwise_sec1::<curve::P521>(include_bytes!("ecdsa/secp521r1.der"));
+
+        assert_eq!(
+            SigningKey::<curve::P521>::from_sec1_der(include_bytes!("ecdsa/secp384r1.der")).err(),
+            Some(KeyFormatError::MismatchedSec1Curve.into()),
+        );
     }
 
     #[test]
@@ -464,10 +483,13 @@ mod tests {
 
         let k = SigningKey::<curve::P384>::generate().unwrap();
         check_sign_verify::<curve::P384>(k.private_key);
+
+        let k = SigningKey::<curve::P521>::generate().unwrap();
+        check_sign_verify::<curve::P521>(k.private_key);
     }
 
     fn check_sign_verify<C: Curve>(private_key: C::PrivateKey) {
-        let mut public_key = [0u8; 128];
+        let mut public_key = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
         let public_key = private_key
             .public_key_encode_uncompressed(&mut public_key)
             .unwrap();
@@ -696,6 +718,61 @@ mod tests {
     }
 
     #[test]
+    fn rfc6979_p521_test_vectors() {
+        // from A.2.7.  bits2int keeps the leftmost 521 of each 528 bits
+        // HMAC_DRBG draws.
+        let private_key = <curve::P521 as curve::Curve>::PrivateKey::from_bytes(&hex::decode("00fad06daa62ba3b25d2fb40133da757205de67f5bb0018fee8c86e1b68c7e75caa896eb32f1f47c70855836a6d16fcc1466f6d8fbec67db89ec0c08b0e996b83538").unwrap()).unwrap();
+        let mut public_key = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
+        let public_key = private_key
+            .public_key_encode_uncompressed(&mut public_key)
+            .unwrap();
+        let v = VerifyingKey::<curve::P521> {
+            public_key: <curve::P521 as curve::Curve>::PublicKey::from_x962_uncompressed(
+                public_key,
+            )
+            .unwrap(),
+        };
+        let k = SigningKey::<curve::P521> { private_key };
+        let mut signature = [0u8; 132];
+
+        k.rfc6979_sign_with_random::<hash::Sha256>(b"sample", &[], &mut signature)
+            .unwrap();
+        assert_eq!(
+            hex::encode(signature),
+            "01511bb4d675114fe266fc4372b87682baecc01d3cc62cf2303c92b3526012659d16876e25c7c1e57648f23b73564d67f61c6f14d527d54972810421e7d87589e1a7004a171143a83163d6df460aaf61522695f207a58b95c0644d87e52aa1a347916e4f7a72930b1bc06dbe22ce3f58264afd23704cbb63b29b931f7de6c9d949a7ecfc"
+        );
+        v.verify::<hash::Sha256>(b"sample", &signature).unwrap();
+
+        k.rfc6979_sign_with_random::<hash::Sha512>(b"sample", &[], &mut signature)
+            .unwrap();
+        assert_eq!(
+            hex::encode(signature),
+            "00c328fafcbd79dd77850370c46325d987cb525569fb63c5d3bc53950e6d4c5f174e25a1ee9017b5d450606add152b534931d7d4e8455cc91f9b15bf05ec36e377fa00617cce7cf5064806c467f678d3b4080d6f1cc50af26ca209417308281b68af282623eaa63e5b5c0723d8b8c37ff0777b1a20f8ccb1dccc43997f1ee0e44da4a67a"
+        );
+        v.verify::<hash::Sha512>(b"sample", &signature).unwrap();
+
+        let mut asn1_sig = [0u8; 160];
+        let asn1_sig = SigningKey::<curve::P521>::fixed_to_asn1(&signature, &mut asn1_sig).unwrap();
+        v.verify_asn1::<hash::Sha512>(b"sample", asn1_sig).unwrap();
+
+        k.rfc6979_sign_with_random::<hash::Sha256>(b"test", &[], &mut signature)
+            .unwrap();
+        assert_eq!(
+            hex::encode(signature),
+            "000e871c4a14f993c6c7369501900c4bc1e9c7b0b4ba44e04868b30b41d8071042eb28c4c250411d0ce08cd197e4188ea4876f279f90b3d8d74a3c76e6f1e4656aa800cd52dbaa33b063c3a6cd8058a1fb0a46a4754b034fcc644766ca14da8ca5ca9fde00e88c1ad60ccba759025299079d7a427ec3cc5b619bfbc828e7769bcd694e86"
+        );
+        v.verify::<hash::Sha256>(b"test", &signature).unwrap();
+
+        k.rfc6979_sign_with_random::<hash::Sha512>(b"test", &[], &mut signature)
+            .unwrap();
+        assert_eq!(
+            hex::encode(signature),
+            "013e99020abf5cee7525d16b69b229652ab6bdf2affcaef38773b4b7d08725f10cdb93482fdcc54edcee91eca4166b2a7c6265ef0ce2bd7051b7cef945babd47ee6d01fbd0013c674aa79cb39849527916ce301c66ea7ce8b80682786ad60f98f7e78a19ca69eff5c57400e3b3a0ad66ce0978214d13baf4e9ac60752f7b155e2de4dce3"
+        );
+        v.verify::<hash::Sha512>(b"test", &signature).unwrap();
+    }
+
+    #[test]
     fn cavp_sigver() {
         #[derive(Debug, Default)]
         struct State {
@@ -779,6 +856,43 @@ mod tests {
                                     "P-384,SHA-256" => vkey.verify::<hash::Sha256>(&self.msg, &sig),
                                     "P-384,SHA-384" => vkey.verify::<hash::Sha384>(&self.msg, &sig),
                                     "P-384,SHA-512" => vkey.verify::<hash::Sha512>(&self.msg, &sig),
+                                    _ => todo!("unhandled param"),
+                                };
+
+                                match value.str().chars().next() {
+                                    Some('F') => {
+                                        result.unwrap_err();
+                                    }
+                                    Some('P') => {
+                                        result.unwrap();
+                                    }
+                                    _ => todo!("unrecognised Result {:?}", value.str()),
+                                };
+                                println!("PASS: {}", value.str());
+                            }
+
+                            "P-521,SHA-256" | "P-521,SHA-384" | "P-521,SHA-512" => {
+                                pad(&mut self.px, 66);
+                                pad(&mut self.py, 66);
+                                pad(&mut self.r, 66);
+                                pad(&mut self.s, 66);
+
+                                let mut point = vec![0x04];
+                                point.extend_from_slice(&self.px);
+                                point.extend_from_slice(&self.py);
+
+                                let mut sig = vec![];
+                                sig.extend_from_slice(&self.r);
+                                sig.extend_from_slice(&self.s);
+
+                                let vkey =
+                                    VerifyingKey::<curve::P521>::from_x962_uncompressed(&point)
+                                        .unwrap();
+
+                                let result = match self.param.as_ref() {
+                                    "P-521,SHA-256" => vkey.verify::<hash::Sha256>(&self.msg, &sig),
+                                    "P-521,SHA-384" => vkey.verify::<hash::Sha384>(&self.msg, &sig),
+                                    "P-521,SHA-512" => vkey.verify::<hash::Sha512>(&self.msg, &sig),
                                     _ => todo!("unhandled param"),
                                 };
 
