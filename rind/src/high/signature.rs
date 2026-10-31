@@ -904,6 +904,40 @@ mod tests {
         }
     }
 
+    // Signing as a verify-only constant, such as a cross-hash pair, needs
+    // crate access, so this differential test lives here rather than in
+    // `tests/crosschecks.rs`. Wycheproof has no P-256 with SHA-384 vectors.
+    #[test]
+    fn ecdsa_verification_matches_aws_lc_rs() {
+        use aws_lc_rs::signature as theirs;
+
+        let algorithms: [(_, &'static theirs::EcdsaVerificationAlgorithm); 8] = [
+            (&ECDSA_P256_SHA256_ASN1, &theirs::ECDSA_P256_SHA256_ASN1),
+            (&ECDSA_P256_SHA384_ASN1, &theirs::ECDSA_P256_SHA384_ASN1),
+            (&ECDSA_P256_SHA512_ASN1, &theirs::ECDSA_P256_SHA512_ASN1),
+            (&ECDSA_P384_SHA256_ASN1, &theirs::ECDSA_P384_SHA256_ASN1),
+            (&ECDSA_P384_SHA384_ASN1, &theirs::ECDSA_P384_SHA384_ASN1),
+            (&ECDSA_P384_SHA512_ASN1, &theirs::ECDSA_P384_SHA512_ASN1),
+            (&ECDSA_P256_SHA256_FIXED, &theirs::ECDSA_P256_SHA256_FIXED),
+            (&ECDSA_P384_SHA384_FIXED, &theirs::ECDSA_P384_SHA384_FIXED),
+        ];
+        for (ours, theirs) in algorithms {
+            let signing = Box::leak(Box::new(EcdsaSigningAlgorithm(ours.0)));
+            let pair = EcdsaKeyPair::generate(signing).unwrap();
+            let signature = pair.sign(b"message").unwrap();
+            theirs::UnparsedPublicKey::new(theirs, pair.public_key())
+                .verify(b"message", signature.as_ref())
+                .unwrap_or_else(|_| panic!("aws-lc-rs refused {ours:?}"));
+
+            let verifier = UnparsedPublicKey::new(ours, pair.public_key());
+            verifier.verify(b"message", signature.as_ref()).unwrap();
+            assert_eq!(
+                verifier.verify(b"other", signature.as_ref()),
+                Err(Error::BadSignature)
+            );
+        }
+    }
+
     #[test]
     fn parsed_public_key_refuses_malformed_keys() {
         let pair = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING).unwrap();

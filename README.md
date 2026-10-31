@@ -109,6 +109,7 @@ or a [quest](quest/README.md) covers it. The table describes
 | SHA-384, SHA-512, SHA-512/256 | Intel: [aws-lc] AVX (copied) ✓; otherwise: [aws-lc] scalar (copied) ⚡ | SHA-512 instructions: [aws-lc] (copied) ✓; otherwise: [aws-lc] scalar (copied) ✓ | NEON: [aws-lc] (copied) ⚡; otherwise: [aws-lc] scalar (copied) ⚡ |
 | HMAC | Graviola ⚡ | Graviola ⚡ | Graviola ⚡ |
 | HKDF | rind ⚡ | rind ⚡ | rind ⚡ |
+| Constant-time comparison | Graviola | Graviola | rind |
 | X25519 | [s2n-bignum] ✓ | [s2n-bignum] ✓ | NEON: [BoringSSL] shared secret (copied) ⚡, [curve25519-dalek] public key ⚡; otherwise: [curve25519-dalek] ⚡ |
 | Ed25519 | [s2n-bignum] point and scalar arithmetic ✓; Graviola EdDSA ⚡; SHA-512 as in its row | [s2n-bignum] point and scalar arithmetic ✓; Graviola EdDSA ⚡; [aws-lc] SHA-512 ✓ | [curve25519-dalek] point and scalar arithmetic ⚡; rind EdDSA ⚡; SHA-512 as in its row |
 | P-256 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and secret scalar multiplication ✓; Graviola verification's scalar multiplication ⚡ and ECDSA ⚡ | [s2n-bignum] field and point arithmetic, and secret scalar multiplication ✓; Graviola verification's scalar multiplication ⚡ and ECDSA ⚡ | [HACL\*] ✓; Graviola ECDSA nonce |
@@ -290,6 +291,7 @@ rind deviates, the item's docs say why.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, and SHA-512/256.
 - `hmac`: HMAC over those digests, keyed once and reused.
 - `hkdf`: HKDF-SHA256, whose output becomes an `aead` or `hmac` key.
+- `constant_time`: comparing secrets such as MACs without a timing leak.
 - `rand`: random bytes from the system.
 - `cpu`: the startup check for required CPU features, and whether AES runs
   in hardware.
