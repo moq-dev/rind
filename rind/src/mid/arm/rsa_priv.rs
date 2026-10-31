@@ -60,12 +60,14 @@ impl RsaPrivateKey {
         let public = RsaPublicKey::new(n, e)?;
 
         // The CRT works at the width of the wider prime, so every
-        // component must fit it, and `n` twice it.
+        // component must fit it, and `n` twice it. One that does not cannot
+        // agree with the primes.
         let width = p.as_words().len().max(q.as_words().len());
+        let mismatched = |_| KeyFormatError::MismatchedRsaComponents;
         for x in [&dp, &dq, &iqmp] {
-            x.words_at_width(width)?;
+            x.words_at_width(width).map_err(mismatched)?;
         }
-        public.n.words_at_width(width * 2)?;
+        public.n.words_at_width(width * 2).map_err(mismatched)?;
 
         let p: SecretRsaPosIntModP = p.into();
         let q: SecretRsaPosIntModP = q.into();
@@ -81,7 +83,7 @@ impl RsaPrivateKey {
         let agree = Components {
             p: p.words_at_width(width)?,
             q: q.words_at_width(width)?,
-            d: d.words_at_width(width * 2)?,
+            d: d.as_words(),
             dp: dp.words_at_width(width)?,
             dq: dq.words_at_width(width)?,
             iqmp: iqmp.words_at_width(width)?,
@@ -216,8 +218,8 @@ impl RsaPrivateKey {
     }
 }
 
-/// A private key's integers, each as wide as the wider prime, and `d` and
-/// `n` twice that.
+/// A private key's integers, each as wide as the wider prime, `n` twice
+/// that, and `d` as wide as it is.
 struct Components<'a> {
     p: &'a [u64],
     q: &'a [u64],
