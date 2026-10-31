@@ -337,9 +337,8 @@ pub mod cpu {
 
 /// Random bytes from the system's secure random source.
 ///
-/// Unlike aws-lc-rs, there is no `SecureRandom` trait or `SystemRandom`
-/// type: no rind API takes a random source, so [`rand::fill`] is all a
-/// caller needs.
+/// No rind API takes a random source, so [`rand::fill`] is all a caller
+/// needs.
 ///
 /// ```
 /// let mut nonce = [0u8; 16];

@@ -21,7 +21,3 @@ configured. The token can publish new crates, so release-plz creates each
 Decided 2026-10-30 (maintainer): the first release does not wait on
 upstream releases. Publishing still waits for the maintainer's go-ahead on
 the release PR.
-
-## Required
-
-- [Public API audit](/quest/m1/moq/api/README.md) - the breaking API changes land before 0.1.0

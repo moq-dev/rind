@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! PBKDF2 (Password-Based Key Derivation Function 2), following aws-lc-rs's `pbkdf2`.
+//! PBKDF2 (Password-Based Key Derivation Function 2).
 //!
 //! PBKDF2 is standardized in [RFC 8018](https://datatracker.ietf.org/doc/html/rfc8018#section-5.2).
 

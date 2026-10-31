@@ -2,8 +2,8 @@
 
 ## Goal
 
-rind-rcgen generates and loads ECDSA P-521 keys, as the
-[API audit](/quest/m1/moq/api/README.md) decided. This waits on rcgen: its
+rind-rcgen generates and loads ECDSA P-521 keys, as the API audit decided
+(maintainer, 2026-10-31). This waits on rcgen: its
 `PKCS_ECDSA_P521_*` algorithms exist only with its `aws_lc_rs` feature, and a
 `SigningKey` cannot name an algorithm rcgen does not export. It is ready once a
 released rcgen exports them with `default-features = false`; ask in

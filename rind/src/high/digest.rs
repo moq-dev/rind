@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! Hashing through an algorithm constant, following aws-lc-rs's `digest`.
+//! Hashing through an algorithm constant.
 
 use core::fmt;
 
