@@ -63,15 +63,15 @@ install ring's if nothing is installed first.
 
 | Crate | What ties it | On rind |
 |---|---|---|
-| quinn 0.11, quinn-proto 0.11, h3-quinn | `rustls` is an alias for `rustls-ring`; the Retry tag, reset key, and token key call ring or aws-lc-rs | Adapter: [rind-quinn](#rind-quinn) |
+| quinn 0.11, quinn-proto 0.11, h3-quinn | `rustls` is an alias for `rustls-ring`; the Retry tag, reset key, and token key call ring or aws-lc-rs | Unsupported: use noq, or ask quinn for a provider-only `rustls` feature |
 | noq 1.4 | default `ring` | **rind-rustls**: `rustls` without `ring`, plus the caller's `HmacKey` and `HandshakeTokenKey` on rind's HMAC, HKDF, and AES-256-GCM |
 | iroh 1.4 | default `tls-ring` picks the provider | **rind-rustls**: `default-features = false`, `Endpoint::builder().crypto_provider(..)`. iroh-relay's `server` enables ring |
-| wtransport 0.7 | needs `ring` or `aws-lc-rs`, and quinn's defaults | Unsupported, even with rind-quinn, until it takes quinn's crypto traits |
+| wtransport 0.7 | needs `ring` or `aws-lc-rs`, and quinn's defaults | Unsupported |
 | s2n-quic 1 | s2n-quic-crypto always links aws-lc-rs | Unsupported |
 | quiche 0.30 | BoringSSL | Unsupported: C |
 | dimpl 0.9 | default aws-lc-rs | **rind-dimpl** |
 | str0m | default aws-lc-rs; its provider interface is unreleased | Adapter: rind-str0m covered it and was removed for lack of a consumer |
-| webrtc 0.21 (rtc 0.21) | default `crypto-ring`, or `crypto-aws-lc-rs` | Adapter: [rind-rtc](#rind-rtc) |
+| webrtc 0.21 (rtc 0.21) | default `crypto-ring`, or `crypto-aws-lc-rs` | Unsupported: `RTCCryptoProvider` could carry an adapter, but none is planned without a consumer |
 | webrtc-dtls 0.12, stun 0.17, turn 0.17 | ring, unconditionally | Unsupported: move to webrtc 0.21 |
 | libp2p-tls 0.7, libp2p-quic 0.14, libp2p-noise 0.47 | aws-lc-rs and ring, unconditionally | Unsupported: needs a provider hook upstream |
 | snow 0.10 | opt-in `ring-resolver` | **Pure Rust** by default. Adapter through `CryptoResolver`, once rind loads static X25519 keys |
@@ -116,26 +116,16 @@ install ring's if nothing is installed first.
 
 ## Adapters
 
-Two adapters would reach many users through a public hook:
+No new adapter is planned (maintainer, 2026-10-31):
 
-### rind-quinn
+- **quinn**: its rustls integration cannot be built without ring or
+  aws-lc-rs, so an adapter would carry its own port of quinn's
+  `crypto::rustls` session. noq, quinn's fork, already runs on rind-rustls.
+- **webrtc**: `rtc_crypto::RTCCryptoProvider` covers all of its crypto, and
+  rind lacks only MD5 (for TURN's long-term credentials) and the AES-CCM and
+  AES-CBC DTLS suites, but no consumer asks for it.
 
-quinn's rustls integration cannot be built without ring or aws-lc-rs, though
-its `EndpointConfig::new`, `ServerConfig::new`, and `crypto` traits take any
-implementation. A rind-quinn would carry its own port of quinn's
-`crypto::rustls` session on rind-rustls, plus HMAC reset keys, HKDF and
-AES-256-GCM token keys, and the AES-128-GCM Retry tag on rind; rind lacks
-none of them. A provider-only `rustls` feature upstream, as noq has, would
-shrink it to the two keys.
-
-### rind-rtc
-
-webrtc 0.21 takes all of its DTLS, SRTP, STUN, and TURN crypto through
-`rtc_crypto::RTCCryptoProvider`. rind covers its hashes, MACs, AEADs, AES-CTR,
-key exchange, and signatures. It lacks MD5, which TURN's long-term
-credentials need, and the AES-CCM and AES-CBC DTLS suites.
-
-The others are not worth a crate:
+Nor are these worth a crate:
 
 - **AWS SDK**: the adapter would be a whole HTTP client; stabilizing
   `CryptoMode::Custom` upstream needs none.
