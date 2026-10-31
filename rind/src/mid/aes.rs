@@ -7,8 +7,8 @@ use crate::low::{self, AesKey, Entry, zeroise};
 /// An AES key that encrypts single blocks.
 ///
 /// This is the bare block cipher. Use it only where a protocol specifies
-/// AES on one block, such as QUIC header protection, DTLS 1.3 record number
-/// protection, or SRTP key derivation.
+/// AES on one block, such as DTLS 1.3 record number protection or SRTP key
+/// derivation; QUIC header protection has [`crate::aead::quic`].
 pub struct Aes(AesKey);
 
 impl Aes {
@@ -219,28 +219,6 @@ mod tests {
                     &mut state,
                 );
             }
-        }
-    }
-
-    #[test]
-    fn quic_header_protection_masks() {
-        // RFC 9001 appendices A.2 and A.3
-        for (key, sample, mask) in [
-            (
-                "9f50449e04a0e810283a1e9933adedd2",
-                "d1b1c98dd7689fb8ec11d242b123dc9b",
-                "437b9aec36",
-            ),
-            (
-                "c206b8d9b9f0f37644430b490eeaa314",
-                "2cd0991cd25b0aac406a5816b6394100",
-                "2ec0d8356a",
-            ),
-        ] {
-            let aes = Aes::new(&AES_128, &hex::decode(key).unwrap()).unwrap();
-            let mut block: [u8; 16] = hex::decode(sample).unwrap().try_into().unwrap();
-            aes.encrypt_block(&mut block);
-            assert_eq!(hex::encode(&block[..5]), mask);
         }
     }
 
