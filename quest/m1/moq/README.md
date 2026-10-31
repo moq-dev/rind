@@ -71,5 +71,4 @@ RustCrypto dependency.
 - [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
 - [libcrux releases its bignum constant-time fix](/quest/m1/moq/libcrux-ct-fixes.md) - waiting on libcrux's fix, then dropping its armv7 ctgrind suppression
 - [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish
-- [Leave graviola's fork network](/quest/m1/moq/detach-fork.md) - waiting on the maintainer to detach the GitHub fork
 - [Release](/quest/m1/moq/release.md) - publish the rind release MoQ switches to
