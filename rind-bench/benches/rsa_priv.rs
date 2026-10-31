@@ -50,12 +50,11 @@ fn rsa2048_pkcs1_sha256_sign(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        use rind::signature::{RSA_PKCS1_SHA256, RsaKeyPair};
-        let key = RsaKeyPair::from_der(private_key).unwrap();
+        use rind::signature::{RsaKeyPair, sign};
+        let key = RsaKeyPair::from_pkcs1(private_key).unwrap();
 
         b.iter(|| {
-            let mut signature = [0u8; 256];
-            black_box(key.sign(&RSA_PKCS1_SHA256, message, &mut signature)).unwrap();
+            black_box(key.sign(&sign::RSA_PKCS1_SHA256, message)).unwrap();
         })
     });
 }
@@ -93,15 +92,50 @@ fn rsa2048_pss_sha256_sign(c: &mut Criterion) {
     });
 
     group.bench_function("rind", |b| {
-        use rind::signature::{RSA_PSS_SHA256, RsaKeyPair};
-        let key = RsaKeyPair::from_der(private_key).unwrap();
+        use rind::signature::{RsaKeyPair, sign};
+        let key = RsaKeyPair::from_pkcs1(private_key).unwrap();
 
         b.iter(|| {
-            let mut signature = [0u8; 256];
-            black_box(key.sign(&RSA_PSS_SHA256, message, &mut signature)).unwrap();
+            black_box(key.sign(&sign::RSA_PSS_SHA256, message)).unwrap();
         })
     });
 }
 
-criterion_group!(benches, rsa2048_pkcs1_sha256_sign, rsa2048_pss_sha256_sign);
+/// Loading a key checks its components agree, which should stay small next
+/// to a signature at every size.
+fn rsa_load(c: &mut Criterion) {
+    let keys: [(u32, &[u8]); 2] = [
+        (2048, include_bytes!("../../rind/src/high/rsa/rsa2048.der")),
+        (8192, include_bytes!("../../rind/src/high/rsa/rsa8192.der")),
+    ];
+    for (bits, private_key) in keys {
+        let mut group = c.benchmark_group(format!("rsa{bits}-load"));
+        group.throughput(Throughput::Elements(1));
+
+        group.bench_function("aws-lc-rs", |b| {
+            use aws_lc_rs::rsa;
+
+            b.iter(|| black_box(rsa::KeyPair::from_der(black_box(private_key)).unwrap()))
+        });
+
+        group.bench_function("rind", |b| {
+            use rind::signature::RsaKeyPair;
+
+            b.iter(|| black_box(RsaKeyPair::from_pkcs1(black_box(private_key)).unwrap()))
+        });
+
+        group.bench_function("rind-sign", |b| {
+            use rind::signature::{RsaKeyPair, sign};
+            let key = RsaKeyPair::from_pkcs1(private_key).unwrap();
+            b.iter(|| black_box(key.sign(&sign::RSA_PKCS1_SHA256, b"hello")).unwrap())
+        });
+    }
+}
+
+criterion_group!(
+    benches,
+    rsa2048_pkcs1_sha256_sign,
+    rsa2048_pss_sha256_sign,
+    rsa_load
+);
 criterion_main!(benches);

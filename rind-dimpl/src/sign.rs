@@ -6,9 +6,7 @@ use dimpl::crypto::{
 };
 use dimpl::{CryptoError, CryptoOperation};
 use rind::signature::{
-    ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA384_ASN1,
-    ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_ASN1_SIGNING, EcdsaKeyPair,
-    EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm, UnparsedPublicKey,
+    EcdsaKeyPair, EcdsaSigningAlgorithm, PublicKey, VerificationAlgorithm, sign, verify,
 };
 use x509_cert::Certificate;
 use x509_cert::der::Decode;
@@ -26,12 +24,12 @@ const CURVES: [(NamedGroup, HashAlgorithm, &EcdsaSigningAlgorithm); 2] = [
     (
         NamedGroup::Secp256r1,
         HashAlgorithm::SHA256,
-        &ECDSA_P256_SHA256_ASN1_SIGNING,
+        &sign::ECDSA_P256_SHA256_ASN1,
     ),
     (
         NamedGroup::Secp384r1,
         HashAlgorithm::SHA384,
-        &ECDSA_P384_SHA384_ASN1_SIGNING,
+        &sign::ECDSA_P384_SHA384_ASN1,
     ),
 ];
 
@@ -50,7 +48,7 @@ impl KeyProvider for Keys {
             })
         };
         load(EcdsaKeyPair::from_pkcs8)
-            .or_else(|| load(EcdsaKeyPair::from_private_key_der))
+            .or_else(|| load(EcdsaKeyPair::from_sec1))
             .ok_or(CryptoError::InvalidPrivateKey)
     }
 }
@@ -139,11 +137,11 @@ impl SignatureVerifier for Verifier {
         check_verify_scheme(algorithm, hash, group)?;
 
         // DTLS 1.2 may pair either curve with either hash.
-        let verification: &'static EcdsaVerificationAlgorithm = match (group, hash) {
-            (NamedGroup::Secp256r1, HashAlgorithm::SHA256) => &ECDSA_P256_SHA256_ASN1,
-            (NamedGroup::Secp256r1, HashAlgorithm::SHA384) => &ECDSA_P256_SHA384_ASN1,
-            (NamedGroup::Secp384r1, HashAlgorithm::SHA256) => &ECDSA_P384_SHA256_ASN1,
-            (NamedGroup::Secp384r1, HashAlgorithm::SHA384) => &ECDSA_P384_SHA384_ASN1,
+        let verification: &'static VerificationAlgorithm = match (group, hash) {
+            (NamedGroup::Secp256r1, HashAlgorithm::SHA256) => &verify::ECDSA_P256_SHA256_ASN1,
+            (NamedGroup::Secp256r1, HashAlgorithm::SHA384) => &verify::ECDSA_P256_SHA384_ASN1,
+            (NamedGroup::Secp384r1, HashAlgorithm::SHA256) => &verify::ECDSA_P384_SHA256_ASN1,
+            (NamedGroup::Secp384r1, HashAlgorithm::SHA384) => &verify::ECDSA_P384_SHA384_ASN1,
             _ => {
                 return Err(CryptoError::UnsupportedSignatureVerification {
                     signature: algorithm,
@@ -157,17 +155,13 @@ impl SignatureVerifier for Verifier {
             .subject_public_key
             .as_bytes()
             .ok_or(CryptoError::InvalidSubjectPublicKey)?;
-        // rind refuses a bad signature as `BadSignature`, and a bad point
-        // with an encoding or curve error.
-        UnparsedPublicKey::new(verification, point)
+        PublicKey::new(verification, point)
+            .map_err(|_| CryptoError::InvalidPublicKey(group))?
             .verify(data, signature)
-            .map_err(|err| match err {
-                rind::Error::BadSignature => CryptoError::SignatureVerificationFailed {
-                    signature: algorithm,
-                    hash,
-                    group,
-                },
-                _ => CryptoError::InvalidPublicKey(group),
+            .map_err(|_| CryptoError::SignatureVerificationFailed {
+                signature: algorithm,
+                hash,
+                group,
             })
     }
 }

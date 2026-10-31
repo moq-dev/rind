@@ -118,41 +118,63 @@ pub mod kem {
 
 /// Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, and Ed25519.
 ///
-/// A key pair is bound to its signing algorithm when loaded, and a peer's
-/// public key is verified against a verification algorithm constant:
+/// A key pair signs with a [`signature::sign`] algorithm, and a peer's
+/// public key is parsed for a [`signature::verify`] algorithm:
 ///
 /// ```
 /// # fn main() -> Result<(), rind::Error> {
-/// use rind::signature::*;
+/// use rind::signature::{EcdsaKeyPair, PublicKey, sign, verify};
 ///
-/// let key_pair = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING)?;
+/// let key_pair = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1)?;
 /// let signature = key_pair.sign(b"hello")?;
 ///
-/// let public_key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, key_pair.public_key());
+/// let encoded = key_pair.public_key();
+/// let public_key = PublicKey::new(&verify::ECDSA_P256_SHA256_ASN1, encoded.as_ref())?;
 /// public_key.verify(b"hello", signature.as_ref())?;
 /// # Ok(())
 /// # }
 /// ```
 pub mod signature {
     pub use crate::high::signature::{
-        ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA256_FIXED,
-        ECDSA_P256_SHA256_FIXED_SIGNING, ECDSA_P256_SHA384_ASN1, ECDSA_P256_SHA512_ASN1,
-        ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_ASN1_SIGNING,
-        ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA384_FIXED_SIGNING, ECDSA_P384_SHA512_ASN1,
-        ECDSA_P521_SHA256_ASN1, ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1,
-        ECDSA_P521_SHA512_ASN1_SIGNING, ECDSA_P521_SHA512_FIXED, ECDSA_P521_SHA512_FIXED_SIGNING,
-        ED25519, EcdsaKeyPair, EcdsaPublicKey, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm,
-        Ed25519KeyPair, Ed25519PublicKey, EdDSAParameters, KeyPair, KeySize, ParsedPublicKey,
-        RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
-        RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
-        RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
-        RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY, RSA_PKCS1_2048_8192_SHA256,
-        RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_2048_8192_SHA512, RSA_PKCS1_3072_8192_SHA384,
-        RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_2048_8192_SHA256,
-        RSA_PSS_2048_8192_SHA384, RSA_PSS_2048_8192_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
-        RSA_PSS_SHA512, RsaKeyPair, RsaParameters, RsaPublicKeyComponents, RsaSignatureEncoding,
-        RsaSubjectPublicKey, Signature, UnparsedPublicKey, VerificationAlgorithm,
+        EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, Pkcs8, PublicKey, RsaKeyPair,
+        RsaKeySize, RsaPublicKeyComponents, RsaSigningAlgorithm, Signature, Spki,
+        VerificationAlgorithm,
     };
+
+    /// Algorithms a key pair signs with.
+    ///
+    /// Each signs as the [`verify`] algorithm of the same name verifies.
+    pub mod sign {
+        pub use crate::high::signature::sign::{
+            ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P384_SHA384_ASN1,
+            ECDSA_P384_SHA384_FIXED, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED,
+            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
+            RSA_PSS_SHA512,
+        };
+    }
+
+    /// Algorithms a public key verifies with.
+    ///
+    /// RSA algorithms accept moduli of 2048 to 8192 bits.
+    pub mod verify {
+        pub use crate::high::signature::verify::{
+            ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA384_ASN1,
+            ECDSA_P256_SHA512_ASN1, ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1,
+            ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA512_ASN1, ECDSA_P521_SHA256_ASN1,
+            ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED, ED25519,
+            RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
+            RSA_PSS_SHA512,
+        };
+
+        /// RSA algorithms with another modulus floor, or SHA-1, for old keys
+        /// and signatures.
+        pub mod legacy {
+            pub use crate::high::signature::verify::legacy::{
+                RSA_PKCS1_1024_SHA1, RSA_PKCS1_1024_SHA256, RSA_PKCS1_1024_SHA512,
+                RSA_PKCS1_3072_SHA384, RSA_PKCS1_SHA1,
+            };
+        }
+    }
 }
 
 /// Cryptographic hash functions.

@@ -44,11 +44,13 @@ pub struct KeyRejected(KeyFormatError);
 pub(crate) enum KeyFormatError {
     Asn1(crate::high::asn1::Error),
     LeadingZero,
+    MismatchedAlgorithm,
     UnsupportedPkcs8Version,
     MismatchedPkcs8Algorithm,
     MismatchedPkcs8Parameters,
     MismatchedPkcs8PublicKey,
     MismatchedPublicKey,
+    MismatchedRsaComponents,
     MismatchedSec1Curve,
     MismatchedSec1PublicKey,
 }
@@ -64,6 +66,7 @@ impl core::fmt::Display for KeyRejected {
         match self.0 {
             KeyFormatError::Asn1(e) => write!(f, "an ASN.1 decoding error: {e}"),
             KeyFormatError::LeadingZero => write!(f, "an integer with a leading zero byte"),
+            KeyFormatError::MismatchedAlgorithm => write!(f, "a key for another algorithm"),
             KeyFormatError::UnsupportedPkcs8Version => write!(f, "unsupported PKCS#8 version"),
             KeyFormatError::MismatchedPkcs8Algorithm => write!(f, "mismatched PKCS#8 algorithm"),
             KeyFormatError::MismatchedPkcs8Parameters => {
@@ -71,6 +74,9 @@ impl core::fmt::Display for KeyRejected {
             }
             KeyFormatError::MismatchedPkcs8PublicKey => write!(f, "mismatched PKCS#8 public key"),
             KeyFormatError::MismatchedPublicKey => write!(f, "mismatched public key"),
+            KeyFormatError::MismatchedRsaComponents => {
+                write!(f, "mismatched RSA private key components")
+            }
             KeyFormatError::MismatchedSec1Curve => write!(f, "mismatched SEC1 curve"),
             KeyFormatError::MismatchedSec1PublicKey => write!(f, "mismatched SEC1 public key"),
         }
@@ -183,6 +189,14 @@ mod tests {
         assert_eq!(
             display(KeyFormatError::MismatchedPublicKey),
             "mismatched public key"
+        );
+        assert_eq!(
+            display(KeyFormatError::MismatchedAlgorithm),
+            "a key for another algorithm"
+        );
+        assert_eq!(
+            display(KeyFormatError::MismatchedRsaComponents),
+            "mismatched RSA private key components"
         );
     }
 }

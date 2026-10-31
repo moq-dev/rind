@@ -28,7 +28,10 @@ impl RsaPublicKey {
     pub(crate) fn new(n: RsaPosInt, e: u32) -> Result<Self, Error> {
         if n.is_even()
             || !(MIN_PUBLIC_MODULUS_BITS..=MAX_PUBLIC_MODULUS_BITS).contains(&n.len_bits())
-            || e == 0
+            // As aws-lc requires: an even e has no inverse mod the even
+            // (p - 1)(q - 1), and e = 1 makes every message its own signature.
+            || e.is_multiple_of(2)
+            || e == 1
         {
             return Err(Error::OutOfRange);
         }

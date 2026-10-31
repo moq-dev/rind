@@ -1,10 +1,12 @@
 use core::fmt;
 use std::sync::Arc;
 
+use rind::signature::sign::{
+    ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384,
+    RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384, RSA_PSS_SHA512,
+};
 use rind::signature::{
-    ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P384_SHA384_ASN1_SIGNING, EcdsaKeyPair,
-    EcdsaSigningAlgorithm, Ed25519KeyPair, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512,
-    RSA_PSS_SHA256, RSA_PSS_SHA384, RSA_PSS_SHA512, RsaKeyPair, RsaSignatureEncoding,
+    EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, RsaKeyPair, RsaSigningAlgorithm,
 };
 use rustls::pki_types::SubjectPublicKeyInfoDer;
 use rustls::{SignatureScheme, pki_types, sign};
@@ -29,11 +31,11 @@ impl rustls::crypto::KeyProvider for Provider {
 /// Each curve's one scheme, since TLS 1.3 binds the hash to the curve.
 const ECDSA: [(&EcdsaSigningAlgorithm, SignatureScheme); 2] = [
     (
-        &ECDSA_P256_SHA256_ASN1_SIGNING,
+        &ECDSA_P256_SHA256_ASN1,
         SignatureScheme::ECDSA_NISTP256_SHA256,
     ),
     (
-        &ECDSA_P384_SHA384_ASN1_SIGNING,
+        &ECDSA_P384_SHA384_ASN1,
         SignatureScheme::ECDSA_NISTP384_SHA384,
     ),
 ];
@@ -62,7 +64,7 @@ fn load_pkcs8(
 fn load_pkcs1(
     key_der: pki_types::PrivatePkcs1KeyDer<'static>,
 ) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
-    let rsa = RsaKeyPair::from_der(key_der.secret_pkcs1_der())
+    let rsa = RsaKeyPair::from_pkcs1(key_der.secret_pkcs1_der())
         .map_err(|err| rustls::Error::General(format!("cannot parse RSA key: {err:?}")))?;
 
     Ok(Arc::new(Rsa(Arc::new(rsa))))
@@ -72,7 +74,7 @@ fn load_sec1(
     key_der: pki_types::PrivateSec1KeyDer<'static>,
 ) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
     for (algorithm, scheme) in ECDSA {
-        if let Ok(key) = EcdsaKeyPair::from_private_key_der(algorithm, key_der.secret_sec1_der()) {
+        if let Ok(key) = EcdsaKeyPair::from_sec1(algorithm, key_der.secret_sec1_der()) {
             return Ok(Arc::new(Ecdsa::new(key, scheme)));
         }
     }
@@ -84,7 +86,7 @@ fn load_sec1(
 
 /// The RSA schemes in preference order: PSS over PKCS#1, then the longest hash.
 /// SHA-1 is absent, so it is never chosen.
-const RSA: [(SignatureScheme, &RsaSignatureEncoding); 6] = [
+const RSA: [(SignatureScheme, &RsaSigningAlgorithm); 6] = [
     (SignatureScheme::RSA_PSS_SHA512, &RSA_PSS_SHA512),
     (SignatureScheme::RSA_PSS_SHA384, &RSA_PSS_SHA384),
     (SignatureScheme::RSA_PSS_SHA256, &RSA_PSS_SHA256),
@@ -115,13 +117,9 @@ impl sign::SigningKey for Rsa {
     }
 
     fn public_key(&self) -> Option<SubjectPublicKeyInfoDer<'static>> {
-        let size = self.0.public_modulus_len() + 64;
-        let mut buffer = vec![0u8; size];
-
-        let used = self.0.to_spki_der(&mut buffer).ok()?.len();
-
-        buffer.truncate(used);
-        Some(SubjectPublicKeyInfoDer::from(buffer))
+        Some(SubjectPublicKeyInfoDer::from(
+            self.0.to_spki().as_ref().to_vec(),
+        ))
     }
 }
 
@@ -134,17 +132,17 @@ impl fmt::Debug for Rsa {
 struct RsaSigner {
     key: Arc<RsaKeyPair>,
     scheme: SignatureScheme,
-    padding: &'static RsaSignatureEncoding,
+    padding: &'static RsaSigningAlgorithm,
 }
 
 impl sign::Signer for RsaSigner {
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, rustls::Error> {
-        let mut sig = vec![0u8; self.key.public_modulus_len()];
-        self.key
-            .sign(self.padding, message, &mut sig)
+        let sig = self
+            .key
+            .sign(self.padding, message)
             .map_err(|err| rustls::Error::General(format!("signing failed: {err:?}")))?;
 
-        Ok(sig)
+        Ok(sig.as_ref().to_vec())
     }
 
     fn scheme(&self) -> SignatureScheme {
@@ -191,11 +189,9 @@ impl sign::SigningKey for Ecdsa {
     }
 
     fn public_key(&self) -> Option<SubjectPublicKeyInfoDer<'static>> {
-        let mut buffer = [0u8; 128];
-        self.key
-            .to_spki_der(&mut buffer)
-            .ok()
-            .map(|bytes| SubjectPublicKeyInfoDer::from(bytes.to_vec()))
+        Some(SubjectPublicKeyInfoDer::from(
+            self.key.to_spki().as_ref().to_vec(),
+        ))
     }
 }
 
@@ -241,11 +237,9 @@ impl sign::SigningKey for Ed25519 {
     }
 
     fn public_key(&self) -> Option<SubjectPublicKeyInfoDer<'static>> {
-        let mut buffer = [0; 64];
-        self.0
-            .to_spki_der(&mut buffer)
-            .ok()
-            .map(|bytes| SubjectPublicKeyInfoDer::from(bytes.to_vec()))
+        Some(SubjectPublicKeyInfoDer::from(
+            self.0.to_spki().as_ref().to_vec(),
+        ))
     }
 }
 
@@ -338,7 +332,7 @@ mod tests {
     #[test]
     fn test_rsa_signing_key() {
         let signing_key = Arc::new(
-            RsaKeyPair::from_der(include_bytes!("../../rind/src/high/rsa/rsa2048.der")).unwrap(),
+            RsaKeyPair::from_pkcs1(include_bytes!("../../rind/src/high/rsa/rsa2048.der")).unwrap(),
         );
         let rsa = Rsa(signing_key.clone());
         println!("{:?}", rsa);

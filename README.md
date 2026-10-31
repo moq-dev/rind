@@ -182,7 +182,9 @@ The private operation is always followed by the public operation to verify the r
 
 Only RSA signing and verification are provided.  Signing keys have 2048- to
 8192-bit moduli; verification also takes 1024-bit moduli and SHA-1, but only
-under the `_FOR_LEGACY_USE_ONLY` algorithms.  Our policy on RSA encryption is:
+under `signature::verify::legacy`.  Every key refuses an even public exponent
+or one of 1, and a private key whose components disagree is refused when it
+loads, as aws-lc's `RSA_check_key` does.  Our policy on RSA encryption is:
 "These are not made. They should never be made. We will not make them. We will not help make them."
 
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
@@ -198,9 +200,11 @@ P256 base point multiplication uses a 7-bit exponent window with Booth encoding
 (this costs a 148KB constant table).
 Variable point multiplication uses a 5-bit exponent window with Booth encoding.
 
-P384 base and variable point multiplication both use a 5-bit exponent window with Booth encoding.
-(This means we're leaving a some P384 base point performance on the table, in exchange for code space.
-P384 performance seems to be less important than P256.)
+P384 base point multiplication uses a comb of 20 tables of 16 affine points
+(a 30KB constant table) over 5-bit Booth windows, as aws-lc does. Variable
+point multiplication is s2n-bignum's `p384_montjscalarmul`, except for ECDSA
+verification's public scalar, which uses a 5-bit Booth window over the
+multiples of the public key, computed once when the key is parsed.
 
 P521's prime is a Mersenne prime, so its field arithmetic is direct rather
 than Montgomery's. Base point multiplication uses a comb of 27 tables of 16
@@ -292,7 +296,7 @@ HACL*'s verified Poly1305 without NEON.
 
 The public API follows [aws-lc-rs]'s module names and shapes: each algorithm module
 takes an algorithm constant, such as `aead::AES_128_GCM` or
-`signature::ECDSA_P256_SHA256_ASN1`, and has one key type per role. Where
+`signature::verify::ECDSA_P256_SHA256_ASN1`, and has one key type per role. Where
 rind deviates, the item's docs say why.
 
 - `aead`: AES-GCM and ChaCha20-Poly1305 keys with caller nonces, an

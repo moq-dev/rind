@@ -9,70 +9,10 @@
 use crate::Error;
 use crate::low::PosInt;
 use crate::mid::rng::RandomSource;
-
-/// Supported RSA key sizes for key generation.
-///
-/// This refers to the public modulus size.
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum KeySize {
-    /// Generate a key with a 2048-bit public modulus.
-    Rsa2048,
-    /// Generate a key with a 3072-bit public modulus.
-    Rsa3072,
-    /// Generate a key with a 4096-bit public modulus.
-    Rsa4096,
-    /// Generate a key with a 6144-bit public modulus.
-    Rsa6144,
-    /// Generate a key with a 8192-bit public modulus.
-    Rsa8192,
-}
-
-impl KeySize {
-    fn public_modulus_size_bits(&self) -> usize {
-        match self {
-            Self::Rsa2048 => 2048,
-            Self::Rsa3072 => 3072,
-            Self::Rsa4096 => 4096,
-            Self::Rsa6144 => 6144,
-            Self::Rsa8192 => 8192,
-        }
-    }
-
-    fn private_prime_size_bits(&self) -> usize {
-        self.public_modulus_size_bits() / 2
-    }
-
-    fn miller_rabin_rounds(&self) -> usize {
-        // refer to Table B.1.
-        match self {
-            Self::Rsa2048 => 5,
-            Self::Rsa3072 => 4,
-            Self::Rsa4096 => 4,
-            // nb. not included in FIPS186-5.
-            Self::Rsa6144 | Self::Rsa8192 => 4,
-        }
-    }
-}
-
-impl TryFrom<usize> for KeySize {
-    type Error = Error;
-
-    /// Convert an integer number of bits to a `KeySize`.
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        match value {
-            2048 => Ok(Self::Rsa2048),
-            3072 => Ok(Self::Rsa3072),
-            4096 => Ok(Self::Rsa4096),
-            6144 => Ok(Self::Rsa6144),
-            8192 => Ok(Self::Rsa8192),
-            _ => Err(Error::OutOfRange),
-        }
-    }
-}
+use crate::mid::rsa_key_size::RsaKeySize;
 
 pub(super) fn generate_key(
-    size: KeySize,
+    size: RsaKeySize,
     candidate_random: &mut dyn RandomSource,
     checks_random: &mut dyn RandomSource,
 ) -> Result<super::RsaPrivateKey, Error> {
@@ -120,7 +60,7 @@ pub(super) fn generate_key(
 const PUBLIC_EXPONENT: u32 = 0x10001;
 
 fn random_prime(
-    size: KeySize,
+    size: RsaKeySize,
     candidate_random: &mut dyn RandomSource,
     checks_random: &mut dyn RandomSource,
 ) -> Result<super::RsaPosIntModP, Error> {
@@ -134,11 +74,11 @@ fn random_prime(
 }
 
 fn random_prime_one(
-    size: KeySize,
+    size: RsaKeySize,
     candidate_random: &mut dyn RandomSource,
     checks_random: &mut dyn RandomSource,
 ) -> Result<Option<super::RsaPosIntModP>, Error> {
-    let bytes = size.private_prime_size_bits() / 8;
+    let bytes = size.prime_bits() / 8;
     let mut buffer = [0u8; super::MAX_PRIVATE_MODULUS_BYTES];
     candidate_random.fill(&mut buffer[..bytes])?;
 
@@ -159,7 +99,7 @@ fn random_prime_one(
 
 fn is_prime(
     candidate: &MaxPosInt,
-    size: KeySize,
+    size: RsaKeySize,
     rng: &mut dyn RandomSource,
 ) -> Result<bool, Error> {
     let small_primes = PosInt::from_bytes(PRODUCT_OF_SMALL_PRIMES).unwrap();
@@ -171,7 +111,11 @@ fn is_prime(
     miller_rabin(candidate, size, rng)
 }
 
-fn miller_rabin(w: &MaxPosInt, size: KeySize, rng: &mut dyn RandomSource) -> Result<bool, Error> {
+fn miller_rabin(
+    w: &MaxPosInt,
+    size: RsaKeySize,
+    rng: &mut dyn RandomSource,
+) -> Result<bool, Error> {
     // See FIPS186-5 B.3.1:
     // Steps 1 & 2:
     let mr = MillerRabinParams::new(w);
@@ -389,7 +333,12 @@ mod tests {
             let mut witness_source = SystemRandom;
 
             let start = Instant::now();
-            generate_key(KeySize::Rsa2048, &mut candidate_source, &mut witness_source).unwrap();
+            generate_key(
+                RsaKeySize::Rsa2048,
+                &mut candidate_source,
+                &mut witness_source,
+            )
+            .unwrap();
             results.push(start.elapsed());
         }
         println!(
@@ -405,7 +354,7 @@ mod tests {
         // candidate rng
         assert_eq!(
             generate_key(
-                KeySize::Rsa2048,
+                RsaKeySize::Rsa2048,
                 &mut SliceRandomSource(&[]),
                 &mut SystemRandom
             )
@@ -415,7 +364,7 @@ mod tests {
         // MR base rng
         assert_eq!(
             generate_key(
-                KeySize::Rsa2048,
+                RsaKeySize::Rsa2048,
                 &mut SystemRandom,
                 &mut SliceRandomSource(&[]),
             )
@@ -440,19 +389,14 @@ mod tests {
 
         let mut candidate_source = SliceRandomSource(&bytes);
         assert_eq!(
-            generate_key(KeySize::Rsa2048, &mut candidate_source, &mut SystemRandom).err(),
+            generate_key(
+                RsaKeySize::Rsa2048,
+                &mut candidate_source,
+                &mut SystemRandom
+            )
+            .err(),
             Some(Error::RngFailed),
         );
-    }
-
-    #[test]
-    fn test_key_size_try_from() {
-        assert_eq!(KeySize::try_from(2048), Ok(KeySize::Rsa2048));
-        assert_eq!(KeySize::try_from(3072), Ok(KeySize::Rsa3072));
-        assert_eq!(KeySize::try_from(4096), Ok(KeySize::Rsa4096));
-        assert_eq!(KeySize::try_from(6144), Ok(KeySize::Rsa6144));
-        assert_eq!(KeySize::try_from(8192), Ok(KeySize::Rsa8192));
-        assert_eq!(KeySize::try_from(1024), Err(Error::OutOfRange));
     }
 
     #[test]
@@ -466,7 +410,12 @@ mod tests {
         let mut candidate_source = ChainRandomSource::First(&mut fixed_source, &mut retry_source);
         let mut witness_source = SystemRandom;
 
-        generate_key(KeySize::Rsa2048, &mut candidate_source, &mut witness_source).unwrap();
+        generate_key(
+            RsaKeySize::Rsa2048,
+            &mut candidate_source,
+            &mut witness_source,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -476,7 +425,7 @@ mod tests {
             assert_eq!(
                 is_prime(
                     &candidate,
-                    KeySize::Rsa2048,
+                    RsaKeySize::Rsa2048,
                     &mut HmacDrbg::<Sha256>::new(b"", b"", b"")
                 ),
                 Ok(true)
@@ -491,7 +440,7 @@ mod tests {
             assert_eq!(
                 is_prime(
                     &candidate,
-                    KeySize::Rsa2048,
+                    RsaKeySize::Rsa2048,
                     &mut HmacDrbg::<Sha256>::new(b"", b"", b"")
                 ),
                 Ok(false)

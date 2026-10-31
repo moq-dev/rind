@@ -702,7 +702,8 @@ impl<const N: usize> PosInt<N> {
         r
     }
 
-    /// Computes `self` mod `m`, where m` may be even.
+    /// Computes `self` mod `m`, where `m` may be even but its top word is
+    /// nonzero.
     ///
     /// Use `reduce()` if `m` is odd; it will be faster.
     #[must_use]
@@ -712,13 +713,15 @@ impl<const N: usize> PosInt<N> {
         let mut r = PosInt::<M>::zero();
         r.used = m.used;
         let mut addend = r.clone();
+        let mut next = r.clone();
 
         // First, observe that any value of M-1 words cannot change
         // when reduced by m (M := |m|).  So we can copy these top words
         // in directly.
         let limit = r.used.saturating_sub(1);
         let i = self.used.saturating_sub(limit);
-        r.words[..limit].copy_from_slice(&self.words[i..self.used]);
+        let top = &self.words[i..self.used];
+        r.words[..top.len()].copy_from_slice(top);
 
         // For the remaining bits, we double-and-add them.
         for j in (0..i).rev() {
@@ -729,7 +732,6 @@ impl<const N: usize> PosInt<N> {
 
                 // First, double r mod m; ie shift it left once.
                 // TODO: `bignum_moddouble` should be faster.
-                let mut next = r.clone();
                 low::bignum_modadd(
                     next.as_mut_words(),
                     r.as_words(),

@@ -7,7 +7,7 @@ use aws_lc_rs::signature::{
 };
 use jsonwebtoken::crypto::aws_lc;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey};
-use rind::signature::{self, KeyPair as _};
+use rind::signature;
 
 pub const HMAC: [Algorithm; 3] = [Algorithm::HS256, Algorithm::HS384, Algorithm::HS512];
 pub const RSA: [Algorithm; 6] = [
@@ -62,20 +62,14 @@ pub fn all() -> Vec<Key> {
     }
 
     for (algorithm, signing) in [
-        (
-            Algorithm::ES256,
-            &signature::ECDSA_P256_SHA256_FIXED_SIGNING,
-        ),
-        (
-            Algorithm::ES384,
-            &signature::ECDSA_P384_SHA384_FIXED_SIGNING,
-        ),
+        (Algorithm::ES256, &signature::sign::ECDSA_P256_SHA256_FIXED),
+        (Algorithm::ES384, &signature::sign::ECDSA_P384_SHA384_FIXED),
     ] {
         let pair = signature::EcdsaKeyPair::generate(signing).unwrap();
         keys.push(Key::new(
             algorithm,
             "rind",
-            EncodingKey::from_ec_der(pair.to_pkcs8_der(&mut [0; 256]).unwrap()),
+            EncodingKey::from_ec_der(pair.to_pkcs8().as_ref()),
             DecodingKey::from_ec_der(pair.public_key().as_ref()),
         ));
     }
@@ -92,7 +86,7 @@ pub fn all() -> Vec<Key> {
     keys.push(Key::new(
         Algorithm::EdDSA,
         "rind",
-        EncodingKey::from_ed_der(ed25519.to_pkcs8_der(&mut [0; 128]).unwrap()),
+        EncodingKey::from_ed_der(ed25519.to_pkcs8().as_ref()),
         DecodingKey::from_ed_der(ed25519.public_key().as_ref()),
     ));
     // aws-lc-rs writes PKCS#8 v2, which carries the public key too.
@@ -147,9 +141,9 @@ pub fn rsa_key() -> (&'static [u8], &'static [u8]) {
     const PRIVATE: &[u8] = include_bytes!("../../../rind/src/high/rsa/rsa2048.der");
     static PUBLIC: OnceLock<Vec<u8>> = OnceLock::new();
     let public = PUBLIC.get_or_init(|| {
-        signature::RsaKeyPair::from_der(PRIVATE)
+        signature::RsaKeyPair::from_pkcs1(PRIVATE)
             .unwrap()
-            .public_key()
+            .public_key(&signature::sign::RSA_PKCS1_SHA256)
             .as_ref()
             .to_vec()
     });

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use super::rsa_pub::{MAX_PUBLIC_MODULUS_BYTES, RsaPublicKey};
-use crate::error::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::rng::RandomSource;
+use crate::mid::rsa_key_size::RsaKeySize;
 
 mod generate;
-pub use generate::KeySize;
 
 pub(crate) struct RsaPrivateKey {
     public: RsaPublicKey,
@@ -28,8 +28,8 @@ pub(crate) struct RsaPrivateKey {
 
 impl RsaPrivateKey {
     pub(crate) fn new(
-        mut p: RsaPosIntModP,
-        mut q: RsaPosIntModP,
+        p: RsaPosIntModP,
+        q: RsaPosIntModP,
         d: RsaPosIntD,
         dp: RsaPosIntModP,
         dq: RsaPosIntModP,
@@ -37,37 +37,56 @@ impl RsaPrivateKey {
         n: RsaPosIntModN,
         e: u32,
     ) -> Result<Self, Error> {
-        let p_len = p.len_bytes();
+        let (p_len, q_len) = (p.len_bytes(), q.len_bytes());
         if p.is_even()
             || q.is_even()
+            || q.len_bits() < 2
             || !(MIN_PRIVATE_MODULUS_BYTES..=MAX_PRIVATE_MODULUS_BYTES).contains(&p_len)
             || n.len_bits() < MIN_MODULUS_BITS
         {
             return Err(Error::OutOfRange);
         }
 
+        let public = RsaPublicKey::new(n, e)?;
+
+        let mut p: SecretRsaPosIntModP = p.into();
+        let mut q: SecretRsaPosIntModP = q.into();
+        let d: SecretRsaPosIntD = d.into();
+        let dp: SecretRsaPosIntModP = dp.into();
+        let dq: SecretRsaPosIntModP = dq.into();
+        let iqmp: SecretRsaPosIntModP = iqmp.into();
+
+        // Each prime is still at its own width, as `reduce_even` needs.
+        let e = low::PosInt::word(e.into());
+        let exponents_agree = exponents_agree(&p, &d, &dp, &e) & exponents_agree(&q, &d, &dq, &e);
+
         // The CRT reduces `c` mod each prime by Montgomery reduction, which
         // needs `c` below 2^(64w) times the prime for a w-word prime. Working
         // at the wider prime's width meets that for unbalanced primes too.
-        if p.len_bytes() < q.len_bytes() {
+        if p_len < q_len {
             p.expand(&q);
         } else {
             q.expand(&p);
         }
 
-        let public = RsaPublicKey::new(n, e)?;
         let p_montifier: SecretRsaPosIntModP = p.montifier().into();
         let q_montifier = q.montifier().into();
-        let iqmp_mont = iqmp.to_montgomery(&p_montifier, &p).into();
+        let iqmp_mont: SecretRsaPosIntModP = iqmp.to_montgomery(&p_montifier, &p).into();
         let p0 = p.mont_neg_inverse();
         let q0 = q.mont_neg_inverse();
 
-        let p = p.into();
-        let q = q.into();
-        let d = d.into();
-        let dp = dp.into();
-        let dq = dq.into();
-        let iqmp = iqmp.into();
+        // As aws-lc's `RSA_check_key`, so a key that cannot sign is refused
+        // here rather than by every signature's fault check. Each relation
+        // is computed in full, and only the verdict is revealed.
+        let pq: RsaPosIntModN = low::PosInt::mul(&p, &q);
+        let consistent = exponents_agree
+            & pq.equals(&public.n)
+            & iqmp.less_than(&p)
+            // Out of Montgomery form: iqmp * R * q * R^-1 = iqmp * q (mod p).
+            & iqmp_mont.mont_mul(&q, &p, p0).equals(&p.fixed_one());
+        if !low::ct::into_public(consistent) {
+            return Err(KeyFormatError::MismatchedRsaComponents.into());
+        }
 
         Ok(Self {
             public,
@@ -86,7 +105,7 @@ impl RsaPrivateKey {
     }
 
     pub(crate) fn generate(
-        size: KeySize,
+        size: RsaKeySize,
         candidate_source: &mut dyn RandomSource,
         witness_source: &mut dyn RandomSource,
     ) -> Result<Self, Error> {
@@ -205,6 +224,24 @@ impl Drop for RsaPrivateKey {
         // Not secret, but wiping it lets `tests/zeroing.rs` check every byte.
         low::zeroise_value(&mut self.public);
     }
+}
+
+/// Whether `dp = d mod (p - 1)` and `dp * e = 1 (mod p - 1)`.
+///
+/// These accept the same keys as aws-lc's `d * e = 1 (mod p - 1)` and
+/// `dp = d mod (p - 1)`, with one reduction of `d` rather than two. `p` must
+/// be above one and at its own width, as `reduce_even` needs the top word of
+/// `p - 1` nonzero.
+fn exponents_agree(
+    p: &RsaPosIntModP,
+    d: &RsaPosIntD,
+    dp: &RsaPosIntModP,
+    e: &RsaPosIntModP,
+) -> bool {
+    let p_1 = p.sub(&low::PosInt::one());
+    let d_p = d.reduce_even(&p_1);
+    let d_p_e: RsaPosIntD = low::PosInt::mul(&d_p, e);
+    d_p.equals(dp) & d_p_e.reduce_even(&p_1).equals(&p_1.fixed_one())
 }
 
 pub(crate) struct RsaComponents<'a> {

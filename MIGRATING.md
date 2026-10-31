@@ -1,7 +1,37 @@
 # Migrating from ring and aws-lc-rs
 
 This guide will map each ring and aws-lc-rs item to rind's.
-For now it holds a survey of the crates that pick a crypto backend for you.
+So far it maps `signature`, and surveys the crates that pick a crypto backend
+for you.
+
+## signature
+
+ring's names match aws-lc-rs's here, except where noted.
+
+| aws-lc-rs | rind |
+|---|---|
+| `UnparsedPublicKey::new(alg, bytes).verify(m, s)` | `PublicKey::new(alg, bytes)?.verify(m, s)` |
+| `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, `verify` |
+| `RsaPublicKeyComponents::verify(alg, m, s)` | `components.to_public_key(alg)?.verify(m, s)` |
+| `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `RsaParameters`, `EdDSAParameters` | `VerificationAlgorithm` |
+| `EcdsaSigningAlgorithm`, `RsaEncoding`/`RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
+| `ECDSA_P256_SHA256_ASN1_SIGNING` and the other `_SIGNING` | `sign::ECDSA_P256_SHA256_ASN1` |
+| `ECDSA_P256_SHA256_ASN1`, `ED25519` | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |
+| `RSA_PKCS1_SHA256`, `RSA_PSS_SHA256` | `sign::RSA_PKCS1_SHA256`, `sign::RSA_PSS_SHA256` |
+| `RSA_PKCS1_2048_8192_SHA256`, `RSA_PSS_2048_8192_SHA256` | `verify::RSA_PKCS1_SHA256`, `verify::RSA_PSS_SHA256` |
+| `RSA_PKCS1_3072_8192_SHA384` | `verify::legacy::RSA_PKCS1_3072_SHA384` |
+| `RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY` (also SHA-1, SHA-512) | `verify::legacy::RSA_PKCS1_1024_SHA256` |
+| `RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY` | `verify::legacy::RSA_PKCS1_SHA1` |
+| `KeyPair::public_key()` | inherent `public_key()`, a `PublicKey`; `RsaKeyPair::public_key(&sign::X)` |
+| `EcdsaKeyPair::from_private_key_der` | `from_sec1`, which refuses PKCS#8 |
+| `RsaKeyPair::from_der` | `from_pkcs1` |
+| `Ed25519KeyPair::from_pkcs8_maybe_unchecked` | `from_pkcs8`, which takes v1 and v2 |
+| `to_pkcs8()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop |
+| `EcdsaKeyPair::sign(rng, m)`, `RsaKeyPair::sign(alg, rng, m, &mut sig)` | `sign(m)`, `sign(alg, m)`, which take no random source and return a `Signature` |
+| `rsa::KeySize` | `RsaKeySize` |
+| `Ed25519KeyPair::seed()`, `private_key().as_be_bytes()`, `public_modulus_len()` | none |
+
+`PublicKey::new` refuses a compressed ECDSA point, which aws-lc-rs takes.
 
 ## Crates with their own crypto backend
 

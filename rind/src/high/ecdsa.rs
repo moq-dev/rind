@@ -109,23 +109,6 @@ impl<C: Curve> SigningKey<C> {
         Ok(self.public_key_uncompressed(&mut encoded)? == public_key)
     }
 
-    /// Encode this private key's scalar, big-endian and fixed-length.
-    ///
-    /// The encoding is written to the start of `output`, and the used span is
-    /// returned.  [`Error::WrongLength`] is returned if `output` is not sufficient
-    /// to contain the full encoding.
-    pub(crate) fn to_private_key_be<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        let _entry = Entry::new_secret();
-        let output = output
-            .get_mut(..C::Scalar::LEN_BYTES)
-            .ok_or(Error::WrongLength)?;
-        self.private_key.encode(output)?;
-
-        // The caller owns the encoding, as with `to_sec1_der_detail`.
-        ct::public_slice(output);
-        Ok(output)
-    }
-
     /// Encode this private key's public key as an X9.62 uncompressed point.
     pub(crate) fn public_key_uncompressed<'a>(
         &self,
@@ -298,6 +281,17 @@ impl<C: Curve> SigningKey<C> {
 /// An ECDSA verification key, on curve `C`.
 pub(crate) struct VerifyingKey<C: Curve> {
     public_key: C::PublicKey,
+}
+
+impl<C: Curve> Clone for VerifyingKey<C>
+where
+    C::PublicKey: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            public_key: self.public_key.clone(),
+        }
+    }
 }
 
 impl<C: Curve> VerifyingKey<C> {

@@ -9,13 +9,13 @@ use libcrux_hacl_rs::bignum::base::{self, bn_mont_ctx_u64};
 use libcrux_hacl_rs::bignum::bignum64;
 
 use super::rsa_pub::{MAX_PUBLIC_MODULUS_BYTES, RsaPublicKey};
-use crate::error::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::rng::RandomSource;
+use crate::mid::rsa_key_size::RsaKeySize;
 
 #[path = "rsa_priv/generate.rs"]
 mod generate;
-pub use generate::KeySize;
 
 /// `public` comes first so its (non-secret) bytes form a prefix.
 #[repr(C)]
@@ -60,26 +60,54 @@ impl RsaPrivateKey {
         let public = RsaPublicKey::new(n, e)?;
 
         // The CRT works at the width of the wider prime, so every
-        // component must fit it, and `n` twice it.
+        // component must fit it, and `n` twice it. One that does not cannot
+        // agree with the primes.
         let width = p.as_words().len().max(q.as_words().len());
+        let mismatched = |_| KeyFormatError::MismatchedRsaComponents;
         for x in [&dp, &dq, &iqmp] {
-            x.words_at_width(width)?;
+            x.words_at_width(width).map_err(mismatched)?;
         }
-        public.n.words_at_width(width * 2)?;
+        public.n.words_at_width(width * 2).map_err(mismatched)?;
+
+        let p: SecretRsaPosIntModP = p.into();
+        let q: SecretRsaPosIntModP = q.into();
+        let d: SecretRsaPosIntD = d.into();
+        let dp: SecretRsaPosIntModP = dp.into();
+        let dq: SecretRsaPosIntModP = dq.into();
+        let iqmp: SecretRsaPosIntModP = iqmp.into();
+
+        // As aws-lc's `RSA_check_key`, so a key that cannot sign is refused
+        // here rather than by every signature's fault check. Each relation
+        // is computed in full, and only the verdict is revealed.
+        let p_mont = Mont::new_secret(p.words_at_width(width)?, p.as_words().len());
+        let agree = Components {
+            p: p.words_at_width(width)?,
+            q: q.words_at_width(width)?,
+            d: d.as_words(),
+            dp: dp.words_at_width(width)?,
+            dq: dq.words_at_width(width)?,
+            iqmp: iqmp.words_at_width(width)?,
+            n: public.n.words_at_width(width * 2)?,
+            e: u64::from(e),
+        }
+        .agree(&p_mont);
+        if !low::ct::into_public(agree == u64::MAX) {
+            return Err(KeyFormatError::MismatchedRsaComponents.into());
+        }
 
         Ok(Self {
             public,
-            p: p.into(),
-            q: q.into(),
-            d: d.into(),
-            dp: dp.into(),
-            dq: dq.into(),
-            iqmp: iqmp.into(),
+            p,
+            q,
+            d,
+            dp,
+            dq,
+            iqmp,
         })
     }
 
     pub(crate) fn generate(
-        size: KeySize,
+        size: RsaKeySize,
         candidate_source: &mut dyn RandomSource,
         witness_source: &mut dyn RandomSource,
     ) -> Result<Self, Error> {
@@ -186,6 +214,86 @@ impl RsaPrivateKey {
         match c2.words_at_width(n.len()) {
             Ok(c2) if bignum64::eq_mask(n.len() as u32, c2, c_n) == u64::MAX => Ok(m),
             _ => Err(Error::DecryptFailed),
+        }
+    }
+}
+
+/// A private key's integers, each as wide as the wider prime, `n` twice
+/// that, and `d` as wide as it is.
+struct Components<'a> {
+    p: &'a [u64],
+    q: &'a [u64],
+    d: &'a [u64],
+    dp: &'a [u64],
+    dq: &'a [u64],
+    iqmp: &'a [u64],
+    n: &'a [u64],
+    e: u64,
+}
+
+impl Components<'_> {
+    /// All ones if `n = p * q`, `iqmp = q^-1 mod p`, and for each prime
+    /// `dp = d mod (p - 1)` with `dp * e = 1 (mod p - 1)`, and zero if not.
+    ///
+    /// These accept the same keys as aws-lc's `d * e = 1 (mod p - 1)` and
+    /// `dp = d mod (p - 1)`, with one reduction of `d` rather than two.
+    /// `p_mont` is the context for `p`.
+    fn agree(&self, p_mont: &Mont) -> u64 {
+        let w = self.p.len();
+        let len = w as u32;
+        let mut one = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+        one[0] = 1;
+        let one = &one[..w];
+        let mut wide = [0u64; MAX_PRIVATE_MODULUS_WORDS * 2];
+        let wide = &mut wide[..w * 2];
+        let mut t = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+        let t = &mut t[..w];
+
+        bignum64::mul(len, self.p, self.q, wide);
+        let mut agree = bignum64::eq_mask(len * 2, wide, self.n);
+
+        // `mod_precomp` needs `iqmp * q` below `p * 2^(64w)`, which the range
+        // check guarantees for every key it accepts.
+        agree &= bignum64::lt_mask(len, self.iqmp, self.p);
+        bignum64::mul(len, self.iqmp, self.q, wide);
+        bignum64::mod_precomp(p_mont, wide, t);
+        agree &= bignum64::eq_mask(len, t, one);
+
+        let mut e = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+        e[0] = self.e;
+        let e = &e[..w];
+        let mut m = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+        let m = &mut m[..w];
+        for (prime, exponent) in [(self.p, self.dp), (self.q, self.dq)] {
+            // Primes are odd, so subtracting one clears bit 0.
+            m.copy_from_slice(prime);
+            m[0] &= !1;
+            reduce_even(self.d, m, t);
+            agree &= bignum64::eq_mask(len, t, exponent);
+            bignum64::mul(len, t, e, wide);
+            reduce_even(wide, m, t);
+            agree &= bignum64::eq_mask(len, t, one);
+        }
+        agree
+    }
+}
+
+/// Writes `x mod m` to `r`, for an `m` above one that may be even.
+///
+/// `Bignum64` reduces only by an odd modulus, so this doubles and adds `x`'s
+/// bits from the top, each step below `m`, in constant time.
+fn reduce_even(x: &[u64], m: &[u64], r: &mut [u64]) {
+    let len = m.len() as u32;
+    let mut bit = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+    let bit = &mut bit[..m.len()];
+    let mut doubled = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+    let doubled = &mut doubled[..m.len()];
+    r.fill(0);
+    for word in x.iter().rev() {
+        for shift in (0..64).rev() {
+            base::bn_add_mod_n_u64(len, m, r, r, doubled);
+            bit[0] = (word >> shift) & 1;
+            base::bn_add_mod_n_u64(len, m, doubled, bit, r);
         }
     }
 }
