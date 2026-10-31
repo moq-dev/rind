@@ -350,6 +350,44 @@ mod hkdf {
     }
 }
 
+mod pbkdf2 {
+    use core::num::NonZeroU32;
+
+    use aws_lc_rs::pbkdf2 as theirs;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use rind::pbkdf2;
+
+    // Passwords either side of both block sizes (64 and 128), and keys of
+    // several blocks with a partial last one.
+    proptest! {
+        #[test]
+        fn matches_aws_lc_rs(
+            password in vec(any::<u8>(), 0..300),
+            salt in vec(any::<u8>(), 0..200),
+            iterations in 1..20u32,
+            len in 1..200usize,
+        ) {
+            let iterations = NonZeroU32::new(iterations).unwrap();
+            for (ours, theirs) in [
+                (pbkdf2::PBKDF2_HMAC_SHA1, theirs::PBKDF2_HMAC_SHA1),
+                (pbkdf2::PBKDF2_HMAC_SHA256, theirs::PBKDF2_HMAC_SHA256),
+                (pbkdf2::PBKDF2_HMAC_SHA384, theirs::PBKDF2_HMAC_SHA384),
+                (pbkdf2::PBKDF2_HMAC_SHA512, theirs::PBKDF2_HMAC_SHA512),
+            ] {
+                let mut wanted = vec![0u8; len];
+                theirs::derive(theirs, iterations, &salt, &password, &mut wanted);
+
+                let secret = pbkdf2::Secret::new(ours, &password);
+                let mut got = vec![0u8; len];
+                secret.derive(iterations, &salt, &mut got).unwrap();
+                prop_assert_eq!(&got, &wanted);
+                prop_assert_eq!(secret.verify(iterations, &salt, &wanted), Ok(()));
+            }
+        }
+    }
+}
+
 mod aead {
     use aws_lc_rs::aead as theirs;
     use proptest::collection::vec;

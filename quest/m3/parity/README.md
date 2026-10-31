@@ -29,7 +29,6 @@ Decided by the maintainer on 2026-10-30:
 
 ## Required
 
-- [PBKDF2](/quest/m3/parity/pbkdf2.md) - PBKDF2-HMAC with SHA-1, SHA-256, SHA-384, and SHA-512
 - [SHA-512/256](/quest/m3/parity/sha512-256.md) - the truncated SHA-512 variant
 - [Fixed-length ECDSA](/quest/m3/parity/ecdsa-fixed.md) - P1363 signatures and the cross-hash curve pairs
 - [Legacy RSA verification](/quest/m3/parity/rsa-legacy.md) - SHA-1 PKCS#1, 1024-bit keys, and keys from their components

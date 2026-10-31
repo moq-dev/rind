@@ -69,14 +69,36 @@ impl Sha256Context {
         let last_blocks = self.blockwise.md_pad_with_length(&bits.to_be_bytes());
         self.update_blocks(last_blocks.as_ref());
 
+        Self::output(&self.h)
+    }
+
+    /// The hash of the input so far followed by `tail`, leaving this context as it was.
+    ///
+    /// Compresses one block from a copy of the state, so the input so far
+    /// must be whole blocks, and `tail` must leave room for the padding.
+    pub(crate) fn finish_block(&self, tail: &[u8]) -> [u8; Self::OUTPUT_SZ] {
+        assert!(self.blockwise.used() == 0 && tail.len() < Self::BLOCK_SZ - 8);
+        let mut block = [0u8; Self::BLOCK_SZ];
+        block[..tail.len()].copy_from_slice(tail);
+        block[tail.len()] = 0x80;
+        let bits = (self.nblocks * Self::BLOCK_SZ as u64 + tail.len() as u64) * 8;
+        block[Self::BLOCK_SZ - 8..].copy_from_slice(&bits.to_be_bytes());
+
+        let mut h = self.h;
+        verify_cpu_features();
+        crate::low::sha256_compress_blocks(&mut h, &block);
+
+        Self::output(&h)
+    }
+
+    fn output(h: &[u32; 8]) -> [u8; Self::OUTPUT_SZ] {
         let mut r = [0u8; Self::OUTPUT_SZ];
         let (chunks, _) = r.as_chunks_mut::<4>();
-        for (out, state) in chunks.iter_mut().zip(self.h.iter()) {
+        for (out, state) in chunks.iter_mut().zip(h.iter()) {
             out.copy_from_slice(&state.to_be_bytes());
         }
         r
     }
-
     fn update_blocks(&mut self, blocks: &[u8]) {
         debug_assert!(blocks.len().is_multiple_of(Self::BLOCK_SZ));
         if !blocks.is_empty() {
@@ -140,6 +162,12 @@ impl Sha384Context {
     pub(crate) fn finish(self) -> [u8; Self::OUTPUT_SZ] {
         let inner = self.inner.finish();
         // SAFETY: 48 is less than 64.
+        inner[..Self::OUTPUT_SZ].try_into().unwrap()
+    }
+
+    /// As [`Sha512Context::finish_block`].
+    pub(crate) fn finish_block(&self, tail: &[u8]) -> [u8; Self::OUTPUT_SZ] {
+        let inner = self.inner.finish_block(tail);
         inner[..Self::OUTPUT_SZ].try_into().unwrap()
     }
 
@@ -213,14 +241,36 @@ impl Sha512Context {
         let last_blocks = self.blockwise.md_pad_with_length(&bits.to_be_bytes());
         self.update_blocks(last_blocks.as_ref());
 
+        Self::output(&self.h)
+    }
+
+    /// The hash of the input so far followed by `tail`, leaving this context as it was.
+    ///
+    /// Compresses one block from a copy of the state, so the input so far
+    /// must be whole blocks, and `tail` must leave room for the padding.
+    pub(crate) fn finish_block(&self, tail: &[u8]) -> [u8; Self::OUTPUT_SZ] {
+        assert!(self.blockwise.used() == 0 && tail.len() < Self::BLOCK_SZ - 16);
+        let mut block = [0u8; Self::BLOCK_SZ];
+        block[..tail.len()].copy_from_slice(tail);
+        block[tail.len()] = 0x80;
+        let bits = (u128::from(self.nblocks) * Self::BLOCK_SZ as u128 + tail.len() as u128) * 8;
+        block[Self::BLOCK_SZ - 16..].copy_from_slice(&bits.to_be_bytes());
+
+        let mut h = self.h;
+        verify_cpu_features();
+        crate::low::sha512_compress_blocks(&mut h, &block);
+
+        Self::output(&h)
+    }
+
+    fn output(h: &[u64; 8]) -> [u8; Self::OUTPUT_SZ] {
         let mut r = [0u8; Self::OUTPUT_SZ];
         let (chunks, _) = r.as_chunks_mut::<8>();
-        for (out, state) in chunks.iter_mut().zip(self.h.iter()) {
+        for (out, state) in chunks.iter_mut().zip(h.iter()) {
             out.copy_from_slice(&state.to_be_bytes());
         }
         r
     }
-
     fn update_blocks(&mut self, blocks: &[u8]) {
         debug_assert!(blocks.len().is_multiple_of(Self::BLOCK_SZ));
         if !blocks.is_empty() {

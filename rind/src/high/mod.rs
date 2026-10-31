@@ -14,6 +14,7 @@ pub(super) mod hkdf;
 pub(super) mod hmac;
 pub(super) mod hmac_drbg;
 pub(super) mod kem;
+pub(super) mod pbkdf2;
 pub(super) mod pkcs1;
 pub(super) mod pkcs8;
 pub(super) mod rsa;

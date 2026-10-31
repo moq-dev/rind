@@ -127,6 +127,20 @@ fn hmac() {
 }
 
 #[test]
+fn pbkdf2() {
+    use rind::pbkdf2::*;
+
+    for algorithm in [
+        PBKDF2_HMAC_SHA1,
+        PBKDF2_HMAC_SHA256,
+        PBKDF2_HMAC_SHA384,
+        PBKDF2_HMAC_SHA512,
+    ] {
+        check_zeroed_on_drop(Box::pin(Secret::new(algorithm, b"password")));
+    }
+}
+
+#[test]
 fn aead() {
     use rind::aead::{
         AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, LessSafeKey, RandomizedNonceKey, UnboundKey,
