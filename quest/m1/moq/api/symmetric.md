@@ -9,8 +9,7 @@ a type could make:
 - legacy hashes and MACs in `legacy` submodules;
 - every algorithm passed as `&'static`;
 - HKDF `expand` that cannot fail for typed keys;
-- `quic::HeaderProtectionKey::mask` and `constant_time::verify`;
-- PBKDF2 `verify` that refuses a stored value shorter than the HMAC output.
+- `quic::HeaderProtectionKey::mask` and `constant_time::verify`.
 
 ## Plan
 

@@ -232,6 +232,32 @@ pub mod hkdf {
     pub use super::high::hkdf::{Algorithm, HKDF_SHA256, KeyType, Okm, Prk, Salt};
 }
 
+/// Password-based key derivation with PBKDF2.
+///
+/// A [`pbkdf2::Secret`] keys HMAC with a password once, then derives a key
+/// for a salt and iteration count, or checks one derived before. This
+/// example takes the iteration count OWASP suggests for SHA-256, so it is
+/// not run as a test.
+///
+/// ```no_run
+/// use std::num::NonZeroU32;
+/// use rind::pbkdf2;
+///
+/// let iterations = NonZeroU32::new(600_000).unwrap();
+/// let secret = pbkdf2::Secret::new(pbkdf2::PBKDF2_HMAC_SHA256, b"password");
+///
+/// let mut stored = [0u8; 32];
+/// secret.derive(iterations, b"per-user salt", &mut stored).unwrap();
+///
+/// secret.verify(iterations, b"per-user salt", &stored).unwrap();
+/// ```
+pub mod pbkdf2 {
+    pub use super::high::pbkdf2::{
+        Algorithm, PBKDF2_HMAC_SHA1, PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512,
+        Secret,
+    };
+}
+
 /// Authenticated encryption.
 ///
 /// A key is built from an algorithm constant and key bytes, then bound to a
