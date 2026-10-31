@@ -20,7 +20,3 @@ mismatches), and the enum should cover what is left.
   `DecryptFailed`, and X25519's all-zero secret must not read as
   `NotOnCurve`.
 - `Error` derives `Eq` alongside `PartialEq`.
-
-## Required
-
-- [Signature API](/quest/m1/moq/api/signature.md) - removes buffer-size errors
