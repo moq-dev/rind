@@ -300,7 +300,7 @@ pub(crate) struct P521;
 
 impl Curve for P521 {
     type PrivateKey = p521::StaticPrivateKey;
-    type PublicKey = p521::PublicKey;
+    type PublicKey = p521::VerifyingKey;
     type Scalar = p521::Scalar;
 
     fn oid() -> asn1::ObjectId {
@@ -344,7 +344,7 @@ impl PrivateKey<P521> for p521::StaticPrivateKey {
     }
 }
 
-impl PublicKey<P521> for p521::PublicKey {
+impl PublicKey<P521> for p521::VerifyingKey {
     fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         Self::from_x962_uncompressed(bytes)
     }
