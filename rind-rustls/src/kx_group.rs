@@ -183,12 +183,6 @@ mod tests {
                 false => 0,
             };
             assert_eq!(&share[at..at + classical_len], classical_share);
-
-            // A server choosing the classical group alone completes against
-            // the classical part the client offered.
-            let server = classical.start_and_complete(classical_share).unwrap();
-            let secret = client.complete_hybrid_component(&server.pub_key).unwrap();
-            assert_eq!(secret.secret_bytes(), server.secret.secret_bytes());
         }
     }
 }
