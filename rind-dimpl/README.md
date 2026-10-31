@@ -10,10 +10,10 @@ Build dimpl with `default-features = false`, since its default features compile 
 Then hand the provider to each config:
 
 ```rust
+// Refuses a CPU missing a feature rind requires.
 let config = dimpl::Config::builder()
-    .with_crypto_provider(rind_dimpl::default_provider())
-    .build()
-    .unwrap();
+    .with_crypto_provider(rind_dimpl::default_provider()?)
+    .build()?;
 ```
 
 Or install it for the process with `dimpl::crypto::CryptoProvider::install_default`.

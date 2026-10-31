@@ -15,41 +15,47 @@ fn all_suites() {
     let _ = env_logger::try_init();
 
     for key_type in KeyType::ALL {
-        test_suite(rind_rustls::suites::TLS13_AES_256_GCM_SHA384, *key_type);
-        test_suite(rind_rustls::suites::TLS13_AES_128_GCM_SHA256, *key_type);
         test_suite(
-            rind_rustls::suites::TLS13_CHACHA20_POLY1305_SHA256,
+            rind_rustls::cipher_suite::TLS13_AES_256_GCM_SHA384,
             *key_type,
         );
-        test_keys_match(&rind_rustls::default_provider(), *key_type);
+        test_suite(
+            rind_rustls::cipher_suite::TLS13_AES_128_GCM_SHA256,
+            *key_type,
+        );
+        test_suite(
+            rind_rustls::cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
+            *key_type,
+        );
+        test_keys_match(&rind_rustls::default_provider().unwrap(), *key_type);
     }
 
     for key_type in KeyType::RSA {
         test_suite(
-            rind_rustls::suites::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+            rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
             *key_type,
         );
         test_suite(
-            rind_rustls::suites::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+            rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
             *key_type,
         );
         test_suite(
-            rind_rustls::suites::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+            rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
             *key_type,
         );
     }
 
     for key_type in KeyType::ECDSA {
         test_suite(
-            rind_rustls::suites::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+            rind_rustls::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
             *key_type,
         );
         test_suite(
-            rind_rustls::suites::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+            rind_rustls::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
             *key_type,
         );
         test_suite(
-            rind_rustls::suites::TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+            rind_rustls::cipher_suite::TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
             *key_type,
         );
     }
@@ -57,19 +63,19 @@ fn all_suites() {
 
 #[test]
 fn all_key_exchanges() {
-    let tls13 = rind_rustls::suites::TLS13_AES_128_GCM_SHA256;
-    let tls12 = rind_rustls::suites::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256;
+    let tls13 = rind_rustls::cipher_suite::TLS13_AES_128_GCM_SHA256;
+    let tls12 = rind_rustls::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256;
 
     // X25519MLKEM768 not supported by *ring*, and TLS 1.3 only
     for other in [OtherProvider::BaselineAwsLcRs, OtherProvider::SelfTest] {
-        test_key_exchange(rind_rustls::kx::X25519MLKEM768, tls13, other);
+        test_key_exchange(rind_rustls::kx_group::X25519MLKEM768, tls13, other);
     }
 
     for other in OtherProvider::OTHERS {
         for suite in [tls13, tls12] {
-            test_key_exchange(&rind_rustls::kx::X25519, suite, *other);
-            test_key_exchange(&rind_rustls::kx::P256, suite, *other);
-            test_key_exchange(&rind_rustls::kx::P384, suite, *other);
+            test_key_exchange(rind_rustls::kx_group::X25519, suite, *other);
+            test_key_exchange(rind_rustls::kx_group::SECP256R1, suite, *other);
+            test_key_exchange(rind_rustls::kx_group::SECP384R1, suite, *other);
         }
     }
 }
@@ -83,7 +89,7 @@ fn test_key_exchange(
     let provider: Arc<_> = CryptoProvider {
         cipher_suites: vec![suite],
         kx_groups: vec![kx],
-        ..rind_rustls::default_provider()
+        ..rind_rustls::default_provider().unwrap()
     }
     .into();
     test_client(provider.clone(), other, key_type);
@@ -93,7 +99,7 @@ fn test_key_exchange(
 fn test_suite(suite: rustls::SupportedCipherSuite, key_type: KeyType) {
     let provider: Arc<_> = CryptoProvider {
         cipher_suites: vec![suite],
-        ..rind_rustls::default_provider()
+        ..rind_rustls::default_provider().unwrap()
     }
     .into();
     for other in OtherProvider::OTHERS {
@@ -265,7 +271,7 @@ impl OtherProvider {
         match self {
             Self::BaselineRing => ring::default_provider().into(),
             Self::BaselineAwsLcRs => aws_lc_rs::default_provider().into(),
-            Self::SelfTest => rind_rustls::default_provider().into(),
+            Self::SelfTest => rind_rustls::default_provider().unwrap().into(),
         }
     }
 

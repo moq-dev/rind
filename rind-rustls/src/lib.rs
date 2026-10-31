@@ -6,12 +6,20 @@
 //! Use it like:
 //!
 //! ```rust
-//! rind_rustls::default_provider().install_default().unwrap();
+//! # fn main() -> Result<(), rind::cpu::MissingFeature> {
+//! rind_rustls::default_provider()?.install_default().unwrap();
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! And then use rustls as normal.
+//!
+//! rind panics on a CPU missing a feature it requires, so [`default_provider`]
+//! and [`Ticketer::new`] check first and return an error instead. To build a
+//! provider from this crate's statics, call [`rind::cpu::check`] first.
 
-use rustls::crypto::CryptoProvider;
+use rustls::SupportedCipherSuite;
+use rustls::crypto::{CryptoProvider, SupportedKxGroup};
 
 mod aead;
 mod hash;
@@ -20,34 +28,83 @@ mod quic;
 mod sign;
 mod verify;
 
-/// Supported key exchange algorithms.
-pub mod kx;
+/// Every cipher suite this crate supports.
+///
+/// Call [`rind::cpu::check`] before using these directly.
+pub mod cipher_suite;
 
-/// Supported cipher suites.
-pub mod suites;
+/// Every key exchange group this crate supports.
+///
+/// Call [`rind::cpu::check`] before using these directly.
+pub mod kx_group;
 
 mod ticketer;
 pub use ticketer::Ticketer;
 
-/// This is a rustls [`CryptoProvider`] using cryptography from rind.
+/// Returns a rustls [`CryptoProvider`] using cryptography from rind, or the
+/// CPU feature rind requires that this CPU lacks.
 ///
 /// This provides the same algorithms as the rustls *ring*-based
-/// provider, which are interoperable and safe defaults for modern TLS.
+/// provider, which are interoperable and safe defaults for modern TLS,
+/// plus X25519MLKEM768.
 /// It prefers ChaCha20-Poly1305 where rind runs AES without CPU instructions.
-pub fn default_provider() -> CryptoProvider {
+pub fn default_provider() -> Result<CryptoProvider, rind::cpu::MissingFeature> {
+    rind::cpu::check()?;
     let cipher_suites = if rind::cpu::has_aes_hardware() {
-        suites::ALL_CIPHER_SUITES
+        DEFAULT_CIPHER_SUITES
     } else {
-        suites::CHACHA20_FIRST
+        CHACHA20_FIRST
     };
-    CryptoProvider {
+    Ok(CryptoProvider {
         cipher_suites: cipher_suites.to_vec(),
-        kx_groups: kx::ALL_KX_GROUPS.to_vec(),
+        kx_groups: DEFAULT_KX_GROUPS.to_vec(),
         signature_verification_algorithms: verify::ALGORITHMS,
         secure_random: &RngProvider,
         key_provider: &sign::Provider,
-    }
+    })
 }
+
+/// The cipher suites [`default_provider`] offers, in its order where rind runs
+/// AES on CPU instructions; elsewhere it puts ChaCha20-Poly1305 first.
+pub static DEFAULT_CIPHER_SUITES: &[SupportedCipherSuite] = ALL_CIPHER_SUITES;
+
+/// Every cipher suite this crate supports, in preference order.
+pub static ALL_CIPHER_SUITES: &[SupportedCipherSuite] = &[
+    cipher_suite::TLS13_AES_128_GCM_SHA256,
+    cipher_suite::TLS13_AES_256_GCM_SHA384,
+    cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
+    cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+    cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+    cipher_suite::TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+    cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+    cipher_suite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+    cipher_suite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+];
+
+/// [`DEFAULT_CIPHER_SUITES`] with ChaCha20-Poly1305 first, which outruns AES
+/// without AES instructions.
+static CHACHA20_FIRST: &[SupportedCipherSuite] = &[
+    cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
+    cipher_suite::TLS13_AES_128_GCM_SHA256,
+    cipher_suite::TLS13_AES_256_GCM_SHA384,
+    cipher_suite::TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+    cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+    cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+    cipher_suite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+    cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+    cipher_suite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+];
+
+/// The key exchange groups [`default_provider`] offers, in its order.
+pub static DEFAULT_KX_GROUPS: &[&dyn SupportedKxGroup] = ALL_KX_GROUPS;
+
+/// Every key exchange group this crate supports, in preference order.
+pub static ALL_KX_GROUPS: &[&dyn SupportedKxGroup] = &[
+    kx_group::X25519MLKEM768,
+    kx_group::X25519,
+    kx_group::SECP256R1,
+    kx_group::SECP384R1,
+];
 
 #[derive(Debug)]
 struct RngProvider;
@@ -73,17 +130,17 @@ mod tests {
         }
 
         let expected = if rind::cpu::has_aes_hardware() {
-            suites::ALL_CIPHER_SUITES
+            DEFAULT_CIPHER_SUITES
         } else {
-            suites::CHACHA20_FIRST
+            CHACHA20_FIRST
         };
-        assert_eq!(default_provider().cipher_suites, expected);
+        assert_eq!(default_provider().unwrap().cipher_suites, expected);
     }
 
     #[test]
     fn chacha20_first_reorders_every_suite() {
-        let mut all = suites::ALL_CIPHER_SUITES.to_vec();
-        let mut chacha20_first = suites::CHACHA20_FIRST.to_vec();
+        let mut all = DEFAULT_CIPHER_SUITES.to_vec();
+        let mut chacha20_first = CHACHA20_FIRST.to_vec();
         for suites in [&mut all, &mut chacha20_first] {
             suites.sort_by_key(|suite| u16::from(suite.suite()));
         }

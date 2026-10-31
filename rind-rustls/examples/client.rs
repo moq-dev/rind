@@ -30,7 +30,7 @@ fn error(err: String) -> io::Error {
 #[tokio::main]
 async fn run_client() -> Result<(), Box<dyn std::error::Error>> {
     // Set a process wide default crypto provider.
-    rind_rustls::default_provider().install_default().unwrap();
+    rind_rustls::default_provider()?.install_default().unwrap();
     env_logger::init();
 
     // First parameter is target URL (mandatory).

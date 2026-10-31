@@ -1,8 +1,8 @@
 # Migrating from ring and aws-lc-rs
 
 This guide will map each ring and aws-lc-rs item to rind's.
-So far it maps `signature` and errors, and surveys the crates that pick a
-crypto backend for you.
+So far it maps `signature`, errors, and the adapter crates, and surveys the
+crates that pick a crypto backend for you.
 
 ## signature
 
@@ -52,13 +52,63 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 | `Unspecified`, from `constant_time::verify_slices_are_equal` | `Error::NotEqual` |
 | `Unspecified`, from RSA signing or ECDH when an internal check fails | `Error::Fault` |
 
+## Adapter crates
+
+Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
+panics on a CPU missing a feature it requires, so every adapter entry point
+that is a function refuses one with `rind::cpu::MissingFeature` instead. A
+static that the upstream crate requires, such as `DEFAULT_PROVIDER`, cannot,
+so call `rind::cpu::check()` before using it.
+
+### rind-rustls
+
+rind-rustls mirrors the layout of rustls's own providers.
+
+| rustls `crypto::aws_lc_rs` | rind-rustls |
+|---|---|
+| `default_provider()` | `default_provider()?` |
+| `DEFAULT_CIPHER_SUITES`, `ALL_CIPHER_SUITES` | the same, preferring AES-128-GCM to AES-256-GCM; `default_provider()` puts ChaCha20-Poly1305 first where rind runs AES without CPU instructions |
+| `DEFAULT_KX_GROUPS`, `ALL_KX_GROUPS` | the same: X25519MLKEM768, X25519, P-256, then P-384 |
+| `cipher_suite::*` | the same nine suites |
+| `kx_group::X25519`, `SECP256R1`, `SECP384R1`, `X25519MLKEM768` | the same |
+| `kx_group::SECP256R1MLKEM768`, `MLKEM768`, `MLKEM1024` | none |
+| `Ticketer::new()` | the same, which also refuses a CPU missing a feature |
+| `sign::any_supported_type` and the other `sign` loaders, `hpke` | none; load keys through the provider's `key_provider` |
+
+rind-rustls signs with RSA, ECDSA P-256 and P-384, and Ed25519 keys; ECDSA
+P-521 neither signs nor verifies.
+
+### rind-rcgen
+
+`rind_rcgen::KeyPair` replaces `rcgen::KeyPair` for ECDSA P-256 and P-384,
+Ed25519, and RSA with PKCS#1 v1.5. It cannot sign with P-521: rcgen names
+those algorithms only with its `aws_lc_rs` feature.
+
+| rcgen | rind-rcgen |
+|---|---|
+| `KeyPair::generate()` | `KeyPair::generate(&PKCS_ECDSA_P256_SHA256)` |
+| `KeyPair::generate_for(alg)` | `KeyPair::generate(alg)`; RSA fails with `KeyGenerationUnavailable` |
+| `KeyPair::from_pkcs8_der_and_sign_algo(der, alg)` | `KeyPair::from_pkcs8(alg, der)` |
+| `KeyPair::from_der_and_sign_algo`, `from_pem`, `TryFrom` | none; convert the key to PKCS#8 and pass its algorithm |
+| `serialize_der()`, `serialized_der()`, `PrivatePkcs8KeyDer::from(&key)` | `to_pkcs8()`, wiped on drop |
+| `Error::RingKeyRejected`, `RingUnspecified` | the same variants, with rind's reason for a refused key |
+
+### rind-dimpl, rind-object-store, rind-jsonwebtoken, and rind-instant-acme
+
+| aws-lc-rs backend | rind |
+|---|---|
+| dimpl's `crypto::aws_lc_rs::default_provider()` | `rind_dimpl::default_provider()?` |
+| object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider()?)` |
+| jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::DEFAULT_PROVIDER`, after `rind::cpu::check()?` |
+| instant-acme's built-in provider | `Account::builder(http, &rind_instant_acme::DEFAULT_PROVIDER)`, after `rind::cpu::check()?` |
+
 ## Crates with their own crypto backend
 
 Surveyed on 2026-10-31 against each crate's latest release, by reading its
 features and source; none were built. A migrated graph should give no output
 from `cargo tree -e normal,build -i ring` or `-i aws-lc-sys`.
 
-"Install" means calling `rind_rustls::default_provider().install_default()`
+"Install" means calling `rind_rustls::default_provider()?.install_default()`
 before the crate builds its TLS config. Crates that read rustls's process
 default panic without one, and a few (jsonrpsee, pingora, tauri on mobile)
 install ring's if nothing is installed first.
@@ -137,7 +187,7 @@ install ring's if nothing is installed first.
 
 | Crate | What ties it | On rind |
 |---|---|---|
-| rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 only. Without rcgen's `crypto` feature, set the serial number and `key_identifier_method` yourself, or the subject key identifier is empty |
+| rcgen 0.14 | default `ring`, or `aws_lc_rs`, gates `KeyPair` | **rind-rcgen**: ECDSA P-256 and P-384, Ed25519, and loaded RSA keys. Without rcgen's `crypto` feature, set the serial number and `key_identifier_method` yourself, or the subject key identifier is empty |
 | instant-acme | 0.8 calls aws-lc-rs or ring; the unreleased 0.9 takes a `CryptoProvider` | **rind-instant-acme** on 0.9. `Order::finalize` needs ring or aws-lc-rs; call `finalize_csr` with a CSR from rcgen on rind-rcgen |
 | rustls-acme 0.15, tokio-rustls-acme 0.9 | account keys and CSRs call ring or aws-lc-rs | Unsupported: use instant-acme on rind-instant-acme |
 | x509-parser 0.18 | `verify` is ring, `verify-aws` aws-lc-rs | Unsupported: verify `tbs_certificate` with `rind::signature` instead |

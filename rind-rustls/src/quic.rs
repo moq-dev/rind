@@ -178,7 +178,7 @@ mod tests {
     use rustls::quic::{Algorithm as _, DirectionalKeys, Keys, Version};
 
     use super::*;
-    use crate::suites;
+    use crate::cipher_suite;
 
     fn initial_keys(suite: SupportedCipherSuite, side: Side) -> Keys {
         // RFC 9001 appendix A.1
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn rfc9001_client_initial_header() {
         // RFC 9001 appendix A.2, header protection only: the payload is padded to 1162 bytes.
-        let keys = initial_keys(suites::TLS13_AES_128_GCM_SHA256, Side::Client);
+        let keys = initial_keys(cipher_suite::TLS13_AES_128_GCM_SHA256, Side::Client);
         let sample = hex::decode("d1b1c98dd7689fb8ec11d242b123dc9b").unwrap();
         let (mut first, mut packet_number) = (0xc3, [0x00, 0x00, 0x00, 0x02]);
 
@@ -256,8 +256,8 @@ mod tests {
     fn rfc9001_server_initial() {
         // RFC 9001 appendix A.3
         check_packet(
-            &initial_keys(suites::TLS13_AES_128_GCM_SHA256, Side::Server).local,
-            &initial_keys(suites::TLS13_AES_128_GCM_SHA256, Side::Client).remote,
+            &initial_keys(cipher_suite::TLS13_AES_128_GCM_SHA256, Side::Server).local,
+            &initial_keys(cipher_suite::TLS13_AES_128_GCM_SHA256, Side::Client).remote,
             1,
             "c1000000010008f067a5502a4262b50040750001",
             "02000000000600405a020000560303eefce7f7b37ba1d1632e96677825ddf739\
@@ -300,9 +300,9 @@ mod tests {
     #[test]
     fn rejects_malformed_input() {
         for suite in [
-            suites::TLS13_AES_128_GCM_SHA256,
-            suites::TLS13_AES_256_GCM_SHA384,
-            suites::TLS13_CHACHA20_POLY1305_SHA256,
+            cipher_suite::TLS13_AES_128_GCM_SHA256,
+            cipher_suite::TLS13_AES_256_GCM_SHA384,
+            cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
         ] {
             let keys = initial_keys(suite, Side::Client).local;
 

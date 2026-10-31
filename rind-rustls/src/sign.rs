@@ -40,48 +40,60 @@ const ECDSA: [(&EcdsaSigningAlgorithm, SignatureScheme); 2] = [
     ),
 ];
 
+/// Loads a PKCS#8 key as each supported type in turn, naming why each refused it.
 fn load_pkcs8(
     key_der: pki_types::PrivatePkcs8KeyDer<'static>,
 ) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
     let der = key_der.secret_pkcs8_der();
-    if let Ok(rsa) = RsaKeyPair::from_pkcs8(der) {
-        return Ok(Arc::new(Rsa(Arc::new(rsa))));
-    }
+    let rsa = match RsaKeyPair::from_pkcs8(der) {
+        Ok(rsa) => return Ok(Arc::new(Rsa(Arc::new(rsa)))),
+        Err(err) => err,
+    };
 
+    let mut ecdsa = Vec::with_capacity(ECDSA.len());
     for (algorithm, scheme) in ECDSA {
-        if let Ok(key) = EcdsaKeyPair::from_pkcs8(algorithm, der) {
-            return Ok(Arc::new(Ecdsa::new(key, scheme)));
+        match EcdsaKeyPair::from_pkcs8(algorithm, der) {
+            Ok(key) => return Ok(Arc::new(Ecdsa::new(key, scheme))),
+            Err(err) => ecdsa.push(format!("as {scheme:?}: {err}")),
         }
     }
 
-    if let Ok(ed25519) = Ed25519KeyPair::from_pkcs8(der) {
-        return Ok(Arc::new(Ed25519(Arc::new(ed25519))));
-    }
+    let ed25519 = match Ed25519KeyPair::from_pkcs8(der) {
+        Ok(ed25519) => return Ok(Arc::new(Ed25519(Arc::new(ed25519)))),
+        Err(err) => err,
+    };
 
-    Err(rustls::Error::General("unhandled pkcs8 format".to_string()))
+    Err(rustls::Error::General(format!(
+        "unsupported PKCS#8 key: as RSA: {rsa}; {}; as Ed25519: {ed25519}",
+        ecdsa.join("; ")
+    )))
 }
 
 fn load_pkcs1(
     key_der: pki_types::PrivatePkcs1KeyDer<'static>,
 ) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
     let rsa = RsaKeyPair::from_pkcs1(key_der.secret_pkcs1_der())
-        .map_err(|err| rustls::Error::General(format!("cannot parse RSA key: {err:?}")))?;
+        .map_err(|err| rustls::Error::General(format!("cannot parse RSA key: {err}")))?;
 
     Ok(Arc::new(Rsa(Arc::new(rsa))))
 }
 
+/// Loads a SEC1 key on each supported curve in turn, naming why each refused it.
 fn load_sec1(
     key_der: pki_types::PrivateSec1KeyDer<'static>,
 ) -> Result<Arc<dyn sign::SigningKey>, rustls::Error> {
+    let mut errors = Vec::with_capacity(ECDSA.len());
     for (algorithm, scheme) in ECDSA {
-        if let Ok(key) = EcdsaKeyPair::from_sec1(algorithm, key_der.secret_sec1_der()) {
-            return Ok(Arc::new(Ecdsa::new(key, scheme)));
+        match EcdsaKeyPair::from_sec1(algorithm, key_der.secret_sec1_der()) {
+            Ok(key) => return Ok(Arc::new(Ecdsa::new(key, scheme))),
+            Err(err) => errors.push(format!("as {scheme:?}: {err}")),
         }
     }
 
-    Err(rustls::Error::General(
-        "unhandled sec1 format/curve".to_string(),
-    ))
+    Err(rustls::Error::General(format!(
+        "unsupported SEC1 key: {}",
+        errors.join("; ")
+    )))
 }
 
 /// The RSA schemes in preference order: PSS over PKCS#1, then the longest hash.
@@ -140,7 +152,7 @@ impl sign::Signer for RsaSigner {
         let sig = self
             .key
             .sign(self.padding, message)
-            .map_err(|err| rustls::Error::General(format!("signing failed: {err:?}")))?;
+            .map_err(|err| rustls::Error::General(format!("signing failed: {err}")))?;
 
         Ok(sig.as_ref().to_vec())
     }
@@ -200,7 +212,7 @@ impl sign::Signer for Ecdsa {
         let sig = self
             .key
             .sign(message)
-            .map_err(|err| rustls::Error::General(format!("signing failed: {err:?}")))?;
+            .map_err(|err| rustls::Error::General(format!("signing failed: {err}")))?;
 
         Ok(sig.as_ref().to_vec())
     }
@@ -327,6 +339,19 @@ mod tests {
             include_bytes!("../../rind/src/high/ecdsa/secp256r1.wrong-version.der").to_vec(),
         ));
         assert!(provider.load_private_key(ecdsap256_sec1).is_err());
+
+        // A refused key keeps rind's reason.
+        let mut p256 = include_bytes!("../../rind/src/high/ecdsa/secp256r1.pkcs8.der").to_vec();
+        *p256.last_mut().unwrap() ^= 1;
+        let err = provider
+            .load_private_key(pki_types::PrivateKeyDer::Pkcs8(p256.into()))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains(
+                "as ECDSA_NISTP256_SHA256: a key was rejected: mismatched SEC1 public key"
+            ),
+            "{err}"
+        );
     }
 
     #[test]

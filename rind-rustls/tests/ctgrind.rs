@@ -33,7 +33,7 @@ fn mark<T: ?Sized>(value: &T, state: MemState) {
 
 #[test]
 fn key_exchange() {
-    for group in rind_rustls::kx::ALL_KX_GROUPS {
+    for group in rind_rustls::ALL_KX_GROUPS {
         let client = group.start().unwrap();
         let server = group.start_and_complete(client.pub_key()).unwrap();
         let client_secret = client.complete(&server.pub_key).unwrap();
@@ -53,11 +53,11 @@ fn key_exchange() {
 fn tls13_key_schedule() {
     for (suite, reference) in [
         (
-            rind_rustls::suites::TLS13_AES_128_GCM_SHA256,
+            rind_rustls::cipher_suite::TLS13_AES_128_GCM_SHA256,
             aws_lc_rs::cipher_suite::TLS13_AES_128_GCM_SHA256,
         ),
         (
-            rind_rustls::suites::TLS13_AES_256_GCM_SHA384,
+            rind_rustls::cipher_suite::TLS13_AES_256_GCM_SHA384,
             aws_lc_rs::cipher_suite::TLS13_AES_256_GCM_SHA384,
         ),
     ] {
@@ -88,11 +88,11 @@ fn tls13_key_schedule() {
 fn tls12_prf() {
     for (suite, reference) in [
         (
-            rind_rustls::suites::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+            rind_rustls::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
             aws_lc_rs::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
         ),
         (
-            rind_rustls::suites::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+            rind_rustls::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
             aws_lc_rs::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
         ),
     ] {
@@ -122,7 +122,7 @@ fn tls12_prf() {
 /// A record key of `len` bytes. rustls builds keys shorter than 32 bytes only
 /// through its key schedule, so expand one with a TLS 1.3 AEAD of that length.
 fn record_key(len: usize) -> AeadKey {
-    let suite = rind_rustls::suites::ALL_CIPHER_SUITES
+    let suite = rind_rustls::ALL_CIPHER_SUITES
         .iter()
         .find_map(|suite| match suite {
             SupportedCipherSuite::Tls13(suite) if suite.aead_alg.key_len() == len => Some(suite),
@@ -137,7 +137,7 @@ fn record_key(len: usize) -> AeadKey {
 
 #[test]
 fn record_protection() {
-    for suite in rind_rustls::suites::ALL_CIPHER_SUITES {
+    for suite in rind_rustls::ALL_CIPHER_SUITES {
         let key_len = match suite {
             SupportedCipherSuite::Tls13(suite) => suite.aead_alg.key_len(),
             SupportedCipherSuite::Tls12(suite) => suite.aead_alg.key_block_shape().enc_key_len,
@@ -191,9 +191,9 @@ fn quic_protection() {
     use rustls::quic::{Keys, Version};
 
     for suite in [
-        rind_rustls::suites::TLS13_AES_128_GCM_SHA256,
-        rind_rustls::suites::TLS13_AES_256_GCM_SHA384,
-        rind_rustls::suites::TLS13_CHACHA20_POLY1305_SHA256,
+        rind_rustls::cipher_suite::TLS13_AES_128_GCM_SHA256,
+        rind_rustls::cipher_suite::TLS13_AES_256_GCM_SHA384,
+        rind_rustls::cipher_suite::TLS13_CHACHA20_POLY1305_SHA256,
     ] {
         let SupportedCipherSuite::Tls13(suite) = suite else {
             unreachable!()
@@ -245,7 +245,7 @@ fn quic_protection() {
 
 #[test]
 fn signing() {
-    let provider = rind_rustls::default_provider();
+    let provider = rind_rustls::default_provider().unwrap();
     let algorithms = provider.signature_verification_algorithms;
 
     for slug in [

@@ -36,7 +36,7 @@ fn error(err: String) -> io::Error {
 #[tokio::main]
 async fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Set a process wide default crypto provider.
-    rind_rustls::default_provider().install_default().unwrap();
+    rind_rustls::default_provider()?.install_default().unwrap();
 
     // First parameter is port number (optional, defaults to 1337)
     let mut args = env::args();

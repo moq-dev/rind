@@ -49,7 +49,7 @@ struct Tee {
 impl Tee {
     fn new() -> Arc<Self> {
         Arc::new(Self {
-            rind: rind_object_store::default_provider(),
+            rind: rind_object_store::default_provider().unwrap(),
             checked: Arc::default(),
         })
     }
@@ -295,7 +295,7 @@ async fn gcs_signed_url_pkcs1() {
 
 #[test]
 fn sign_refuses_non_rsa_keys() {
-    let provider = rind_object_store::default_provider();
+    let provider = rind_object_store::default_provider().unwrap();
     // A PKCS#8 label around a PKCS#1 body, so the DER does not parse as PKCS#8.
     let mislabelled = std::str::from_utf8(PKCS1)
         .unwrap()

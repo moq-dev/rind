@@ -8,11 +8,13 @@
 //! Then hand the provider to each store's builder:
 //!
 //! ```rust,no_run
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let store = object_store::gcp::GoogleCloudStorageBuilder::new()
 //!     .with_bucket_name("bucket")
-//!     .with_crypto_provider(rind_object_store::default_provider())
-//!     .build()
-//!     .unwrap();
+//!     .with_crypto_provider(rind_object_store::default_provider()?)
+//!     .build()?;
+//! # Ok(())
+//! # }
 //! ```
 
 use std::sync::Arc;
@@ -26,11 +28,14 @@ use rind::{digest, hmac};
 use rustls_pki_types::PrivateKeyDer;
 use rustls_pki_types::pem::PemObject;
 
-const STORE: &str = "rind";
+// Names the provider, as object_store's own providers do in this field.
+const STORE: &str = "RindCryptoProvider";
 
-/// Returns an object_store [`CryptoProvider`] backed by rind.
-pub fn default_provider() -> Arc<dyn CryptoProvider> {
-    Arc::new(Provider)
+/// Returns an object_store [`CryptoProvider`] backed by rind, or the CPU
+/// feature rind requires that this CPU lacks.
+pub fn default_provider() -> Result<Arc<dyn CryptoProvider>, rind::cpu::MissingFeature> {
+    rind::cpu::check()?;
+    Ok(Arc::new(Provider))
 }
 
 #[derive(Debug)]

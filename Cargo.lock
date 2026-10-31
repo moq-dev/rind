@@ -3026,6 +3026,7 @@ dependencies = [
  "rind-rustls",
  "rustls",
  "rustls-pki-types",
+ "zeroize",
 ]
 
 [[package]]

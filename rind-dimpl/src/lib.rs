@@ -7,10 +7,12 @@
 //! Then hand the provider to each config:
 //!
 //! ```rust
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let config = dimpl::Config::builder()
-//!     .with_crypto_provider(rind_dimpl::default_provider())
-//!     .build()
-//!     .unwrap();
+//!     .with_crypto_provider(rind_dimpl::default_provider()?)
+//!     .build()?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! Or install it for the process with [`CryptoProvider::install_default`].
@@ -22,19 +24,21 @@ mod kx;
 mod sign;
 mod suite;
 
-/// Returns a dimpl [`CryptoProvider`] backed by rind.
+/// Returns a dimpl [`CryptoProvider`] backed by rind, or the CPU feature rind
+/// requires that this CPU lacks.
 ///
 /// It negotiates DTLS 1.2 ECDHE-ECDSA and DTLS 1.3 with AES-128-GCM,
 /// AES-256-GCM, and ChaCha20-Poly1305, over X25519, P-256, and P-384, and
 /// signs with ECDSA P-256 or P-384 keys in PKCS#8 or SEC1 DER. It prefers
 /// ChaCha20-Poly1305 where rind runs AES without CPU instructions.
-pub fn default_provider() -> CryptoProvider {
+pub fn default_provider() -> Result<CryptoProvider, rind::cpu::MissingFeature> {
+    rind::cpu::check()?;
     let (cipher_suites, dtls13_cipher_suites) = if rind::cpu::has_aes_hardware() {
         (suite::DTLS12, suite::DTLS13)
     } else {
         (suite::DTLS12_CHACHA20_FIRST, suite::DTLS13_CHACHA20_FIRST)
     };
-    CryptoProvider {
+    Ok(CryptoProvider {
         kx_groups: kx::ALL,
         signature_verification: &sign::VERIFIER,
         key_provider: &sign::KEYS,
@@ -43,5 +47,5 @@ pub fn default_provider() -> CryptoProvider {
         hmac_provider: &digest::HMAC,
         cipher_suites,
         dtls13_cipher_suites,
-    }
+    })
 }

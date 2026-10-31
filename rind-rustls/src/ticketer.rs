@@ -6,18 +6,19 @@ use rind::aead::{RandomNonce, RandomizedNonceKey};
 use rind::rand;
 use rustls::crypto::GetRandomFailed;
 use rustls::server::ProducesTickets;
-use rustls::{Error, TicketRotator};
+use rustls::{Error, OtherError, TicketRotator};
 
 /// The default ticketer.
 pub struct Ticketer;
 
 impl Ticketer {
-    /// Make a new ticketer.
+    /// Make a new ticketer, or fail on a CPU missing a feature rind requires.
     ///
     /// Tickets are encrypted with XChaCha20Poly1305.
     /// Ticket keys are rotated every 6 hours.
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Result<Arc<dyn ProducesTickets>, Error> {
+        rind::cpu::check().map_err(|missing| Error::Other(OtherError(Arc::new(missing))))?;
         Ok(Arc::new(TicketRotator::new(
             ONE_TICKET_LIFETIME_SECS,
             make_ticket_generator,
