@@ -21,9 +21,19 @@ mod generic {
     pub(crate) mod mlkem;
     #[cfg(target_arch = "aarch64")]
     pub(crate) mod mlkem768;
-    // armv7's P-384, also built in tests elsewhere to check it against s2n-bignum.
+    // armv7's group orders, picked from by modulus.
+    #[cfg(target_arch = "arm")]
+    pub(crate) mod order;
+    // armv7's P-384 and P-521, also built in tests elsewhere to check them
+    // against s2n-bignum.
     #[cfg(any(target_arch = "arm", test))]
     pub(crate) mod p384;
+    #[cfg(any(target_arch = "arm", test))]
+    pub(crate) mod p521;
+    // Copied unmodified, so its generated casts are allowed rather than edited.
+    #[cfg(any(target_arch = "arm", test))]
+    #[allow(trivial_numeric_casts, unreachable_pub)]
+    mod p521_scalar;
     #[cfg(not(target_arch = "arm"))]
     pub(crate) mod poly1305;
     // armv7's SHA1 and SHA256, also built in x86_64 tests to check the AVX2
@@ -268,15 +278,21 @@ cfg_if::cfg_if! {
         pub(crate) use arm::bignum_eq::bignum_eq;
         pub(crate) use arm::curve25519::{curve25519_x25519, curve25519_x25519base};
         pub(crate) use arm::posint::{PosInt, SecretPosInt};
-        // libcrux exports P-384 only as ECDH, so its arithmetic is fiat-crypto's.
+        // libcrux exports P-384 only as ECDH, and has no P-521, so their
+        // arithmetic is fiat-crypto's.
         #[cfg(test)]
-        pub(crate) use generic::p384::bignum_montifier;
+        pub(crate) use generic::order::bignum_montifier;
+        pub(crate) use generic::order::{bignum_demont, bignum_modadd, bignum_modinv, bignum_montmul};
         pub(crate) use generic::p384::{
-            bignum_add_p384, bignum_aff_point_select_p384, bignum_demont, bignum_demont_p384,
-            bignum_inv_p384, bignum_jac_point_select_p384, bignum_mod_n384, bignum_modadd,
-            bignum_modinv, bignum_montmul, bignum_montmul_p384, bignum_montsqr_p384, bignum_mux,
-            bignum_neg_p384, bignum_tomont_p384, p384_montjadd, p384_montjdouble,
-            p384_montjmixadd,
+            bignum_add_p384, bignum_aff_point_select_p384, bignum_demont_p384,
+            bignum_inv_p384, bignum_jac_point_select_p384, bignum_mod_n384, bignum_montmul_p384,
+            bignum_montsqr_p384, bignum_mux, bignum_neg_p384, bignum_tomont_p384, p384_montjadd,
+            p384_montjdouble, p384_montjmixadd,
+        };
+        pub(crate) use generic::p521::{
+            bignum_add_p521, bignum_aff_point_select_p521, bignum_inv_p521, bignum_mod_n521,
+            bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd, p521_jdouble,
+            p521_jmixadd, p521_jscalarmul,
         };
         // SHA-1 and SHA-256 use the crypto extension where present, else rind's
         // portable SHA, since libcrux has no SHA-1 and rind's SHA-256 is faster

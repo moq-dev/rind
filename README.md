@@ -112,6 +112,7 @@ or a [quest](quest/README.md) covers it. The table describes
 | Ed25519 | [s2n-bignum] point and scalar arithmetic ✓; Graviola EdDSA ⚡; SHA-512 as in its row | [s2n-bignum] point and scalar arithmetic ✓; Graviola EdDSA ⚡; [aws-lc] SHA-512 ✓ | [curve25519-dalek] point and scalar arithmetic ⚡; rind EdDSA ⚡; SHA-512 as in its row |
 | P-256 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and secret scalar multiplication ✓; Graviola verification's scalar multiplication ⚡ and ECDSA ⚡ | [s2n-bignum] field and point arithmetic, and secret scalar multiplication ✓; Graviola verification's scalar multiplication ⚡ and ECDSA ⚡ | [HACL\*] ✓; Graviola ECDSA nonce |
 | P-384 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [fiat-crypto] field and scalar arithmetic ✓; scalar multiplication over it ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator, and Graviola other scalar multiplication; Graviola ECDSA |
+| P-521 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡, and verification's other scalar multiplication ⚡; Graviola ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡, and verification's other scalar multiplication ⚡; Graviola ECDSA | [fiat-crypto] field and scalar arithmetic ✓; scalar multiplication over it ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator; Graviola ECDSA |
 | ML-KEM-768 | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 and AVX-512 sampling ⚡ | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 ⚡ | [libcrux-ml-kem] ✓, except its SHA-3 |
 | RSA PKCS#1 v1.5 and PSS signatures, key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
 
@@ -130,7 +131,7 @@ The tests use [Wycheproof]'s vectors.
 | [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`, and the C that drives that Poly1305, ported to Rust. aws-lc takes its Poly1305 from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305 ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification) that its x86_64 AVX and aarch64 (with and without the SHA-512 instructions) SHA-384/512 routines compute their specified result for all inputs. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [curve25519-dalek] | dependency, with its serial 32-bit backend | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
-| [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
+| [fiat-crypto] | dependency; copied: its arithmetic mod P-521's group order, from RustCrypto's [p521] 0.13.3 | MIT OR Apache-2.0 OR BSD-1-Clause; the copied file Apache-2.0 OR MIT | [Coq proofs](https://github.com/mit-plv/fiat-crypto) that each generated field operation is correct. RustCrypto's fiat-constify rewrite of the copied file, and rind's point formulas, inversion, and table lookup over them, are not covered. |
 
 rind's own code is licensed under Apache-2.0 OR ISC OR MIT-0. Copied code
 keeps its source's copyright and license, which [LICENSE] lists with the
@@ -138,7 +139,7 @@ texts they require; dependencies ship their own. Every file under
 `rind/src` names its license in a `SPDX-License-Identifier` comment, and
 files Graviola wrote keep their `Written for Graviola by ...` header. The
 `rind` crate as a whole is therefore `(Apache-2.0 OR ISC OR MIT-0) AND
-(Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC`. The adapter crates copy
+(Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND (Apache-2.0 OR MIT)`. The adapter crates copy
 nothing under another license, so they stay `Apache-2.0 OR ISC OR MIT-0`.
 
 A change that copies code from a new source, or moves an algorithm to a
@@ -154,6 +155,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [aws-lc]: https://github.com/aws/aws-lc
 [aws-lc-rs]: https://github.com/aws/aws-lc-rs
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto
+[p521]: https://github.com/RustCrypto/elliptic-curves/tree/master/p521
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
@@ -195,6 +197,15 @@ Variable point multiplication uses a 5-bit exponent window with Booth encoding.
 P384 base and variable point multiplication both use a 5-bit exponent window with Booth encoding.
 (This means we're leaving a some P384 base point performance on the table, in exchange for code space.
 P384 performance seems to be less important than P256.)
+
+P521's prime is a Mersenne prime, so its field arithmetic is direct rather
+than Montgomery's. Base point multiplication uses a comb of 27 tables of 16
+affine points (a 62KB constant table) over 5-bit Booth windows, as aws-lc
+does. Variable point multiplication is s2n-bignum's `p521_jscalarmul` for a
+secret scalar, and a 5-bit Booth window over the point's cached multiples for
+ECDSA verification's public one. s2n-bignum's P521 point addition requires
+points that are not at infinity, equal, or opposite, so the comb and the
+window keep to that, and select or branch around the cases they reach.
 
 Both use the same exponent representations for "public" and "secret" exponents --
 however the table selection for "public" exponents is specialized at compile-time.
@@ -282,9 +293,9 @@ rind deviates, the item's docs say why.
 - `aead`: AES-GCM and ChaCha20-Poly1305 keys with caller nonces, and an
   XChaCha20-Poly1305 key that picks random nonces.
 - `cipher`: bare AES, AES-CTR, and ChaCha20, for header protection and SRTP.
-- `agreement`: ephemeral X25519 and ECDH on P-256 and P-384.
+- `agreement`: ephemeral X25519 and ECDH on P-256, P-384, and P-521.
 - `kem`: ML-KEM-768.
-- `signature`: ECDSA on P-256 and P-384, RSA PKCS#1 v1.5 and PSS, and
+- `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, and SHA-512.
 - `hmac`: HMAC over those digests, keyed once and reused.

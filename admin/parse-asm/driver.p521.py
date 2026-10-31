@@ -21,13 +21,6 @@ def emit(arch, source_dir, out_dir, source, name, rust_decl, parameters, hoist=N
         parse_file(input, d)
 
 
-LOCAL_FUNCTIONS = {
-    "p521_jadd": "sub_p521",
-    "p521_jmixadd": "sub_p521",
-    "p521_jdouble": "sqr_p521",
-}
-
-
 def emit_all(arch, source_dir, out_dir, alt):
     zx = ["z.as_mut_ptr() => _", "x.as_ptr() => _"]
     zxy = zx + ["y.as_ptr() => _"]
@@ -89,12 +82,7 @@ def emit_all(arch, source_dir, out_dir, alt):
             p3p1p2[:2],
         ),
     ]:
-        # aarch64's point routines without `_alt` call local functions after
-        # their body; the last of them ends the hoist.
-        hoist = None
-        if source_dir == "arm" and source in LOCAL_FUNCTIONS:
-            hoist = ["proc", f"L{source}_local_{LOCAL_FUNCTIONS[source]}", "ret"]
-        emit(arch, source_dir, out_dir, source, name, rust_decl, parameters, hoist)
+        emit(arch, source_dir, out_dir, source, name, rust_decl, parameters)
 
     # Its local functions follow its body; the last of them ends the hoist.
     last = "sqr_p521" if source_dir == "x86" else "sub_p521"
@@ -112,4 +100,5 @@ def emit_all(arch, source_dir, out_dir, alt):
 
 if __name__ == "__main__":
     emit_all(Architecture_amd64, "x86", "x86_64", "")
-    emit_all(Architecture_aarch64, "arm", "aarch64", "")
+    # The `_alt` routines measured faster on aarch64 (Neoverse N2).
+    emit_all(Architecture_aarch64, "arm", "aarch64", "_alt")
