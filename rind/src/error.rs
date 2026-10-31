@@ -50,7 +50,6 @@ pub(crate) enum KeyFormatError {
     RsaPrimes,
     MultiPrimeRsa,
     MlKemModulus,
-    MismatchedAlgorithm,
     UnsupportedPkcs8Version,
     MismatchedPkcs8Algorithm,
     MismatchedPkcs8Parameters,
@@ -94,7 +93,6 @@ impl core::fmt::Display for KeyRejected {
             KeyFormatError::RsaPrimes => write!(f, "unsupported RSA primes"),
             KeyFormatError::MultiPrimeRsa => write!(f, "a multi-prime RSA key"),
             KeyFormatError::MlKemModulus => write!(f, "an ML-KEM key failing the modulus check"),
-            KeyFormatError::MismatchedAlgorithm => write!(f, "a key for another algorithm"),
             KeyFormatError::UnsupportedPkcs8Version => write!(f, "unsupported PKCS#8 version"),
             KeyFormatError::MismatchedPkcs8Algorithm => write!(f, "mismatched PKCS#8 algorithm"),
             KeyFormatError::MismatchedPkcs8Parameters => {

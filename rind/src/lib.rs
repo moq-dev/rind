@@ -137,8 +137,8 @@ pub mod kem {
 pub mod signature {
     pub use crate::high::signature::{
         EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, Pkcs8, PublicKey, RsaKeyPair,
-        RsaKeySize, RsaPublicKeyComponents, RsaSigningAlgorithm, Signature, Spki,
-        VerificationAlgorithm,
+        RsaKeySize, RsaPublicKeyComponents, RsaSigningAlgorithm, RsaVerificationAlgorithm,
+        Signature, Spki, VerificationAlgorithm,
     };
 
     /// Algorithms a key pair signs with.

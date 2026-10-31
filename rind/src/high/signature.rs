@@ -128,6 +128,31 @@ impl fmt::Debug for VerificationAlgorithm {
     }
 }
 
+impl AsRef<Self> for VerificationAlgorithm {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+/// An RSA signature verification algorithm, which also parses
+/// [`RsaPublicKeyComponents`].
+pub struct RsaVerificationAlgorithm {
+    rsa: Rsa,
+    algorithm: VerificationAlgorithm,
+}
+
+impl AsRef<VerificationAlgorithm> for RsaVerificationAlgorithm {
+    fn as_ref(&self) -> &VerificationAlgorithm {
+        &self.algorithm
+    }
+}
+
+impl fmt::Debug for RsaVerificationAlgorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.rsa.fmt(f)
+    }
+}
+
 /// A public key, bound to the one algorithm it verifies signatures with.
 ///
 /// Its bytes are its encoding, as [`PublicKey::new`] takes it.
@@ -146,14 +171,17 @@ enum Parsed {
 }
 
 impl PublicKey {
-    /// Parses a public key for `algorithm`, refusing a malformed key before
-    /// any signature arrives.
+    /// Parses a public key for `algorithm`, any `verify` constant,
+    /// refusing a malformed key before any signature arrives.
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
     /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. A compressed
     /// ECDSA point is refused: no consumer sends one.
-    pub fn new(algorithm: &'static VerificationAlgorithm, bytes: &[u8]) -> Result<Self, Error> {
-        let key = match algorithm.0 {
+    pub fn new(
+        algorithm: &'static impl AsRef<VerificationAlgorithm>,
+        bytes: &[u8],
+    ) -> Result<Self, Error> {
+        let key = match algorithm.as_ref().0 {
             Verification::Ecdsa(ecdsa) => match ecdsa.curve {
                 CurveId::P256 => {
                     Parsed::EcdsaP256(ecdsa::VerifyingKey::from_x962_uncompressed(bytes)?, ecdsa)
@@ -584,18 +612,23 @@ impl Rsa {
     }
 }
 
-const fn rsa_verification(scheme: RsaScheme, min_bits: usize) -> VerificationAlgorithm {
-    VerificationAlgorithm(Verification::Rsa(Rsa {
-        verification: RsaVerification::Scheme(scheme),
-        min_bits,
-    }))
+const fn rsa_verification(scheme: RsaScheme, min_bits: usize) -> RsaVerificationAlgorithm {
+    rsa_algorithm(RsaVerification::Scheme(scheme), min_bits)
 }
 
-const fn rsa_sha1_verification(min_bits: usize) -> VerificationAlgorithm {
-    VerificationAlgorithm(Verification::Rsa(Rsa {
-        verification: RsaVerification::Pkcs1Sha1,
+const fn rsa_sha1_verification(min_bits: usize) -> RsaVerificationAlgorithm {
+    rsa_algorithm(RsaVerification::Pkcs1Sha1, min_bits)
+}
+
+const fn rsa_algorithm(verification: RsaVerification, min_bits: usize) -> RsaVerificationAlgorithm {
+    let rsa = Rsa {
+        verification,
         min_bits,
-    }))
+    };
+    RsaVerificationAlgorithm {
+        rsa,
+        algorithm: VerificationAlgorithm(Verification::Rsa(rsa)),
+    }
 }
 
 /// An RSA public key as its big-endian modulus and exponent, as a JWK
@@ -609,16 +642,13 @@ pub struct RsaPublicKeyComponents<B> {
 }
 
 impl<B: AsRef<[u8]>> RsaPublicKeyComponents<B> {
-    /// Parses this key for `algorithm`, which must be an RSA algorithm.
+    /// Parses this key for `algorithm`.
     pub fn to_public_key(
         &self,
-        algorithm: &'static VerificationAlgorithm,
+        algorithm: &'static RsaVerificationAlgorithm,
     ) -> Result<PublicKey, Error> {
-        let Verification::Rsa(rsa) = algorithm.0 else {
-            return Err(KeyFormatError::MismatchedAlgorithm.into());
-        };
         let key = rsa::VerifyingKey::from_components(self.n.as_ref(), self.e.as_ref())?;
-        PublicKey::rsa(rsa, key)
+        PublicKey::rsa(algorithm.rsa, key)
     }
 }
 
@@ -935,25 +965,28 @@ pub(crate) mod verify {
         ecdsa_verification(CurveId::P521, HashId::Sha512, EcdsaEncoding::Fixed);
 
     /// RSASSA-PKCS1-v1_5 with SHA-256, for moduli of 2048 to 8192 bits.
-    pub static RSA_PKCS1_SHA256: VerificationAlgorithm =
+    pub static RSA_PKCS1_SHA256: RsaVerificationAlgorithm =
         rsa_verification(PKCS1_SHA256, RSA_MIN_BITS);
 
     /// RSASSA-PKCS1-v1_5 with SHA-384, for moduli of 2048 to 8192 bits.
-    pub static RSA_PKCS1_SHA384: VerificationAlgorithm =
+    pub static RSA_PKCS1_SHA384: RsaVerificationAlgorithm =
         rsa_verification(PKCS1_SHA384, RSA_MIN_BITS);
 
     /// RSASSA-PKCS1-v1_5 with SHA-512, for moduli of 2048 to 8192 bits.
-    pub static RSA_PKCS1_SHA512: VerificationAlgorithm =
+    pub static RSA_PKCS1_SHA512: RsaVerificationAlgorithm =
         rsa_verification(PKCS1_SHA512, RSA_MIN_BITS);
 
     /// RSASSA-PSS with SHA-256, MGF1-SHA-256, and a 32-byte salt, for moduli of 2048 to 8192 bits.
-    pub static RSA_PSS_SHA256: VerificationAlgorithm = rsa_verification(PSS_SHA256, RSA_MIN_BITS);
+    pub static RSA_PSS_SHA256: RsaVerificationAlgorithm =
+        rsa_verification(PSS_SHA256, RSA_MIN_BITS);
 
     /// RSASSA-PSS with SHA-384, MGF1-SHA-384, and a 48-byte salt, for moduli of 2048 to 8192 bits.
-    pub static RSA_PSS_SHA384: VerificationAlgorithm = rsa_verification(PSS_SHA384, RSA_MIN_BITS);
+    pub static RSA_PSS_SHA384: RsaVerificationAlgorithm =
+        rsa_verification(PSS_SHA384, RSA_MIN_BITS);
 
     /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a 64-byte salt, for moduli of 2048 to 8192 bits.
-    pub static RSA_PSS_SHA512: VerificationAlgorithm = rsa_verification(PSS_SHA512, RSA_MIN_BITS);
+    pub static RSA_PSS_SHA512: RsaVerificationAlgorithm =
+        rsa_verification(PSS_SHA512, RSA_MIN_BITS);
 
     /// Ed25519, with 32-byte public keys and 64-byte signatures.
     ///
@@ -965,21 +998,21 @@ pub(crate) mod verify {
         use super::super::*;
 
         /// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures only: SHA-1 collisions are practical.
-        pub static RSA_PKCS1_SHA1: VerificationAlgorithm = rsa_sha1_verification(RSA_MIN_BITS);
+        pub static RSA_PKCS1_SHA1: RsaVerificationAlgorithm = rsa_sha1_verification(RSA_MIN_BITS);
 
         /// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures by keys with moduli down to 1024 bits.
-        pub static RSA_PKCS1_1024_SHA1: VerificationAlgorithm = rsa_sha1_verification(1024);
+        pub static RSA_PKCS1_1024_SHA1: RsaVerificationAlgorithm = rsa_sha1_verification(1024);
 
         /// RSASSA-PKCS1-v1_5 with SHA-256, for old keys with moduli down to 1024 bits.
-        pub static RSA_PKCS1_1024_SHA256: VerificationAlgorithm =
+        pub static RSA_PKCS1_1024_SHA256: RsaVerificationAlgorithm =
             rsa_verification(PKCS1_SHA256, 1024);
 
         /// RSASSA-PKCS1-v1_5 with SHA-512, for old keys with moduli down to 1024 bits.
-        pub static RSA_PKCS1_1024_SHA512: VerificationAlgorithm =
+        pub static RSA_PKCS1_1024_SHA512: RsaVerificationAlgorithm =
             rsa_verification(PKCS1_SHA512, 1024);
 
         /// RSASSA-PKCS1-v1_5 with SHA-384, for moduli of 3072 to 8192 bits.
-        pub static RSA_PKCS1_3072_SHA384: VerificationAlgorithm =
+        pub static RSA_PKCS1_3072_SHA384: RsaVerificationAlgorithm =
             rsa_verification(PKCS1_SHA384, 3072);
     }
 }
@@ -1135,7 +1168,7 @@ mod tests {
             (&verify::ECDSA_P256_SHA256_ASN1, &point[1..]),
             (&verify::ECDSA_P384_SHA384_ASN1, point),
             (&verify::ED25519, &point[..31]),
-            (&verify::RSA_PKCS1_SHA256, point),
+            (verify::RSA_PKCS1_SHA256.as_ref(), point),
         ];
         for (algorithm, bytes) in malformed {
             assert!(PublicKey::new(algorithm, bytes).is_err(), "{algorithm:?}");
@@ -1319,12 +1352,6 @@ mod tests {
                 der.as_ref()
             )),
             KeyFormatError::RsaModulus.into()
-        );
-
-        // Components only make an RSA key.
-        assert_eq!(
-            rejected(key.to_public_key(&verify::ECDSA_P256_SHA256_ASN1)),
-            KeyFormatError::MismatchedAlgorithm.into()
         );
 
         let n0 = [&[0], n].concat();

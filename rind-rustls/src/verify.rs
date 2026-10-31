@@ -1,3 +1,5 @@
+use core::fmt;
+
 use rind::signature::{self, VerificationAlgorithm, verify};
 use rustls::SignatureScheme;
 use rustls::crypto::WebPkiSupportedAlgorithms;
@@ -123,11 +125,21 @@ static RSA_PKCS1_SHA512: &dyn SignatureVerificationAlgorithm = &Verify {
 /// webpki hands over the `subjectPublicKey` bit string, which is the encoding
 /// each constant takes: an X9.62 point, a PKCS#1 `RSAPublicKey`, or Ed25519's
 /// 32 bytes.
-#[derive(Debug)]
 struct Verify {
     public_key_alg_id: AlgorithmIdentifier,
     signature_alg_id: AlgorithmIdentifier,
-    algorithm: &'static VerificationAlgorithm,
+    // RSA's constants are their own type, which converts to this.
+    algorithm: &'static (dyn AsRef<VerificationAlgorithm> + Sync),
+}
+
+impl fmt::Debug for Verify {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Verify")
+            .field("public_key_alg_id", &self.public_key_alg_id)
+            .field("signature_alg_id", &self.signature_alg_id)
+            .field("algorithm", self.algorithm.as_ref())
+            .finish()
+    }
 }
 
 impl SignatureVerificationAlgorithm for Verify {
@@ -145,7 +157,7 @@ impl SignatureVerificationAlgorithm for Verify {
         message: &[u8],
         signature: &[u8],
     ) -> Result<(), InvalidSignature> {
-        signature::PublicKey::new(self.algorithm, public_key)
+        signature::PublicKey::new(self.algorithm.as_ref(), public_key)
             .and_then(|key| key.verify(message, signature))
             .map_err(|_| InvalidSignature)
     }

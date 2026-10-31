@@ -13,7 +13,8 @@ ring's names match aws-lc-rs's here, except where noted.
 | `UnparsedPublicKey::new(alg, bytes).verify(m, s)` | `PublicKey::new(alg, bytes)?.verify(m, s)` |
 | `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, `verify` |
 | `RsaPublicKeyComponents::verify(alg, m, s)` | `components.to_public_key(alg)?.verify(m, s)` |
-| `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `RsaParameters`, `EdDSAParameters` | `VerificationAlgorithm` |
+| `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `EdDSAParameters` | `VerificationAlgorithm` |
+| `RsaParameters` | `RsaVerificationAlgorithm`, which `PublicKey::new` also takes |
 | `EcdsaSigningAlgorithm`, `RsaEncoding`/`RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
 | `ECDSA_P256_SHA256_ASN1_SIGNING` and the other `_SIGNING` | `sign::ECDSA_P256_SHA256_ASN1` |
 | `ECDSA_P256_SHA256_ASN1`, `ED25519` | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |

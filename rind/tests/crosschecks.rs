@@ -730,7 +730,7 @@ mod rsa {
     /// One padding and hash: each side's signing and verification constants.
     struct Scheme {
         ours_sign: &'static rind::signature::RsaSigningAlgorithm,
-        ours_verify: &'static rind::signature::VerificationAlgorithm,
+        ours_verify: &'static rind::signature::RsaVerificationAlgorithm,
         theirs_sign: &'static signature::RsaSignatureEncoding,
         theirs_verify: &'static signature::RsaParameters,
         /// PKCS#1 v1.5 signatures have no randomness, so both sides must agree.
@@ -846,7 +846,7 @@ mod rsa {
 
     // Every verification algorithm, beside aws-lc-rs's of the same name.
     const VERIFICATION: [(
-        &rind::signature::VerificationAlgorithm,
+        &rind::signature::RsaVerificationAlgorithm,
         &signature::RsaParameters,
     ); 11] = [
         (
