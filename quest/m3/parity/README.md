@@ -8,9 +8,10 @@ swap, rind-rustls matches aws-lc-rs's rustls provider, and a migration guide
 maps each ring and aws-lc-rs item to rind's. aws-lc-rs-only algorithms are
 listed and start only when a consumer asks.
 
-This epic's own work, once its children land: the migration guide, a table
-from each ring and aws-lc-rs item to rind's equivalent (or to the quest that
-adds it, or the reason rind refuses it), linked from the README.
+This epic's own work, once its children land: in the migration guide,
+`MIGRATING.md`, a table from each ring and aws-lc-rs item to rind's equivalent
+(or to the quest that adds it, or the reason rind refuses it), and a link to
+the guide from the README.
 
 ## Plan
 
@@ -33,5 +34,4 @@ Decided by the maintainer on 2026-10-30:
 
 - [rustls provider parity](/quest/m3/parity/rustls.md) - rind-rustls offers what aws-lc-rs's provider does
 - [rind-ring](/quest/m3/parity/rind-ring.md) - ring's API on rind, for a drop-in swap
-- [Adapter survey](/quest/m3/parity/adapter-survey.md) - which crates with pluggable crypto need a `rind-*` adapter
 - [aws-lc-rs extras on demand](/quest/m3/parity/aws-lc-extras.md) - waiting on a consumer for each aws-lc-rs-only algorithm

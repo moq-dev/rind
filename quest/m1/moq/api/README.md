@@ -12,9 +12,8 @@ This epic's own work, once its children land:
 
 - README's Architecture section describes the new design, not aws-lc-rs's
   shape.
-- The migration guide (`MIGRATING.md`, started by the
-  [adapter survey](/quest/m3/parity/adapter-survey.md)) maps every
-  aws-lc-rs and ring item to its rind name. The per-item "deviates from
+- The migration guide, `MIGRATING.md`, maps every aws-lc-rs and ring item
+  to its rind name, beside its survey of crates with their own backend. The per-item "deviates from
   aws-lc-rs" doc notes move there as each child lands.
 
 ## Plan
