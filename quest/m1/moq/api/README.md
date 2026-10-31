@@ -90,7 +90,6 @@ may adjust details as it learns, and records any change in its PR.
 ## Required
 
 - [Signature API](/quest/m1/moq/api/signature.md) - one public key type, `sign`/`verify` constants, owned encodings, format-named loaders
-- [Agreement and KEM API](/quest/m1/moq/api/agreement-kem.md) - `PrivateKey::agree`, `public_key()`, slice ciphertexts
 - [Symmetric API](/quest/m1/moq/api/symmetric.md) - `aead::Key`, typed tags, `legacy` submodules, infallible HKDF expand
 - [Errors by role](/quest/m1/moq/api/errors.md) - about six variants, each from a distinct kind of call
 - [Adapter API](/quest/m1/moq/api/adapters.md) - rind-rustls mirrors rustls, rind-rcgen broadens, setup-time CPU checks

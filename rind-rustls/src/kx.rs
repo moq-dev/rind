@@ -73,9 +73,8 @@ impl SupportedKxGroup for P384 {
 }
 
 struct Active {
-    algorithm: &'static agreement::Algorithm,
     group: rustls::NamedGroup,
-    priv_key: agreement::EphemeralPrivateKey,
+    priv_key: agreement::PrivateKey,
     pub_key: agreement::PublicKey,
 }
 
@@ -84,11 +83,10 @@ impl Active {
         algorithm: &'static agreement::Algorithm,
         group: rustls::NamedGroup,
     ) -> Result<Box<dyn crypto::ActiveKeyExchange>, rustls::Error> {
-        let priv_key = agreement::EphemeralPrivateKey::generate(algorithm)
+        let priv_key = agreement::PrivateKey::generate(algorithm)
             .map_err(|_| rustls::Error::from(crypto::GetRandomFailed))?;
-        let pub_key = priv_key.compute_public_key();
+        let pub_key = priv_key.public_key();
         Ok(Box::new(Self {
-            algorithm,
             group,
             priv_key,
             pub_key,
@@ -98,8 +96,9 @@ impl Active {
 
 impl crypto::ActiveKeyExchange for Active {
     fn complete(self: Box<Self>, peer: &[u8]) -> Result<crypto::SharedSecret, rustls::Error> {
-        let peer = agreement::UnparsedPublicKey::new(self.algorithm, peer);
-        let shared_secret = agreement::agree_ephemeral(self.priv_key, &peer)
+        let shared_secret = self
+            .priv_key
+            .agree(peer)
             .map_err(|_| rustls::Error::from(rustls::PeerMisbehaved::InvalidKeyShare))?;
         Ok(crypto::SharedSecret::from(shared_secret.as_ref()))
     }
@@ -153,8 +152,8 @@ mod tests {
         // A key exchange with a valid peer public key should succeed.
         let active = key.start().unwrap();
         assert_eq!(active.ffdhe_group(), None);
-        let peer = agreement::EphemeralPrivateKey::generate(&agreement::X25519).unwrap();
-        assert!(active.complete(peer.compute_public_key().as_ref()).is_ok());
+        let peer = agreement::PrivateKey::generate(&agreement::X25519).unwrap();
+        assert!(active.complete(peer.public_key().as_ref()).is_ok());
     }
 
     #[test]
@@ -173,8 +172,8 @@ mod tests {
         // A key exchange with a valid peer public key should succeed.
         let active = key.start().unwrap();
         assert_eq!(active.ffdhe_group(), None);
-        let peer = agreement::EphemeralPrivateKey::generate(&agreement::ECDH_P256).unwrap();
-        assert!(active.complete(peer.compute_public_key().as_ref()).is_ok());
+        let peer = agreement::PrivateKey::generate(&agreement::ECDH_P256).unwrap();
+        assert!(active.complete(peer.public_key().as_ref()).is_ok());
     }
 
     #[test]
@@ -193,7 +192,7 @@ mod tests {
         // A key exchange with a valid peer public key should succeed.
         let active = key.start().unwrap();
         assert_eq!(active.ffdhe_group(), None);
-        let peer = agreement::EphemeralPrivateKey::generate(&agreement::ECDH_P384).unwrap();
-        assert!(active.complete(peer.compute_public_key().as_ref()).is_ok());
+        let peer = agreement::PrivateKey::generate(&agreement::ECDH_P384).unwrap();
+        assert!(active.complete(peer.public_key().as_ref()).is_ok());
     }
 }

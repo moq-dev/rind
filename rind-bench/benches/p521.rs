@@ -41,12 +41,11 @@ fn ecdh(c: &mut Criterion) {
     group.bench_function("rind", |b| {
         b.iter(|| {
             use rind::agreement::*;
-            let our_private_key = EphemeralPrivateKey::generate(&ECDH_P521).unwrap();
-            let our_public_key = our_private_key.compute_public_key();
+            let our_private_key = PrivateKey::generate(&ECDH_P521).unwrap();
+            let our_public_key = our_private_key.public_key();
             black_box(our_public_key);
 
-            let peer = UnparsedPublicKey::new(&ECDH_P521, &public_key);
-            let secret = agree_ephemeral(our_private_key, &peer).unwrap();
+            let secret = our_private_key.agree(&public_key).unwrap();
             black_box(secret);
         })
     });
@@ -70,8 +69,8 @@ fn keygen(c: &mut Criterion) {
     group.bench_function("rind", |b| {
         b.iter(|| {
             use rind::agreement::*;
-            let our_private_key = EphemeralPrivateKey::generate(&ECDH_P521).unwrap();
-            black_box(our_private_key.compute_public_key());
+            let our_private_key = PrivateKey::generate(&ECDH_P521).unwrap();
+            black_box(our_private_key.public_key());
         })
     });
 }

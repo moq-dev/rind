@@ -2,7 +2,7 @@ use std::fmt;
 
 use dimpl::crypto::{ActiveKeyExchange, Buf, NamedGroup, SupportedKxGroup};
 use dimpl::{CryptoError, CryptoOperation};
-use rind::agreement::{self, EphemeralPrivateKey, UnparsedPublicKey};
+use rind::agreement::{self, PrivateKey};
 
 #[derive(Debug)]
 struct Group(NamedGroup);
@@ -26,13 +26,12 @@ impl SupportedKxGroup for Group {
             NamedGroup::Secp384r1 => &agreement::ECDH_P384,
             group => return Err(CryptoError::UnsupportedKeyExchangeGroup(group)),
         };
-        let key = EphemeralPrivateKey::generate(algorithm)
+        let key = PrivateKey::generate(algorithm)
             .map_err(|_| CryptoError::OperationFailed(CryptoOperation::GenerateEphemeralKey))?;
         pub_key.clear();
-        pub_key.extend_from_slice(key.compute_public_key().as_ref());
+        pub_key.extend_from_slice(key.public_key().as_ref());
         Ok(Box::new(Exchange {
             group: self.0,
-            algorithm,
             key,
             pub_key,
         }))
@@ -41,8 +40,7 @@ impl SupportedKxGroup for Group {
 
 struct Exchange {
     group: NamedGroup,
-    algorithm: &'static agreement::Algorithm,
-    key: EphemeralPrivateKey,
+    key: PrivateKey,
     pub_key: Buf,
 }
 
@@ -62,8 +60,9 @@ impl ActiveKeyExchange for Exchange {
     fn complete(self: Box<Self>, peer_pub: &[u8], out: &mut Buf) -> Result<(), CryptoError> {
         // Covers a malformed or off-curve point, and X25519's all-zero output
         // from a low-order point (RFC 7748 section 6.1).
-        let peer = UnparsedPublicKey::new(self.algorithm, peer_pub);
-        let secret = agreement::agree_ephemeral(self.key, &peer)
+        let secret = self
+            .key
+            .agree(peer_pub)
             .map_err(|_| CryptoError::InvalidPublicKey(self.group))?;
         out.clear();
         out.extend_from_slice(secret.as_ref());

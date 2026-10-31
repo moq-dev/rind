@@ -91,7 +91,7 @@ fn ed25519() {
 fn ecdh() {
     use rind::agreement::*;
     for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
-        let key = EphemeralPrivateKey::generate(algorithm).unwrap();
+        let key = PrivateKey::generate(algorithm).unwrap();
         check_zeroed_on_drop(Box::pin(key));
     }
 }
