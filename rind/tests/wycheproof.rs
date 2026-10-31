@@ -28,6 +28,13 @@ struct TestGroup {
     #[serde(default, rename(deserialize = "publicKeyAsn"), with = "hex::serde")]
     public_key_asn: Vec<u8>,
 
+    // The PKCS#1 public key of a signing group.
+    #[serde(default, rename(deserialize = "keyAsn"), with = "hex::serde")]
+    key_asn: Vec<u8>,
+
+    #[serde(default, rename(deserialize = "keySize"))]
+    key_size: usize,
+
     #[serde(default, rename(deserialize = "privateKeyPkcs8"), with = "hex::serde")]
     private_key_pkcs8: Vec<u8>,
 
@@ -85,6 +92,11 @@ struct PublicKey {
     uncompressed: Vec<u8>,
     #[serde(default, with = "hex::serde")]
     pk: Vec<u8>,
+    // RSA, as a DER `INTEGER`, so with a sign byte when the top bit is set.
+    #[serde(default, with = "hex::serde")]
+    modulus: Vec<u8>,
+    #[serde(default, rename(deserialize = "publicExponent"), with = "hex::serde")]
+    public_exponent: Vec<u8>,
 }
 
 #[derive(Copy, Clone, Deserialize, Debug, PartialEq)]
@@ -439,25 +451,142 @@ fn test_rsa_pkcs1_verify() {
         for group in tests.groups {
             summary.group(&group);
 
-            let algorithm = match group.sha.as_ref() {
-                "SHA-256" => &signature::RSA_PKCS1_2048_8192_SHA256,
-                "SHA-384" => &signature::RSA_PKCS1_2048_8192_SHA384,
-                "SHA-512" => &signature::RSA_PKCS1_2048_8192_SHA512,
+            // Each algorithm for this hash, with the smallest modulus it takes.
+            let algorithms: &[(&signature::RsaParameters, usize)] = match group.sha.as_ref() {
+                "SHA-256" => &[
+                    (&signature::RSA_PKCS1_2048_8192_SHA256, 2048),
+                    (
+                        &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                ],
+                "SHA-384" => &[
+                    (&signature::RSA_PKCS1_2048_8192_SHA384, 2048),
+                    (&signature::RSA_PKCS1_3072_8192_SHA384, 3072),
+                ],
+                "SHA-512" => &[
+                    (&signature::RSA_PKCS1_2048_8192_SHA512, 2048),
+                    (
+                        &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                ],
                 other => panic!("unhandled sha {other:?}"),
             };
-            let key = signature::UnparsedPublicKey::new(algorithm, &group.public_key_asn);
+            let n = group.public_key.modulus.strip_prefix(&[0]).unwrap();
+            let components = signature::RsaPublicKeyComponents {
+                n,
+                e: &group.public_key.public_exponent[..],
+            };
 
-            for test in group.tests {
-                summary.start(&test);
+            for &(algorithm, min_bits) in algorithms {
+                let key = signature::UnparsedPublicKey::new(algorithm, &group.public_key_asn);
+                if group.key_size < min_bits {
+                    assert_eq!(key.verify(b"", &[]), Err(Error::OutOfRange));
+                    continue;
+                }
 
-                let result = key.verify(&test.msg, &test.sig);
-                match (test.result, &result) {
-                    (ExpectedResult::Valid, Ok(())) => {}
+                // The modulus with its sign byte is not minimal.
+                let signed = signature::RsaPublicKeyComponents {
+                    n: &group.public_key.modulus[..],
+                    e: components.e,
+                };
+                assert!(matches!(
+                    signed.verify(algorithm, b"", &[]),
+                    Err(Error::KeyRejected(_))
+                ));
+
+                for test in &group.tests {
+                    summary.start(test);
+
+                    let result = key.verify(&test.msg, &test.sig);
+                    match (test.result, &result) {
+                        (ExpectedResult::Valid, Ok(())) => {}
+                        (
+                            ExpectedResult::Invalid | ExpectedResult::Acceptable,
+                            Err(Error::BadSignature),
+                        ) => {}
+                        _ => panic!("expected {:?} got {:?}", test.result, result.err()),
+                    }
+                    assert_eq!(components.verify(algorithm, &test.msg, &test.sig), result);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_rsa_pkcs1_legacy_verify() {
+    // Wycheproof has no verification files for SHA-1 or 1024-bit moduli,
+    // but its signing files hold valid signatures for both.
+    for file in &[
+        "rsa_pkcs1_1024_sig_gen_test.json",
+        "rsa_pkcs1_2048_sig_gen_test.json",
+    ] {
+        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+            .expect("failed to open data file");
+        println!("file: {data_file:?}");
+
+        let reader = BufReader::new(data_file);
+        let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+        let mut summary = Summary::new();
+
+        for group in tests.groups {
+            summary.group(&group);
+
+            // Each algorithm for this hash, with the smallest modulus it takes.
+            let algorithms: &[(&signature::RsaParameters, usize)] = match group.sha.as_ref() {
+                "SHA-1" => &[
                     (
-                        ExpectedResult::Invalid | ExpectedResult::Acceptable,
-                        Err(Error::BadSignature),
-                    ) => {}
-                    _ => panic!("expected {:?} got {:?}", test.result, result.err()),
+                        &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                    (
+                        &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+                        2048,
+                    ),
+                ],
+                "SHA-256" => &[
+                    (
+                        &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                    (&signature::RSA_PKCS1_2048_8192_SHA256, 2048),
+                ],
+                "SHA-384" => &[
+                    (&signature::RSA_PKCS1_2048_8192_SHA384, 2048),
+                    (&signature::RSA_PKCS1_3072_8192_SHA384, 3072),
+                ],
+                "SHA-512" => &[
+                    (
+                        &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                    (&signature::RSA_PKCS1_2048_8192_SHA512, 2048),
+                ],
+                other => {
+                    summary.skipped(&format!("pkcs1 verification with {other} not supported"));
+                    continue;
+                }
+            };
+
+            for &(algorithm, min_bits) in algorithms {
+                let key = signature::UnparsedPublicKey::new(algorithm, &group.key_asn);
+                if group.key_size < min_bits {
+                    assert_eq!(key.verify(b"", &[]), Err(Error::OutOfRange));
+                    continue;
+                }
+
+                for test in &group.tests {
+                    summary.start(test);
+
+                    // Every case is valid or acceptable (a small modulus or
+                    // a weak hash), and binds its message.
+                    key.verify(&test.msg, &test.sig).unwrap();
+                    assert_eq!(
+                        key.verify(&[&test.msg[..], b"!"].concat(), &test.sig),
+                        Err(Error::BadSignature)
+                    );
                 }
             }
         }

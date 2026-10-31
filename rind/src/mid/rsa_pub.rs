@@ -92,7 +92,8 @@ const MAX_PUBLIC_MODULUS_BITS: usize = 8192;
 const MAX_PUBLIC_MODULUS_WORDS: usize = MAX_PUBLIC_MODULUS_BITS / 64;
 pub(crate) const MAX_PUBLIC_MODULUS_BYTES: usize = MAX_PUBLIC_MODULUS_BITS / 8;
 
-const MIN_PUBLIC_MODULUS_BITS: usize = 2048;
+// Legacy verification's floor; anything smaller is refused outright.
+const MIN_PUBLIC_MODULUS_BITS: usize = 1024;
 
 type RsaPosInt = low::PosInt<MAX_PUBLIC_MODULUS_WORDS>;
 

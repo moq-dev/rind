@@ -17,7 +17,8 @@ This is one Rust workspace: the `rind` library, its `rind-<consumer>` adapter cr
 - Secret-dependent code runs in constant time: no branch, memory index, or variable-time instruction depends on a secret. New secret-handling paths get a ctgrind test (`admin/ctgrind`).
 - Pick the fastest source for each primitive on each backend. Prefer a formally verified one (s2n-bignum, libcrux/HACL*, fiat-crypto) only when it is as fast, within noise. New arithmetic states where its correctness argument comes from.
 - Test every primitive against Wycheproof where vectors exist, and differentially against aws-lc-rs (a dev-dependency only).
-- When in doubt about an API shape or behavior, follow aws-lc-rs: it is the library rind would use if it didn't require C. Say why wherever rind deviates.
+- Design the API so misuse fails to compile: types over runtime checks, one way to do each job, names by role. Borrow an aws-lc-rs or ring name only when it is as clear; the migration guide maps theirs to rind's.
+- When in doubt about behavior (what to accept, refuse, or wipe), follow aws-lc-rs: it is the library rind would use if it didn't require C.
 - Wipe secrets a value owns (keys, keyed state) on drop, as aws-lc does. Don't wipe stack temporaries, scratch, or copies inside a call: safe Rust cannot read them, so it costs speed for nothing.
 - Reproduce bugs before fixing them. Tests must be worth their weight long-term: cover edge cases, not old bugs or trivial values.
 - Keep the PR to one problem: no unrelated refactors, formatting churn, or drive-by changes. Fix every instance of that problem and the gaps it exposes in the same PR.
