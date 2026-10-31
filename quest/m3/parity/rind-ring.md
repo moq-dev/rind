@@ -12,6 +12,3 @@ Decided by the maintainer on 2026-10-30, planning ring and aws-lc-rs parity.
   `rind-ring` (maintainer, 2026-10-30).
 - Test it with ring's own API tests or examples where their license allows,
   and list any item it cannot offer and why.
-
-## Required
-
