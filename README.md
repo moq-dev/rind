@@ -329,7 +329,7 @@ The modules:
   components, and SHA-1 and 1024-bit RSA for verifying old signatures.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, and SHA-512/256.
 - `hmac`: HMAC over those digests, keyed once and reused.
-- `hkdf`: HKDF-SHA256, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
+- `hkdf`: HKDF over those HMACs, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
 - `constant_time`: comparing secrets such as MACs without a timing leak.
 - `rand`: random bytes from the system.
