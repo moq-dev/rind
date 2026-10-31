@@ -550,8 +550,8 @@ impl RsaVerification {
     }
 }
 
-/// An RSA verification algorithm: a padding, a hash, and the smallest
-/// modulus it accepts, up to 8192 bits.
+/// An RSA verification algorithm: a padding, a hash, and the modulus sizes
+/// it accepts.
 #[derive(Debug)]
 pub struct RsaParameters {
     verification: RsaVerification,
@@ -586,24 +586,24 @@ pub static RSA_PKCS1_2048_8192_SHA384: RsaParameters = rsa_parameters(PKCS1_SHA3
 /// RSASSA-PKCS1-v1_5 with SHA-512.
 pub static RSA_PKCS1_2048_8192_SHA512: RsaParameters = rsa_parameters(PKCS1_SHA512, 2048);
 
-/// RSASSA-PKCS1-v1_5 with SHA-384, for moduli of at least 3072 bits.
+/// RSASSA-PKCS1-v1_5 with SHA-384, for moduli of 3072 to 8192 bits.
 pub static RSA_PKCS1_3072_8192_SHA384: RsaParameters = rsa_parameters(PKCS1_SHA384, 3072);
 
-/// RSASSA-PKCS1-v1_5 with SHA-256, taking moduli down to 1024 bits for old signatures.
+/// RSASSA-PKCS1-v1_5 with SHA-256, for old keys with moduli down to 1024 bits.
 pub static RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY: RsaParameters =
     rsa_parameters(PKCS1_SHA256, 1024);
 
-/// RSASSA-PKCS1-v1_5 with SHA-512, taking moduli down to 1024 bits for old signatures.
+/// RSASSA-PKCS1-v1_5 with SHA-512, for old keys with moduli down to 1024 bits.
 pub static RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY: RsaParameters =
     rsa_parameters(PKCS1_SHA512, 1024);
 
-/// RSASSA-PKCS1-v1_5 with SHA-1, whose collisions are practical, for old signatures.
+/// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures only: SHA-1 collisions are practical.
 pub static RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY: RsaParameters = RsaParameters {
     verification: RsaVerification::Pkcs1Sha1,
     min_bits: 2048,
 };
 
-/// RSASSA-PKCS1-v1_5 with SHA-1 and moduli down to 1024 bits, for old signatures.
+/// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures by keys with moduli down to 1024 bits.
 pub static RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY: RsaParameters = RsaParameters {
     verification: RsaVerification::Pkcs1Sha1,
     min_bits: 1024,
