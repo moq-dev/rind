@@ -31,7 +31,6 @@ Decided by the maintainer on 2026-10-30:
 
 ## Required
 
-- [P-521](/quest/m3/parity/p521.md) - ECDH and ECDSA on P-521
 - [rustls provider parity](/quest/m3/parity/rustls.md) - rind-rustls offers what aws-lc-rs's provider does
 - [rind-ring](/quest/m3/parity/rind-ring.md) - ring's API on rind, for a drop-in swap
 - [Adapter survey](/quest/m3/parity/adapter-survey.md) - which crates with pluggable crypto need a `rind-*` adapter
