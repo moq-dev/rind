@@ -3033,8 +3033,10 @@ dependencies = [
 name = "rind-ring"
 version = "0.1.0"
 dependencies = [
+ "aws-lc-rs",
  "crabgrind 0.4.0",
  "hex",
+ "proptest",
  "rind",
  "serde",
  "serde_json",
