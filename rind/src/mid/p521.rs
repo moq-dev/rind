@@ -1038,7 +1038,7 @@ mod tests {
         expected[0] = 0x00;
         expected[1] = 0x01;
         expected[2] = 0x01;
-        assert_eq!(key.scalar.as_bytes(), expected);
+        assert_eq!(low::ct::into_public(key.scalar.as_bytes()), expected);
     }
 
     #[test]
