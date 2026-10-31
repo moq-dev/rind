@@ -208,7 +208,8 @@ fn truncated(tag: &[u8], expected: &[u8]) -> Result<(), Error> {
 #[test]
 fn hkdf_tests() {
     fn check(file: &str, algorithm: &'static hkdf::Algorithm) {
-        let data_file = File::open(file).expect("failed to open data file");
+        let data_file =
+            File::open(file).unwrap_or_else(|_| panic!("failed to open data file {file}"));
         let reader = BufReader::new(data_file);
         let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
         let mut summary = Summary::new();
@@ -232,10 +233,17 @@ fn hkdf_tests() {
         }
     }
 
-    check(
-        "../thirdparty/wycheproof/testvectors_v1/hkdf_sha256_test.json",
-        &hkdf::HKDF_SHA256,
-    );
+    for (file, algorithm) in [
+        ("hkdf_sha1_test.json", &hkdf::legacy::HKDF_SHA1),
+        ("hkdf_sha256_test.json", &hkdf::HKDF_SHA256),
+        ("hkdf_sha384_test.json", &hkdf::HKDF_SHA384),
+        ("hkdf_sha512_test.json", &hkdf::HKDF_SHA512),
+    ] {
+        check(
+            &format!("../thirdparty/wycheproof/testvectors_v1/{file}"),
+            algorithm,
+        );
+    }
 }
 
 #[test]
