@@ -50,8 +50,14 @@ mod tests {
     #[test]
     fn unequal_lengths() {
         assert_eq!(verify_slices_are_equal(&[], &[0]), Err(Error::WrongLength));
-        assert_eq!(verify_slices_are_equal(&[0; 32], &[0; 31]), Err(Error::WrongLength));
+        assert_eq!(
+            verify_slices_are_equal(&[0; 32], &[0; 31]),
+            Err(Error::WrongLength)
+        );
         // A prefix of the other is still refused.
-        assert_eq!(verify_slices_are_equal(b"tag", b"tag\0"), Err(Error::WrongLength));
+        assert_eq!(
+            verify_slices_are_equal(b"tag", b"tag\0"),
+            Err(Error::WrongLength)
+        );
     }
 }
