@@ -3,7 +3,9 @@
 
 use core::ops::{Deref, DerefMut};
 
-use super::digest::{Algorithm, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512};
+use super::digest::{
+    Algorithm, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, SHA512_256,
+};
 use crate::mid::{sha1, sha2};
 
 /// One block of hash function input.
@@ -208,5 +210,16 @@ impl HashContext for sha2::Sha512Context {
 
     fn finish(self) -> Digest {
         Digest::new(Sha512::ALGORITHM, &Self::finish(self))
+    }
+}
+
+// SHA-512/256 has no `Hash` impl: no HMAC or signature uses it.
+impl HashContext for sha2::Sha512_256Context {
+    fn update(&mut self, bytes: &[u8]) {
+        Self::update(self, bytes)
+    }
+
+    fn finish(self) -> Digest {
+        Digest::new(&SHA512_256, &Self::finish(self))
     }
 }

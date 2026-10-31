@@ -16,5 +16,4 @@ Decided by the maintainer on 2026-10-30, planning ring and aws-lc-rs parity.
 ## Required
 
 - [PBKDF2](/quest/m3/parity/pbkdf2.md) - ring's `pbkdf2`
-- [SHA-512/256](/quest/m3/parity/sha512-256.md) - ring's `digest::SHA512_256`
 - [Legacy RSA verification](/quest/m3/parity/rsa-legacy.md) - ring's legacy RSA
