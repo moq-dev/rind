@@ -11,16 +11,17 @@ use crate::mid::{sha1, sha2};
 /// A hash function, chosen by one of this module's constants.
 #[derive(Debug)]
 pub struct Algorithm {
-    pub(super) id: Id,
+    id: Id,
     output_len: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum Id {
+enum Id {
     Sha1,
     Sha256,
     Sha384,
     Sha512,
+    Sha512_256,
 }
 
 impl Algorithm {
@@ -57,6 +58,12 @@ pub static SHA512: Algorithm = Algorithm {
     output_len: sha2::Sha512Context::OUTPUT_SZ,
 };
 
+/// SHA-512/256: SHA-512 with its own initial value, truncated to 256 bits, from [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
+pub static SHA512_256: Algorithm = Algorithm {
+    id: Id::Sha512_256,
+    output_len: sha2::Sha512_256Context::OUTPUT_SZ,
+};
+
 /// Hashes `data` in one go.
 pub fn digest(algorithm: &'static Algorithm, data: &[u8]) -> Digest {
     let mut ctx = Context::new(algorithm);
@@ -76,6 +83,7 @@ enum State {
     Sha256(<Sha256 as Hash>::Context),
     Sha384(<Sha384 as Hash>::Context),
     Sha512(<Sha512 as Hash>::Context),
+    Sha512_256(sha2::Sha512_256Context),
 }
 
 impl Context {
@@ -86,6 +94,7 @@ impl Context {
             Id::Sha256 => State::Sha256(Sha256::new()),
             Id::Sha384 => State::Sha384(Sha384::new()),
             Id::Sha512 => State::Sha512(Sha512::new()),
+            Id::Sha512_256 => State::Sha512_256(sha2::Sha512_256Context::new()),
         })
     }
 
@@ -96,6 +105,7 @@ impl Context {
             State::Sha256(ctx) => ctx.update(data),
             State::Sha384(ctx) => ctx.update(data),
             State::Sha512(ctx) => ctx.update(data),
+            State::Sha512_256(ctx) => ctx.update(data),
         }
     }
 
@@ -106,6 +116,7 @@ impl Context {
             State::Sha256(ctx) => HashContext::finish(ctx),
             State::Sha384(ctx) => HashContext::finish(ctx),
             State::Sha512(ctx) => HashContext::finish(ctx),
+            State::Sha512_256(ctx) => HashContext::finish(ctx),
         }
     }
 }
@@ -166,29 +177,24 @@ mod tests {
     use super::*;
     use crate::test::*;
 
-    // CAVP's `[L = n]` header names the hash by its output length.
-    fn algorithm(meta: &str) -> &'static Algorithm {
-        match meta {
-            "L = 20" => &SHA1_FOR_LEGACY_USE_ONLY,
-            "L = 32" => &SHA256,
-            "L = 48" => &SHA384,
-            "L = 64" => &SHA512,
-            _ => panic!("unhandled {meta:?}"),
-        }
+    // CAVP's `[L = n]` header gives only the output length, which SHA-256
+    // and SHA-512/256 share, so each file names its algorithm.
+    fn check_meta(algorithm: &Algorithm, meta: &str) {
+        assert_eq!(meta, format!("L = {}", algorithm.output_len()));
     }
 
     #[test]
     fn cavp() {
-        #[derive(Debug, Default)]
+        #[derive(Debug)]
         struct Cavp {
-            algorithm: Option<&'static Algorithm>,
+            algorithm: &'static Algorithm,
             message: Vec<u8>,
             message_bytes: usize,
         }
 
         impl CavpSink for Cavp {
             fn on_meta(&mut self, meta: &str) {
-                self.algorithm = Some(algorithm(meta));
+                check_meta(self.algorithm, meta);
             }
 
             fn on_value(&mut self, name: &str, value: Value<'_>) {
@@ -199,7 +205,7 @@ mod tests {
                         self.message.truncate(self.message_bytes);
                     }
                     "MD" => {
-                        let digest = digest(self.algorithm.unwrap(), &self.message);
+                        let digest = digest(self.algorithm, &self.message);
                         assert_eq!(digest.as_ref(), value.bytes());
                     }
                     _ => todo!("{self:?} value {name} = {value:?}"),
@@ -207,30 +213,45 @@ mod tests {
             }
         }
 
-        for file in [
-            "../thirdparty/cavp-sha1/SHA1ShortMsg.rsp",
-            "../thirdparty/cavp/sha2/SHA256ShortMsg.rsp",
-            "../thirdparty/cavp/sha2/SHA256LongMsg.rsp",
-            "../thirdparty/cavp/sha2/SHA384ShortMsg.rsp",
-            "../thirdparty/cavp/sha2/SHA384LongMsg.rsp",
-            "../thirdparty/cavp/sha2/SHA512ShortMsg.rsp",
-            "../thirdparty/cavp/sha2/SHA512LongMsg.rsp",
+        for (file, algorithm) in [
+            (
+                "../thirdparty/cavp-sha1/SHA1ShortMsg.rsp",
+                &SHA1_FOR_LEGACY_USE_ONLY,
+            ),
+            ("../thirdparty/cavp/sha2/SHA256ShortMsg.rsp", &SHA256),
+            ("../thirdparty/cavp/sha2/SHA256LongMsg.rsp", &SHA256),
+            ("../thirdparty/cavp/sha2/SHA384ShortMsg.rsp", &SHA384),
+            ("../thirdparty/cavp/sha2/SHA384LongMsg.rsp", &SHA384),
+            ("../thirdparty/cavp/sha2/SHA512ShortMsg.rsp", &SHA512),
+            ("../thirdparty/cavp/sha2/SHA512LongMsg.rsp", &SHA512),
+            (
+                "../thirdparty/cavp/sha2/SHA512_256ShortMsg.rsp",
+                &SHA512_256,
+            ),
+            ("../thirdparty/cavp/sha2/SHA512_256LongMsg.rsp", &SHA512_256),
         ] {
-            process_cavp(file, &mut Cavp::default());
+            process_cavp(
+                file,
+                &mut Cavp {
+                    algorithm,
+                    message: Vec::new(),
+                    message_bytes: 0,
+                },
+            );
         }
     }
 
     #[test]
     fn cavp_monte_carlo() {
-        #[derive(Debug, Default)]
+        #[derive(Debug)]
         struct Cavp {
-            algorithm: Option<&'static Algorithm>,
+            algorithm: &'static Algorithm,
             seed: Vec<u8>,
         }
 
         impl CavpSink for Cavp {
             fn on_meta(&mut self, meta: &str) {
-                self.algorithm = Some(algorithm(meta));
+                check_meta(self.algorithm, meta);
             }
 
             fn on_value(&mut self, name: &str, value: Value<'_>) {
@@ -238,7 +259,7 @@ mod tests {
                     "Seed" => self.seed = value.bytes(),
                     "COUNT" => {}
                     "MD" => {
-                        self.seed = monte_carlo_1000(self.algorithm.unwrap(), &self.seed);
+                        self.seed = monte_carlo_1000(self.algorithm, &self.seed);
                         assert_eq!(self.seed, value.bytes());
                     }
                     _ => todo!("{self:?} value {name} = {value:?}"),
@@ -261,13 +282,23 @@ mod tests {
         }
 
         if std::env::var_os("SLOW_TESTS").is_some() {
-            for file in [
-                "../thirdparty/cavp-sha1/SHA1Monte.rsp",
-                "../thirdparty/cavp/sha2/SHA256Monte.rsp",
-                "../thirdparty/cavp/sha2/SHA384Monte.rsp",
-                "../thirdparty/cavp/sha2/SHA512Monte.rsp",
+            for (file, algorithm) in [
+                (
+                    "../thirdparty/cavp-sha1/SHA1Monte.rsp",
+                    &SHA1_FOR_LEGACY_USE_ONLY,
+                ),
+                ("../thirdparty/cavp/sha2/SHA256Monte.rsp", &SHA256),
+                ("../thirdparty/cavp/sha2/SHA384Monte.rsp", &SHA384),
+                ("../thirdparty/cavp/sha2/SHA512Monte.rsp", &SHA512),
+                ("../thirdparty/cavp/sha2/SHA512_256Monte.rsp", &SHA512_256),
             ] {
-                process_cavp(file, &mut Cavp::default());
+                process_cavp(
+                    file,
+                    &mut Cavp {
+                        algorithm,
+                        seed: Vec::new(),
+                    },
+                );
             }
         }
     }

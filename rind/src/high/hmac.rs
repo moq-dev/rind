@@ -5,7 +5,7 @@
 //!
 //! HMAC is standardized in [FIPS 198](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.198-1.pdf).
 
-use super::digest::{self, Digest, Id};
+use super::digest::Digest;
 use super::hash::{Hash, HashContext, LegacySha1, Sha256, Sha384, Sha512};
 use crate::Error;
 use crate::low::{Zeroable, zeroise, zeroise_value};
@@ -84,12 +84,27 @@ impl<H: Hash> Hmac<H> {
 
 /// An HMAC algorithm, chosen by one of this module's constants.
 #[derive(Clone, Copy, Debug)]
-pub struct Algorithm(&'static digest::Algorithm);
+pub struct Algorithm(Id);
+
+// Only the digests HMAC offers, so a key is made for every value.
+#[derive(Clone, Copy, Debug)]
+enum Id {
+    Sha1,
+    Sha256,
+    Sha384,
+    Sha512,
+}
 
 impl Algorithm {
     /// The length of this algorithm's tag, in bytes.
     pub fn tag_len(&self) -> usize {
-        self.0.output_len()
+        match self.0 {
+            Id::Sha1 => LegacySha1::ALGORITHM,
+            Id::Sha256 => Sha256::ALGORITHM,
+            Id::Sha384 => Sha384::ALGORITHM,
+            Id::Sha512 => Sha512::ALGORITHM,
+        }
+        .output_len()
     }
 }
 
@@ -97,16 +112,16 @@ impl Algorithm {
 ///
 /// HMAC does not rely on SHA-1's broken collision resistance, and STUN
 /// (RFC 8489) and SRTP (RFC 3711) still require it.
-pub static HMAC_SHA1_FOR_LEGACY_USE_ONLY: Algorithm = Algorithm(&digest::SHA1_FOR_LEGACY_USE_ONLY);
+pub static HMAC_SHA1_FOR_LEGACY_USE_ONLY: Algorithm = Algorithm(Id::Sha1);
 
 /// HMAC-SHA256.
-pub static HMAC_SHA256: Algorithm = Algorithm(&digest::SHA256);
+pub static HMAC_SHA256: Algorithm = Algorithm(Id::Sha256);
 
 /// HMAC-SHA384.
-pub static HMAC_SHA384: Algorithm = Algorithm(&digest::SHA384);
+pub static HMAC_SHA384: Algorithm = Algorithm(Id::Sha384);
 
 /// HMAC-SHA512.
-pub static HMAC_SHA512: Algorithm = Algorithm(&digest::SHA512);
+pub static HMAC_SHA512: Algorithm = Algorithm(Id::Sha512);
 
 /// An HMAC key, keyed once and reused for every message; wiped on drop.
 #[derive(Clone)]
@@ -115,7 +130,7 @@ pub struct Key(pub(super) Keyed);
 impl Key {
     /// Keys `algorithm` with `key_value`, which may be any length.
     pub fn new(algorithm: Algorithm, key_value: &[u8]) -> Self {
-        Self(match algorithm.0.id {
+        Self(match algorithm.0 {
             Id::Sha1 => Keyed::Sha1(Hmac::new(key_value)),
             Id::Sha256 => Keyed::Sha256(Hmac::new(key_value)),
             Id::Sha384 => Keyed::Sha384(Hmac::new(key_value)),

@@ -163,7 +163,8 @@ pub mod signature {
 /// ```
 pub mod digest {
     pub use super::high::digest::{
-        Algorithm, Context, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, digest,
+        Algorithm, Context, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, SHA512_256,
+        digest,
     };
 }
 
@@ -190,6 +191,19 @@ pub mod hmac {
         Algorithm, Context, HMAC_SHA1_FOR_LEGACY_USE_ONLY, HMAC_SHA256, HMAC_SHA384, HMAC_SHA512,
         Key, Tag, sign, verify,
     };
+}
+
+/// Constant-time comparison, for checking a secret such as a MAC or token.
+///
+/// ```
+/// use rind::constant_time::verify_slices_are_equal;
+///
+/// verify_slices_are_equal(b"expected", b"expected").unwrap();
+/// assert_eq!(verify_slices_are_equal(b"expected", b"presented"), Err(rind::Error::WrongLength));
+/// assert_eq!(verify_slices_are_equal(b"expected", b"Expected"), Err(rind::Error::NotEqual));
+/// ```
+pub mod constant_time {
+    pub use crate::high::constant_time::verify_slices_are_equal;
 }
 
 /// Key derivation with HKDF.

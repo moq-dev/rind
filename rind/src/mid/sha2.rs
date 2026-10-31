@@ -3,7 +3,7 @@
 
 //! SHA2-family hash functions.
 //!
-//! This is SHA256, SHA384, and SHA512.
+//! This is SHA256, SHA384, SHA512, and SHA512/256.
 //! These are all described in [FIPS180](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf).
 
 use crate::low::cpu::verify_cpu_features;
@@ -136,20 +136,16 @@ impl Sha384Context {
     /// Start a new SHA384 hash computation.
     pub(crate) const fn new() -> Self {
         Self {
-            inner: Sha512Context {
-                h: [
-                    0xcbbb9d5dc1059ed8,
-                    0x629a292a367cd507,
-                    0x9159015a3070dd17,
-                    0x152fecd8f70e5939,
-                    0x67332667ffc00b31,
-                    0x8eb44a8768581511,
-                    0xdb0c2e0d64f98fa7,
-                    0x47b5481dbefa4fa4,
-                ],
-                blockwise: Blockwise::new(),
-                nblocks: 0,
-            },
+            inner: Sha512Context::with_h([
+                0xcbbb9d5dc1059ed8,
+                0x629a292a367cd507,
+                0x9159015a3070dd17,
+                0x152fecd8f70e5939,
+                0x67332667ffc00b31,
+                0x8eb44a8768581511,
+                0xdb0c2e0d64f98fa7,
+                0x47b5481dbefa4fa4,
+            ]),
         }
     }
 
@@ -175,6 +171,51 @@ impl Sha384Context {
     pub(crate) const OUTPUT_SZ: usize = 48;
 }
 
+/// A context for incremental computation of SHA512/256.
+#[derive(Clone)]
+pub(crate) struct Sha512_256Context {
+    inner: Sha512Context,
+}
+
+impl Sha512_256Context {
+    /// Start a new SHA512/256 hash computation.
+    pub(crate) const fn new() -> Self {
+        Self {
+            inner: Sha512Context::with_h([
+                0x22312194fc2bf72c,
+                0x9f555fa3c84c64c2,
+                0x2393b86b6f53b151,
+                0x963877195940eabd,
+                0x96283ee2a88effe3,
+                0xbe5e1e2553863992,
+                0x2b0199fc2c85b8aa,
+                0x0eb72ddc81c52ca2,
+            ]),
+        }
+    }
+
+    /// Add `bytes` to the ongoing hash computation.
+    pub(crate) fn update(&mut self, bytes: &[u8]) {
+        self.inner.update(bytes)
+    }
+
+    /// Complete the SHA512/256 computation, returning the hash output.
+    pub(crate) fn finish(self) -> [u8; Self::OUTPUT_SZ] {
+        let inner = self.inner.finish();
+        // SAFETY: 32 is less than 64.
+        inner[..Self::OUTPUT_SZ].try_into().unwrap()
+    }
+
+    /// As [`Sha512Context::finish_block`].
+    pub(crate) fn finish_block(&self, tail: &[u8]) -> [u8; Self::OUTPUT_SZ] {
+        let inner = self.inner.finish_block(tail);
+        inner[..Self::OUTPUT_SZ].try_into().unwrap()
+    }
+
+    /// The output size of SHA512/256.
+    pub(crate) const OUTPUT_SZ: usize = 32;
+}
+
 /// A context for incremental computation of SHA512.
 #[derive(Clone)]
 pub(crate) struct Sha512Context {
@@ -187,17 +228,22 @@ pub(crate) struct Sha512Context {
 impl Sha512Context {
     /// Start a new SHA512 hash computation.
     pub(crate) const fn new() -> Self {
+        Self::with_h([
+            0x6a09e667f3bcc908,
+            0xbb67ae8584caa73b,
+            0x3c6ef372fe94f82b,
+            0xa54ff53a5f1d36f1,
+            0x510e527fade682d1,
+            0x9b05688c2b3e6c1f,
+            0x1f83d9abfb41bd6b,
+            0x5be0cd19137e2179,
+        ])
+    }
+
+    /// The truncated variants differ from SHA512 only in this initial value.
+    const fn with_h(h: [u64; 8]) -> Self {
         Self {
-            h: [
-                0x6a09e667f3bcc908,
-                0xbb67ae8584caa73b,
-                0x3c6ef372fe94f82b,
-                0xa54ff53a5f1d36f1,
-                0x510e527fade682d1,
-                0x9b05688c2b3e6c1f,
-                0x1f83d9abfb41bd6b,
-                0x5be0cd19137e2179,
-            ],
+            h,
             blockwise: Blockwise::new(),
             nblocks: 0,
         }
