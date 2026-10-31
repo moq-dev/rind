@@ -50,7 +50,8 @@ aws-lc-rs's except where noted. A crate that cannot change its code waits on
 |---|---|
 | `Salt::new(HKDF_SHA256, salt)`, `extract` | `Salt::new(&HKDF_SHA256, salt)`, `extract` |
 | `Salt::none(alg)` | `Salt::new(&alg, &[])`, which extracts the same key as RFC 5869's absent salt |
-| `HKDF_SHA384`, `HKDF_SHA512`, `HKDF_SHA1_FOR_LEGACY_USE_ONLY` | [HKDF over every HMAC hash](quest/m3/parity/hkdf.md) |
+| `HKDF_SHA256`, `HKDF_SHA384`, `HKDF_SHA512` | the same |
+| `HKDF_SHA1_FOR_LEGACY_USE_ONLY` | `legacy::HKDF_SHA1` |
 | `prk.expand(info, len)?` | `prk.expand(info, len)`, which cannot fail; `Okm::fill` checks a byte length |
 | your own `KeyType` | none: it is sealed, for a `usize` byte length or an `aead`, `aead::quic`, or `hmac` algorithm |
 | `UnboundKey::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)` | `aead::Key::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)` |

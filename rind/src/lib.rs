@@ -261,7 +261,14 @@ pub mod constant_time {
 /// prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
 /// ```
 pub mod hkdf {
-    pub use super::high::hkdf::{Algorithm, HKDF_SHA256, KeyType, Okm, Prk, Salt};
+    pub use super::high::hkdf::{
+        Algorithm, HKDF_SHA256, HKDF_SHA384, HKDF_SHA512, KeyType, Okm, Prk, Salt,
+    };
+
+    /// HKDF algorithms only legacy protocols should use.
+    pub mod legacy {
+        pub use crate::high::hkdf::HKDF_SHA1;
+    }
 }
 
 /// Password-based key derivation with PBKDF2.

@@ -279,52 +279,71 @@ mod hkdf {
         }
     }
 
-    fn check(salt: &[u8], ikm: &[u8], info: &[Vec<u8>], len: usize) -> Result<(), TestCaseError> {
-        let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
-
-        let mut ours_out = vec![0u8; len];
-        let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, salt).extract(ikm);
-        let result = prk.expand(&info, len).fill(&mut ours_out);
-
-        let prk = theirs::Salt::new(theirs::HKDF_SHA256, salt).extract(ikm);
-        match prk.expand(&info, Len(len)) {
-            Ok(okm) => {
-                result.unwrap();
-                let mut theirs_out = vec![0u8; len];
-                okm.fill(&mut theirs_out).unwrap();
-                prop_assert_eq!(ours_out, theirs_out);
-            }
-            Err(_) => {
-                prop_assert_eq!(result, Err(Error::WrongLength));
-                prop_assert!(ours_out.iter().all(|b| *b == 0));
-            }
-        }
-        Ok(())
+    fn algorithms() -> [(&'static hkdf::Algorithm, theirs::Algorithm, usize); 4] {
+        [
+            (
+                &hkdf::legacy::HKDF_SHA1,
+                theirs::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
+                20,
+            ),
+            (&hkdf::HKDF_SHA256, theirs::HKDF_SHA256, 32),
+            (&hkdf::HKDF_SHA384, theirs::HKDF_SHA384, 48),
+            (&hkdf::HKDF_SHA512, theirs::HKDF_SHA512, 64),
+        ]
     }
 
-    // Salts either side of the block size, info split into parts, and
-    // lengths up to a few blocks or either side of the 255-block limit.
+    // Salts either side of both block sizes (64 and 128), info split into
+    // parts, and lengths up to a few blocks or either side of each hash's
+    // 255-block limit.
     proptest! {
         #[test]
-        fn sha256(
+        fn matches_aws_lc_rs(
+            algorithm in 0..4usize,
             salt in vec(any::<u8>(), 0..200),
             ikm in vec(any::<u8>(), 0..200),
             info in vec(vec(any::<u8>(), 0..100), 0..4),
-            len in prop_oneof![0..200usize, (255 * 32 - 70usize)..(255 * 32 + 70)],
+            len in 0..200usize,
+            at_limit in any::<bool>(),
         ) {
-            check(&salt, &ikm, &info, len)?;
+            let (ours, their_alg, hash_len) = algorithms()[algorithm];
+            let len = match at_limit {
+                true => 255 * hash_len + len - 100,
+                false => len,
+            };
+            let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
+
+            let mut ours_out = vec![0u8; len];
+            let prk = hkdf::Salt::new(ours, &salt).extract(&ikm);
+            let result = prk.expand(&info, len).fill(&mut ours_out);
+
+            let prk = theirs::Salt::new(their_alg, &salt).extract(&ikm);
+            match prk.expand(&info, Len(len)) {
+                Ok(okm) => {
+                    result.unwrap();
+                    let mut theirs_out = vec![0u8; len];
+                    okm.fill(&mut theirs_out).unwrap();
+                    prop_assert_eq!(ours_out, theirs_out);
+                }
+                Err(_) => {
+                    prop_assert_eq!(result, Err(Error::WrongLength));
+                    prop_assert!(ours_out.iter().all(|b| *b == 0));
+                }
+            }
         }
 
-        // Keys built straight from an `Okm` match aws-lc-rs's conversions.
+        // Keys built straight from an `Okm` match aws-lc-rs's conversions,
+        // including keys longer than the PRK's hash output.
         #[test]
         fn keys(
+            algorithm in 0..4usize,
             ikm in vec(any::<u8>(), 0..100),
             info in vec(vec(any::<u8>(), 0..50), 0..3),
             msg in vec(any::<u8>(), 0..100),
         ) {
+            let (ours_prk_alg, theirs_prk_alg, _) = algorithms()[algorithm];
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
-            let ours = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(&ikm);
-            let theirs = theirs::Salt::new(theirs::HKDF_SHA256, b"salt").extract(&ikm);
+            let ours = hkdf::Salt::new(ours_prk_alg, b"salt").extract(&ikm);
+            let theirs = theirs::Salt::new(theirs_prk_alg, b"salt").extract(&ikm);
 
             for (ours_alg, theirs_alg) in [
                 (&aead::AES_128_GCM, &their_aead::AES_128_GCM),
