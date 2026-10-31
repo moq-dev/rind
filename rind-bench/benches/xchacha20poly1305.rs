@@ -17,9 +17,7 @@ fn test_rind_chacha(key: &rind::aead::RandomizedNonceKey, aad: &[u8], plain: &[u
     // Room for the appended tag, so sealing does not reallocate.
     let mut ct = Vec::with_capacity(plain.len() + 16);
     ct.extend_from_slice(plain);
-    let _nonce = key
-        .seal_in_place_append_tag(rind::aead::Aad::from(aad), &mut ct)
-        .unwrap();
+    let _nonce = key.seal_in_place_append_tag(aad, &mut ct).unwrap();
 }
 
 fn bench_chacha20poly1305(c: &mut Criterion) {

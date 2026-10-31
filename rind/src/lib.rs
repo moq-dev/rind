@@ -192,9 +192,13 @@ pub mod signature {
 /// ```
 pub mod digest {
     pub use super::high::digest::{
-        Algorithm, Context, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, SHA512_256,
-        digest,
+        Algorithm, Context, Digest, SHA256, SHA384, SHA512, SHA512_256, digest,
     };
+
+    /// Hash functions only legacy protocols should use.
+    pub mod legacy {
+        pub use crate::high::digest::SHA1;
+    }
 }
 
 /// Message authentication with HMAC.
@@ -206,7 +210,7 @@ pub mod digest {
 /// ```
 /// use rind::hmac;
 ///
-/// let key = hmac::Key::new(hmac::HMAC_SHA256, b"secret");
+/// let key = hmac::Key::new(&hmac::HMAC_SHA256, b"secret");
 ///
 /// let mut ctx = hmac::Context::with_key(&key);
 /// ctx.update(b"hello, ");
@@ -217,22 +221,26 @@ pub mod digest {
 /// ```
 pub mod hmac {
     pub use super::high::hmac::{
-        Algorithm, Context, HMAC_SHA1_FOR_LEGACY_USE_ONLY, HMAC_SHA256, HMAC_SHA384, HMAC_SHA512,
-        Key, Tag, sign, verify,
+        Algorithm, Context, HMAC_SHA256, HMAC_SHA384, HMAC_SHA512, Key, Tag, sign, verify,
     };
+
+    /// HMAC algorithms only legacy protocols should use.
+    pub mod legacy {
+        pub use crate::high::hmac::HMAC_SHA1;
+    }
 }
 
 /// Constant-time comparison, for checking a secret such as a MAC or token.
 ///
 /// ```
-/// use rind::constant_time::verify_slices_are_equal;
+/// use rind::constant_time;
 ///
-/// verify_slices_are_equal(b"expected", b"expected").unwrap();
-/// assert_eq!(verify_slices_are_equal(b"expected", b"presented"), Err(rind::Error::WrongLength));
-/// assert_eq!(verify_slices_are_equal(b"expected", b"Expected"), Err(rind::Error::NotEqual));
+/// constant_time::verify(b"expected", b"expected").unwrap();
+/// assert_eq!(constant_time::verify(b"expected", b"presented"), Err(rind::Error::WrongLength));
+/// assert_eq!(constant_time::verify(b"expected", b"Expected"), Err(rind::Error::NotEqual));
 /// ```
 pub mod constant_time {
-    pub use crate::high::constant_time::verify_slices_are_equal;
+    pub use crate::high::constant_time::verify;
 }
 
 /// Key derivation with HKDF.
@@ -243,14 +251,14 @@ pub mod constant_time {
 /// ```
 /// use rind::{aead, hkdf, hmac};
 ///
-/// let prk = hkdf::Salt::new(hkdf::HKDF_SHA256, b"salt").extract(b"input key material");
+/// let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(b"input key material");
 ///
-/// let aead_key = aead::UnboundKey::from(prk.expand(&[b"aead".as_slice()], &aead::AES_256_GCM).unwrap());
-/// let hmac_key = hmac::Key::from(prk.expand(&[b"hmac".as_slice()], hmac::HMAC_SHA256).unwrap());
+/// let aead_key = aead::Key::from(prk.expand(&[b"aead"], &aead::AES_256_GCM));
+/// let hmac_key = hmac::Key::from(prk.expand(&[b"hmac"], &hmac::HMAC_SHA256));
 ///
 /// let info: [&[u8]; 2] = [b"label", b"context"];
 /// let mut bytes = [0u8; 16];
-/// prk.expand(&info, bytes.len()).unwrap().fill(&mut bytes).unwrap();
+/// prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
 /// ```
 pub mod hkdf {
     pub use super::high::hkdf::{Algorithm, HKDF_SHA256, KeyType, Okm, Prk, Salt};
@@ -268,7 +276,7 @@ pub mod hkdf {
 /// use rind::pbkdf2;
 ///
 /// let iterations = NonZeroU32::new(600_000).unwrap();
-/// let secret = pbkdf2::Secret::new(pbkdf2::PBKDF2_HMAC_SHA256, b"password");
+/// let secret = pbkdf2::Secret::new(&pbkdf2::PBKDF2_HMAC_SHA256, b"password");
 ///
 /// let mut stored = [0u8; 32];
 /// secret.derive(iterations, b"per-user salt", &mut stored).unwrap();
@@ -277,31 +285,32 @@ pub mod hkdf {
 /// ```
 pub mod pbkdf2 {
     pub use super::high::pbkdf2::{
-        Algorithm, PBKDF2_HMAC_SHA1, PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512,
-        Secret,
+        Algorithm, PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512, Secret,
     };
+
+    /// PBKDF2 algorithms only legacy formats should use.
+    pub mod legacy {
+        pub use crate::high::pbkdf2::PBKDF2_HMAC_SHA1;
+    }
 }
 
 /// Authenticated encryption.
 ///
-/// A key is built from an algorithm constant and key bytes, then bound to a
-/// nonce policy: [`aead::LessSafeKey`] seals with the caller's nonces, which
-/// must never repeat under one key, and [`aead::RandomizedNonceKey`] picks its
-/// own.
+/// An [`aead::Key`] is built from an algorithm constant and key bytes, and
+/// seals with the caller's nonces, which must never repeat under one key. An
+/// [`aead::RandomizedNonceKey`] picks its own.
 ///
 /// ```
 /// use rind::aead::*;
 ///
-/// let key = LessSafeKey::new(UnboundKey::new(&AES_128_GCM, &[0x42; 16]).unwrap());
+/// let key = Key::new(&AES_128_GCM, &[0x42; 16]).unwrap();
 ///
 /// let mut in_out = b"hello".to_vec();
 /// let nonce = || Nonce::assume_unique_for_key([0; 12]);
-/// key.seal_in_place_append_tag(nonce(), Aad::from(b"header"), &mut in_out)
+/// key.seal_in_place_append_tag(nonce(), b"header", &mut in_out)
 ///     .unwrap();
 ///
-/// let plaintext = key
-///     .open_in_place(nonce(), Aad::from(b"header"), &mut in_out)
-///     .unwrap();
+/// let plaintext = key.open_in_place(nonce(), b"header", &mut in_out).unwrap();
 /// assert_eq!(plaintext, b"hello");
 /// ```
 pub mod aead;
@@ -309,9 +318,6 @@ pub mod aead;
 /// Unauthenticated ciphers, for protocols that specify one alongside their own integrity protection.
 ///
 /// Prefer [`aead`] unless a protocol requires one of these.
-///
-/// Unlike aws-lc-rs's `EncryptingKey` and `DecryptingKey` contexts, these are
-/// bare keys: DTLS record number protection and SRTP need nothing more.
 pub mod cipher;
 
 /// CPU support.

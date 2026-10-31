@@ -95,7 +95,7 @@ impl AesGcm {
         nonce: &[u8; 12],
         aad: &[u8],
         cipher_inout: &mut [u8],
-        tag: &[u8],
+        tag: &[u8; 16],
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
@@ -155,32 +155,26 @@ impl Portable {
     }
 
     /// Decrypts in place, returning whether `tag` is right.
-    fn decrypt(&self, nonce: &[u8; 12], aad: &[u8], cipher_inout: &mut [u8], tag: &[u8]) -> bool {
-        match <&[u8; 16]>::try_from(tag) {
-            Ok(tag) => {
-                let cipher = cipher_inout.to_vec();
-                match self.key_len {
-                    16 => PortableAesGcm128::decrypt(
-                        cipher_inout,
-                        self.key[..16].try_into().unwrap(),
-                        nonce,
-                        aad,
-                        &cipher,
-                        tag,
-                    ),
-                    _ => PortableAesGcm256::decrypt(
-                        cipher_inout,
-                        &self.key,
-                        nonce,
-                        aad,
-                        &cipher,
-                        tag,
-                    ),
-                }
-                .is_ok()
-            }
-            Err(_) => false,
+    fn decrypt(
+        &self,
+        nonce: &[u8; 12],
+        aad: &[u8],
+        cipher_inout: &mut [u8],
+        tag: &[u8; 16],
+    ) -> bool {
+        let cipher = cipher_inout.to_vec();
+        match self.key_len {
+            16 => PortableAesGcm128::decrypt(
+                cipher_inout,
+                self.key[..16].try_into().unwrap(),
+                nonce,
+                aad,
+                &cipher,
+                tag,
+            ),
+            _ => PortableAesGcm256::decrypt(cipher_inout, &self.key, nonce, aad, &cipher, tag),
         }
+        .is_ok()
     }
 }
 
@@ -229,7 +223,13 @@ impl Hw {
     }
 
     /// Decrypts in place, returning whether `tag` is right.
-    fn decrypt(&self, nonce: &[u8; 12], aad: &[u8], cipher_inout: &mut [u8], tag: &[u8]) -> bool {
+    fn decrypt(
+        &self,
+        nonce: &[u8; 12],
+        aad: &[u8],
+        cipher_inout: &mut [u8],
+        tag: &[u8; 16],
+    ) -> bool {
         let mut xi = [0u8; 16];
         self.ghash(&mut xi, aad);
         let mut counter = 2;
@@ -325,20 +325,6 @@ mod tests {
         t.decrypt(b"noncenonceno", b"aad", &mut cipher, &tag)
             .unwrap();
         assert_eq!(cipher, [b'p'; 4164]);
-    }
-
-    #[test]
-    fn rejects_short_tag() {
-        let t = AesGcm::new(&[b'k'; 32]).unwrap();
-        let mut tag = [0u8; 16];
-        let mut cipher = *b"hello";
-        t.encrypt(b"noncenonceno", b"", &mut cipher, &mut tag)
-            .unwrap();
-        assert_eq!(
-            t.decrypt(b"noncenonceno", b"", &mut cipher, &tag[..15]),
-            Err(Error::DecryptFailed)
-        );
-        assert_eq!(cipher, [0u8; 5]);
     }
 
     // Every other test sees only the path the CPU picks, so the crypto

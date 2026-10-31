@@ -82,9 +82,9 @@ fn new_signer(algorithm: &Algorithm, key: &EncodingKey) -> Result<Box<dyn JwtSig
 
     Ok(match algorithm {
         // HMAC keeps the keyed state rather than a copy of the secret.
-        Algorithm::HS256 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA256, der)),
-        Algorithm::HS384 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA384, der)),
-        Algorithm::HS512 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA512, der)),
+        Algorithm::HS256 => signer(algorithm, hmac::Key::new(&hmac::HMAC_SHA256, der)),
+        Algorithm::HS384 => signer(algorithm, hmac::Key::new(&hmac::HMAC_SHA384, der)),
+        Algorithm::HS512 => signer(algorithm, hmac::Key::new(&hmac::HMAC_SHA512, der)),
         Algorithm::ES256 => ecdsa(&sign::ECDSA_P256_SHA256_FIXED)?,
         Algorithm::ES384 => ecdsa(&sign::ECDSA_P384_SHA384_FIXED)?,
         Algorithm::EdDSA => signer(
@@ -138,9 +138,9 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
     };
 
     Ok(match algorithm {
-        Algorithm::HS256 => hmac(hmac::HMAC_SHA256)?,
-        Algorithm::HS384 => hmac(hmac::HMAC_SHA384)?,
-        Algorithm::HS512 => hmac(hmac::HMAC_SHA512)?,
+        Algorithm::HS256 => hmac(&hmac::HMAC_SHA256)?,
+        Algorithm::HS384 => hmac(&hmac::HMAC_SHA384)?,
+        Algorithm::HS512 => hmac(&hmac::HMAC_SHA512)?,
         Algorithm::ES256 => ecdsa(&verify::ECDSA_P256_SHA256_FIXED)?,
         Algorithm::ES384 => ecdsa(&verify::ECDSA_P384_SHA384_FIXED)?,
         Algorithm::EdDSA => parse(

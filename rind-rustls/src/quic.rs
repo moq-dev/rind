@@ -1,4 +1,4 @@
-use rind::aead::{self, Aad, LessSafeKey, UnboundKey, quic::SAMPLE_LEN};
+use rind::aead::{self, quic::SAMPLE_LEN};
 use rustls::Error;
 use rustls::crypto::cipher::{AeadKey, Iv, Nonce};
 use rustls::quic;
@@ -39,7 +39,7 @@ pub(crate) static CHACHA20_POLY1305: Algorithm = Algorithm {
 impl quic::Algorithm for Algorithm {
     fn packet_key(&self, key: AeadKey, iv: Iv) -> Box<dyn quic::PacketKey> {
         Box::new(PacketKey {
-            key: LessSafeKey::new(UnboundKey::new(self.packet, key.as_ref()).unwrap()),
+            key: aead::Key::new(self.packet, key.as_ref()).unwrap(),
             iv,
             confidentiality_limit: self.confidentiality_limit,
             integrity_limit: self.integrity_limit,
@@ -58,7 +58,7 @@ impl quic::Algorithm for Algorithm {
 }
 
 struct PacketKey {
-    key: LessSafeKey,
+    key: aead::Key,
     iv: Iv,
     confidentiality_limit: u64,
     integrity_limit: u64,
@@ -74,7 +74,7 @@ impl quic::PacketKey for PacketKey {
         let nonce = aead::Nonce::assume_unique_for_key(Nonce::new(&self.iv, packet_number).0);
         let tag = self
             .key
-            .seal_in_place_separate_tag(nonce, Aad::from(header), payload)
+            .seal_in_place_separate_tag(nonce, header, payload)
             .map_err(|_| Error::EncryptError)?;
         Ok(quic::Tag::from(tag.as_ref()))
     }
@@ -88,7 +88,7 @@ impl quic::PacketKey for PacketKey {
         let nonce = aead::Nonce::assume_unique_for_key(Nonce::new(&self.iv, packet_number).0);
         let plain = self
             .key
-            .open_in_place(nonce, Aad::from(header), payload)
+            .open_in_place(nonce, header, payload)
             .map_err(|_| Error::DecryptError)?;
         Ok(plain)
     }
@@ -120,7 +120,7 @@ impl HeaderProtectionKey {
         let sample: &[u8; SAMPLE_LEN] = sample
             .try_into()
             .map_err(|_| Error::General("sample of invalid length".into()))?;
-        let [first_mask, pn_mask @ ..] = self.0.new_mask(sample);
+        let [first_mask, pn_mask @ ..] = self.0.mask(sample);
         if packet_number.len() > pn_mask.len() {
             return Err(Error::General("packet number too long".into()));
         }

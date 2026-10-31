@@ -23,7 +23,7 @@ fn test_rc_sha1(data: &[u8]) {
 }
 
 fn test_rind_sha1(data: &[u8]) {
-    let mut ctx = rind::digest::Context::new(&rind::digest::SHA1_FOR_LEGACY_USE_ONLY);
+    let mut ctx = rind::digest::Context::new(&rind::digest::legacy::SHA1);
     ctx.update(data);
     black_box(ctx.finish());
 }

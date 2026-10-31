@@ -110,7 +110,7 @@ struct HmacSha256Provider;
 impl HmacKeyProvider for HmacSha256Provider {
     fn load_key(&self, key_value: &[u8]) -> Box<dyn HmacKey> {
         // Keep the keyed state rather than a copy of the secret.
-        Box::new(HmacSha256Key(hmac::Key::new(hmac::HMAC_SHA256, key_value)))
+        Box::new(HmacSha256Key(hmac::Key::new(&hmac::HMAC_SHA256, key_value)))
     }
 }
 

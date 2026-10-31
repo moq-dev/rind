@@ -8,10 +8,7 @@ use crate::low::{ct, ct_equal};
 /// Their lengths are public: unequal ones fail with [`Error::WrongLength`]
 /// before either is read. Unequal contents fail with [`Error::NotEqual`],
 /// after reading every byte of both.
-///
-/// Unlike aws-lc-rs's opaque `Unspecified`, the two failures differ, since
-/// telling them apart reveals only the lengths.
-pub fn verify_slices_are_equal(a: &[u8], b: &[u8]) -> Result<(), Error> {
+pub fn verify(a: &[u8], b: &[u8]) -> Result<(), Error> {
     if a.len() != b.len() {
         return Err(Error::WrongLength);
     }
@@ -36,28 +33,22 @@ mod tests {
 
             let b = vec![0x5a; len];
             ct::secret_slice(&b);
-            assert_eq!(verify_slices_are_equal(&a, &b), Ok(()));
+            assert_eq!(verify(&a, &b), Ok(()));
 
             for i in 0..len {
                 let mut b = vec![0x5a; len];
                 b[i] = 0xa5;
                 ct::secret_slice(&b);
-                assert_eq!(verify_slices_are_equal(&a, &b), Err(Error::NotEqual));
+                assert_eq!(verify(&a, &b), Err(Error::NotEqual));
             }
         }
     }
 
     #[test]
     fn unequal_lengths() {
-        assert_eq!(verify_slices_are_equal(&[], &[0]), Err(Error::WrongLength));
-        assert_eq!(
-            verify_slices_are_equal(&[0; 32], &[0; 31]),
-            Err(Error::WrongLength)
-        );
+        assert_eq!(verify(&[], &[0]), Err(Error::WrongLength));
+        assert_eq!(verify(&[0; 32], &[0; 31]), Err(Error::WrongLength));
         // A prefix of the other is still refused.
-        assert_eq!(
-            verify_slices_are_equal(b"tag", b"tag\0"),
-            Err(Error::WrongLength)
-        );
+        assert_eq!(verify(b"tag", b"tag\0"), Err(Error::WrongLength));
     }
 }

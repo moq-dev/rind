@@ -55,8 +55,8 @@ impl HmacProvider for Mac {
         out: &mut [u8],
     ) -> Result<usize, CryptoError> {
         let algorithm = match hash {
-            HashAlgorithm::SHA256 => hmac::HMAC_SHA256,
-            HashAlgorithm::SHA384 => hmac::HMAC_SHA384,
+            HashAlgorithm::SHA256 => &hmac::HMAC_SHA256,
+            HashAlgorithm::SHA384 => &hmac::HMAC_SHA384,
             _ => return Err(CryptoError::UnsupportedHmacHash(hash)),
         };
         let tag = hmac::sign(&hmac::Key::new(algorithm, key), data);

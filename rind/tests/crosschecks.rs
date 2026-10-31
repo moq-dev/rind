@@ -73,7 +73,7 @@ proptest! {
         // Two updates split anywhere exercise the partial-block buffering.
         let split = split.index(message.len() + 1);
         for (ours, theirs) in [
-            (&rind::digest::SHA1_FOR_LEGACY_USE_ONLY, &digest::SHA1_FOR_LEGACY_USE_ONLY),
+            (&rind::digest::legacy::SHA1, &digest::SHA1_FOR_LEGACY_USE_ONLY),
             (&rind::digest::SHA256, &digest::SHA256),
             (&rind::digest::SHA384, &digest::SHA384),
             (&rind::digest::SHA512, &digest::SHA512),
@@ -96,10 +96,10 @@ proptest! {
     ) {
         let split = split.index(message.len() + 1);
         for (ours, theirs) in [
-            (rind::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY),
-            (rind::hmac::HMAC_SHA256, hmac::HMAC_SHA256),
-            (rind::hmac::HMAC_SHA384, hmac::HMAC_SHA384),
-            (rind::hmac::HMAC_SHA512, hmac::HMAC_SHA512),
+            (&rind::hmac::legacy::HMAC_SHA1, hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY),
+            (&rind::hmac::HMAC_SHA256, hmac::HMAC_SHA256),
+            (&rind::hmac::HMAC_SHA384, hmac::HMAC_SHA384),
+            (&rind::hmac::HMAC_SHA512, hmac::HMAC_SHA512),
         ] {
             let ours = rind::hmac::Key::new(ours, &key);
             let mut ctx = rind::hmac::Context::with_key(&ours);
@@ -123,7 +123,7 @@ proptest! {
             flipped[flip.index(a.len())] ^= 1;
         }
         for b in [&a, &flipped, &other] {
-            let ours = rind::constant_time::verify_slices_are_equal(&a, b);
+            let ours = rind::constant_time::verify(&a, b);
             let theirs = aws_lc_rs::constant_time::verify_slices_are_equal(&a, b);
             prop_assert_eq!(ours.is_ok(), theirs.is_ok());
             let wanted = if a.len() != b.len() {
@@ -233,7 +233,7 @@ mod cipher {
             ][algorithm];
             let key = &key[..algorithm.key_len()];
 
-            let mask = ours::HeaderProtectionKey::new(algorithm, key).unwrap().new_mask(&sample);
+            let mask = ours::HeaderProtectionKey::new(algorithm, key).unwrap().mask(&sample);
             let wanted = quic::HeaderProtectionKey::new(theirs, key)
                 .unwrap()
                 .new_mask(&sample)
@@ -283,10 +283,8 @@ mod hkdf {
         let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
 
         let mut ours_out = vec![0u8; len];
-        let prk = hkdf::Salt::new(hkdf::HKDF_SHA256, salt).extract(ikm);
-        let result = prk
-            .expand(&info, len)
-            .and_then(|okm| okm.fill(&mut ours_out));
+        let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, salt).extract(ikm);
+        let result = prk.expand(&info, len).fill(&mut ours_out);
 
         let prk = theirs::Salt::new(theirs::HKDF_SHA256, salt).extract(ikm);
         match prk.expand(&info, Len(len)) {
@@ -325,7 +323,7 @@ mod hkdf {
             msg in vec(any::<u8>(), 0..100),
         ) {
             let info: Vec<&[u8]> = info.iter().map(Vec::as_slice).collect();
-            let ours = hkdf::Salt::new(hkdf::HKDF_SHA256, b"salt").extract(&ikm);
+            let ours = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(&ikm);
             let theirs = theirs::Salt::new(theirs::HKDF_SHA256, b"salt").extract(&ikm);
 
             for (ours_alg, theirs_alg) in [
@@ -333,14 +331,12 @@ mod hkdf {
                 (&aead::AES_256_GCM, &their_aead::AES_256_GCM),
                 (&aead::CHACHA20_POLY1305, &their_aead::CHACHA20_POLY1305),
             ] {
-                let ours_key = aead::LessSafeKey::new(aead::UnboundKey::from(
-                    ours.expand(&info, ours_alg).unwrap(),
-                ));
+                let ours_key = aead::Key::from(ours.expand(&info, ours_alg));
                 let mut ours_sealed = msg.clone();
                 ours_key
                     .seal_in_place_append_tag(
                         aead::Nonce::assume_unique_for_key([0; 12]),
-                        aead::Aad::empty(),
+                        &[],
                         &mut ours_sealed,
                     )
                     .unwrap();
@@ -360,12 +356,12 @@ mod hkdf {
             }
 
             for (ours_alg, theirs_alg) in [
-                (hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, their_hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY),
-                (hmac::HMAC_SHA256, their_hmac::HMAC_SHA256),
-                (hmac::HMAC_SHA384, their_hmac::HMAC_SHA384),
-                (hmac::HMAC_SHA512, their_hmac::HMAC_SHA512),
+                (&hmac::legacy::HMAC_SHA1, their_hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY),
+                (&hmac::HMAC_SHA256, their_hmac::HMAC_SHA256),
+                (&hmac::HMAC_SHA384, their_hmac::HMAC_SHA384),
+                (&hmac::HMAC_SHA512, their_hmac::HMAC_SHA512),
             ] {
-                let ours_key = hmac::Key::from(ours.expand(&info, ours_alg).unwrap());
+                let ours_key = hmac::Key::from(ours.expand(&info, ours_alg));
                 let theirs_key = their_hmac::Key::from(theirs.expand(&info, theirs_alg).unwrap());
                 let ours_tag = hmac::sign(&ours_key, &msg);
                 let theirs_tag = their_hmac::sign(&theirs_key, &msg);
@@ -395,10 +391,10 @@ mod pbkdf2 {
         ) {
             let iterations = NonZeroU32::new(iterations).unwrap();
             for (ours, theirs, hash_len) in [
-                (pbkdf2::PBKDF2_HMAC_SHA1, theirs::PBKDF2_HMAC_SHA1, 20),
-                (pbkdf2::PBKDF2_HMAC_SHA256, theirs::PBKDF2_HMAC_SHA256, 32),
-                (pbkdf2::PBKDF2_HMAC_SHA384, theirs::PBKDF2_HMAC_SHA384, 48),
-                (pbkdf2::PBKDF2_HMAC_SHA512, theirs::PBKDF2_HMAC_SHA512, 64),
+                (&pbkdf2::legacy::PBKDF2_HMAC_SHA1, theirs::PBKDF2_HMAC_SHA1, 20),
+                (&pbkdf2::PBKDF2_HMAC_SHA256, theirs::PBKDF2_HMAC_SHA256, 32),
+                (&pbkdf2::PBKDF2_HMAC_SHA384, theirs::PBKDF2_HMAC_SHA384, 48),
+                (&pbkdf2::PBKDF2_HMAC_SHA512, theirs::PBKDF2_HMAC_SHA512, 64),
             ] {
                 let mut wanted = vec![0u8; len];
                 theirs::derive(theirs, iterations, &salt, &password, &mut wanted);
@@ -424,9 +420,7 @@ mod aead {
     use proptest::prelude::*;
     use proptest::sample::Index;
     use rind::Error;
-    use rind::aead::{
-        AES_128_GCM, AES_256_GCM, Aad, Algorithm, CHACHA20_POLY1305, LessSafeKey, Nonce, UnboundKey,
-    };
+    use rind::aead::{AES_128_GCM, AES_256_GCM, Algorithm, CHACHA20_POLY1305, Key, Nonce};
 
     /// Seals on both sides and compares, then opens aws-lc-rs's output,
     /// first with one bit of its ciphertext or tag flipped if `flip` is set.
@@ -439,14 +433,10 @@ mod aead {
         msg: &[u8],
         flip: Option<Index>,
     ) -> Result<(), TestCaseError> {
-        let ours = LessSafeKey::new(UnboundKey::new(ours, key).unwrap());
+        let ours = Key::new(ours, key).unwrap();
         let mut ours_sealed = msg.to_vec();
-        ours.seal_in_place_append_tag(
-            Nonce::assume_unique_for_key(nonce),
-            Aad::from(aad),
-            &mut ours_sealed,
-        )
-        .unwrap();
+        ours.seal_in_place_append_tag(Nonce::assume_unique_for_key(nonce), aad, &mut ours_sealed)
+            .unwrap();
 
         let mut theirs_sealed = msg.to_vec();
         theirs::LessSafeKey::new(theirs::UnboundKey::new(theirs, key).unwrap())
@@ -463,11 +453,7 @@ mod aead {
             theirs_sealed[index] ^= 1;
         }
         let result = ours
-            .open_in_place(
-                Nonce::assume_unique_for_key(nonce),
-                Aad::from(aad),
-                &mut theirs_sealed,
-            )
+            .open_in_place(Nonce::assume_unique_for_key(nonce), aad, &mut theirs_sealed)
             .map(|plain| plain.to_vec());
         if flip.is_some() {
             prop_assert_eq!(result, Err(Error::DecryptFailed));

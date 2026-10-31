@@ -3,8 +3,7 @@ use std::io::BufReader;
 
 use rind::Error;
 use rind::aead::{
-    AES_128_GCM, AES_256_GCM, Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, RandomNonce,
-    RandomizedNonceKey, UnboundKey,
+    AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce, RandomizedNonceKey, Tag,
 };
 use rind::cipher::ChaCha20;
 use rind::signature::verify::legacy;
@@ -165,10 +164,10 @@ impl Drop for Summary {
 #[test]
 fn hmac_tests() {
     for (file, algorithm) in [
-        ("hmac_sha1_test.json", hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY),
-        ("hmac_sha256_test.json", hmac::HMAC_SHA256),
-        ("hmac_sha384_test.json", hmac::HMAC_SHA384),
-        ("hmac_sha512_test.json", hmac::HMAC_SHA512),
+        ("hmac_sha1_test.json", &hmac::legacy::HMAC_SHA1),
+        ("hmac_sha256_test.json", &hmac::HMAC_SHA256),
+        ("hmac_sha384_test.json", &hmac::HMAC_SHA384),
+        ("hmac_sha512_test.json", &hmac::HMAC_SHA512),
     ] {
         let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
             .unwrap_or_else(|_| panic!("failed to open data file {file}"));
@@ -208,7 +207,7 @@ fn truncated(tag: &[u8], expected: &[u8]) -> Result<(), Error> {
 
 #[test]
 fn hkdf_tests() {
-    fn check(file: &str, algorithm: hkdf::Algorithm) {
+    fn check(file: &str, algorithm: &'static hkdf::Algorithm) {
         let data_file = File::open(file).expect("failed to open data file");
         let reader = BufReader::new(data_file);
         let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -222,9 +221,7 @@ fn hkdf_tests() {
                 let mut okm = vec![0u8; test.size];
                 let prk = hkdf::Salt::new(algorithm, &test.salt).extract(&test.ikm);
                 let info = [test.info.as_slice()];
-                let result = prk
-                    .expand(&info, okm.len())
-                    .and_then(|expanded| expanded.fill(&mut okm));
+                let result = prk.expand(&info, okm.len()).fill(&mut okm);
 
                 match (test.result, result) {
                     (ExpectedResult::Valid, Ok(())) => assert_eq!(okm, test.okm),
@@ -237,7 +234,7 @@ fn hkdf_tests() {
 
     check(
         "../thirdparty/wycheproof/testvectors_v1/hkdf_sha256_test.json",
-        hkdf::HKDF_SHA256,
+        &hkdf::HKDF_SHA256,
     );
 }
 
@@ -252,20 +249,24 @@ fn pbkdf2_tests() {
 
     // SHA-224, which rind does not offer, has its own file and is skipped.
     for (file, algorithm, algorithm_len) in [
-        ("pbkdf2_hmacsha1_test.json", pbkdf2::PBKDF2_HMAC_SHA1, 20),
+        (
+            "pbkdf2_hmacsha1_test.json",
+            &pbkdf2::legacy::PBKDF2_HMAC_SHA1,
+            20,
+        ),
         (
             "pbkdf2_hmacsha256_test.json",
-            pbkdf2::PBKDF2_HMAC_SHA256,
+            &pbkdf2::PBKDF2_HMAC_SHA256,
             32,
         ),
         (
             "pbkdf2_hmacsha384_test.json",
-            pbkdf2::PBKDF2_HMAC_SHA384,
+            &pbkdf2::PBKDF2_HMAC_SHA384,
             48,
         ),
         (
             "pbkdf2_hmacsha512_test.json",
-            pbkdf2::PBKDF2_HMAC_SHA512,
+            &pbkdf2::PBKDF2_HMAC_SHA512,
             64,
         ),
     ] {
@@ -394,7 +395,7 @@ fn test_aes_gcm() {
                 }
                 len => panic!("unexpected key length {len}"),
             };
-            let ctx = LessSafeKey::new(UnboundKey::new(algorithm, &test.key).unwrap());
+            let ctx = Key::new(algorithm, &test.key).unwrap();
             let iv: [u8; 12] = match test.iv.try_into() {
                 Ok(iv) => iv,
                 Err(_) => {
@@ -406,22 +407,24 @@ fn test_aes_gcm() {
 
             // try decrypt
             let mut msg = test.ct.clone();
-            let result = ctx
-                .open_in_place_separate_tag(nonce(), Aad::from(&test.aad), &test.tag, &mut msg)
-                .map(|_| ());
+            let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
+                ctx.open_in_place_separate_tag(nonce(), &test.aad, tag, &mut msg)
+                    .map(|_| ())
+            });
 
             match (test.result, &result) {
                 (ExpectedResult::Valid, Ok(())) => {
                     assert_eq!(msg, test.msg);
                 }
                 (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
+                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.tag.len() != 16 => {}
                 _ => panic!("expected {:?} got {:?}", test.result, result.err()),
             }
 
             // and encrypt
             let mut ct = test.msg.clone();
             let tag = ctx
-                .seal_in_place_separate_tag(nonce(), Aad::from(&test.aad), &mut ct)
+                .seal_in_place_separate_tag(nonce(), &test.aad, &mut ct)
                 .unwrap();
 
             if test.result == ExpectedResult::Valid {
@@ -456,7 +459,7 @@ fn test_aes_gmac() {
                 }
                 len => panic!("unexpected key length {len}"),
             };
-            let ctx = LessSafeKey::new(UnboundKey::new(algorithm, &test.key).unwrap());
+            let ctx = Key::new(algorithm, &test.key).unwrap();
             let iv: [u8; 12] = match test.iv.try_into() {
                 Ok(iv) => iv,
                 Err(_) => {
@@ -467,19 +470,21 @@ fn test_aes_gmac() {
             let nonce = || Nonce::assume_unique_for_key(iv);
 
             // try decrypt
-            let result = ctx
-                .open_in_place_separate_tag(nonce(), Aad::from(&test.msg), &test.tag, &mut [])
-                .map(|_| ());
+            let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
+                ctx.open_in_place_separate_tag(nonce(), &test.msg, tag, &mut [])
+                    .map(|_| ())
+            });
 
             match (test.result, &result) {
                 (ExpectedResult::Valid, Ok(())) => {}
                 (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
+                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.tag.len() != 16 => {}
                 _ => panic!("expected {:?} got {:?}", test.result, result.err()),
             }
 
             // and encrypt
             let tag = ctx
-                .seal_in_place_separate_tag(nonce(), Aad::from(&test.msg), &mut [])
+                .seal_in_place_separate_tag(nonce(), &test.msg, &mut [])
                 .unwrap();
 
             if test.result == ExpectedResult::Valid {
@@ -798,28 +803,30 @@ fn test_chacha20poly1305() {
                 continue;
             }
 
-            let ctx = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &test.key).unwrap());
+            let ctx = Key::new(&CHACHA20_POLY1305, &test.key).unwrap();
             let iv: [u8; 12] = test.iv.try_into().unwrap();
             let nonce = || Nonce::assume_unique_for_key(iv);
 
             // try decrypt
             let mut msg = test.ct.clone();
-            let result = ctx
-                .open_in_place_separate_tag(nonce(), Aad::from(&test.aad), &test.tag, &mut msg)
-                .map(|_| ());
+            let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
+                ctx.open_in_place_separate_tag(nonce(), &test.aad, tag, &mut msg)
+                    .map(|_| ())
+            });
 
             match (test.result, &result) {
                 (ExpectedResult::Valid, Ok(())) => {
                     assert_eq!(msg, test.msg);
                 }
                 (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
+                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.tag.len() != 16 => {}
                 _ => panic!("expected {:?} got {:?}", test.result, result.err()),
             }
 
             // and encrypt
             let mut ct = test.msg.clone();
             let tag = ctx
-                .seal_in_place_separate_tag(nonce(), Aad::from(&test.aad), &mut ct)
+                .seal_in_place_separate_tag(nonce(), &test.aad, &mut ct)
                 .unwrap();
 
             if test.result == ExpectedResult::Valid {
@@ -893,7 +900,7 @@ fn test_xchacha20poly1305() {
             // try decrypt
             let mut sealed = [&test.ct[..], &test.tag[..]].concat();
             let result = ctx
-                .open_in_place(RandomNonce::from(iv), Aad::from(&test.aad), &mut sealed)
+                .open_in_place(RandomNonce::from(iv), &test.aad, &mut sealed)
                 .map(|msg| msg.to_vec());
 
             match (test.result, &result) {
@@ -908,11 +915,10 @@ fn test_xchacha20poly1305() {
             // tests check a sealed vector.
             let mut sealed = test.msg.clone();
             let nonce = ctx
-                .seal_in_place_append_tag(Aad::from(&test.aad), &mut sealed)
+                .seal_in_place_append_tag(&test.aad, &mut sealed)
                 .unwrap();
             assert_eq!(
-                ctx.open_in_place(nonce, Aad::from(&test.aad), &mut sealed)
-                    .unwrap(),
+                ctx.open_in_place(nonce, &test.aad, &mut sealed).unwrap(),
                 &test.msg[..]
             );
         }
