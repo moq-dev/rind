@@ -137,6 +137,12 @@ fn aead() {
         check_zeroed_on_drop(Box::pin(LessSafeKey::new(key)));
     }
     check_zeroed_on_drop(Box::pin(RandomizedNonceKey::new(&[0xffu8; 32])));
+
+    use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
+    for algorithm in [&AES_128, &AES_256, &CHACHA20] {
+        let key = &[0xffu8; 32][..algorithm.key_len()];
+        check_zeroed_on_drop(Box::pin(HeaderProtectionKey::new(algorithm, key).unwrap()));
+    }
 }
 
 #[test]

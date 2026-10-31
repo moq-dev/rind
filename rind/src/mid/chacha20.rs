@@ -6,8 +6,8 @@ use crate::low::{self, Entry, zeroise};
 /// A ChaCha20 key, for the bare stream cipher with a 96-bit nonce and a 32-bit block counter.
 ///
 /// See [RFC8439](https://datatracker.ietf.org/doc/html/rfc8439). Use it only
-/// where a protocol specifies ChaCha20 without Poly1305, such as QUIC header
-/// protection or DTLS 1.3 record number protection.
+/// where a protocol specifies ChaCha20 without Poly1305, such as DTLS 1.3
+/// record number protection; QUIC header protection has [`crate::aead::quic`].
 pub struct ChaCha20 {
     key: [u8; 32],
 }
@@ -44,6 +44,18 @@ impl ChaCha20 {
 
         low::ct::public_slice(inout);
         Ok(())
+    }
+
+    /// The QUIC header-protection mask for `sample` (RFC 9001 section 5.4.4).
+    ///
+    /// The sample is a block's little-endian counter then nonce, and one block
+    /// never wraps the counter, so this cannot fail.
+    pub(crate) fn header_protection_mask(&self, sample: &[u8; 16]) -> [u8; 5] {
+        let _entry = Entry::new_secret();
+        let mut mask = [0u8; 5];
+        low::chacha20::ChaCha20::new(&self.key, sample).cipher(&mut mask);
+        low::ct::public_slice(&mask);
+        mask
     }
 }
 
@@ -85,26 +97,6 @@ mod tests {
              07ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab7793736\
              5af90bbf74a35be6b40b8eedf2785e42874d"
         );
-    }
-
-    #[test]
-    fn quic_header_protection_mask() {
-        // RFC 9001 appendix A.5: the counter is the sample's first four bytes,
-        // little-endian, and the nonce is the rest.
-        let key = hex::decode("25a282b9e82f06f21f488917a4fc8f1b73573685608597d0efcb076b0ab7a7a4")
-            .unwrap();
-        let sample = hex::decode("5e5cd55c41f69080575d7999c25a5bfb").unwrap();
-        let (counter, nonce) = sample.split_at(4);
-
-        let mut mask = [0u8; 5];
-        ChaCha20::new(key.try_into().unwrap())
-            .apply_keystream(
-                nonce.try_into().unwrap(),
-                u32::from_le_bytes(counter.try_into().unwrap()),
-                &mut mask,
-            )
-            .unwrap();
-        assert_eq!(hex::encode(mask), "aefefe7d03");
     }
 
     #[test]

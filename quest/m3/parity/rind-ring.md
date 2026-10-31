@@ -20,4 +20,3 @@ Decided by the maintainer on 2026-10-30, planning ring and aws-lc-rs parity.
 - [Fixed-length ECDSA](/quest/m3/parity/ecdsa-fixed.md) - ring's fixed and cross-hash ECDSA
 - [Legacy RSA verification](/quest/m3/parity/rsa-legacy.md) - ring's legacy RSA
 - [Constant-time comparison](/quest/m3/parity/constant-time.md) - ring's `constant_time`
-- [QUIC header protection](/quest/m3/parity/quic-hp.md) - ring's `aead::quic`
