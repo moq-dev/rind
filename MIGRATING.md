@@ -1,38 +1,226 @@
 # Migrating from ring and aws-lc-rs
 
-This guide will map each ring and aws-lc-rs item to rind's.
-So far it maps `signature`, errors, and the adapter crates, and surveys the
-crates that pick a crypto backend for you.
+This guide maps each ring 0.17 and aws-lc-rs 1.x item to rind's name, to the
+[quest](quest/README.md) that adds it, or to why rind refuses it, and
+surveys the crates that pick a crypto backend for you. ring's names match
+aws-lc-rs's except where noted. A crate that cannot change its code waits on
+[rind-ring](quest/m3/parity/rind-ring.md), ring's API on rind.
+
+## Across the API
+
+| aws-lc-rs | rind |
+|---|---|
+| A `&'static` algorithm, or an `hmac::Algorithm` or `hkdf::Algorithm` by value | always `&'static` |
+| A `&dyn SecureRandom` argument | none: rind draws from the system's random source itself |
+| A `_FOR_LEGACY_USE_ONLY` suffix | a `legacy` submodule, such as `digest::legacy::SHA1` |
+| An allocated `Document`, `Vec`, or `Box` output | an owned value of fixed capacity, such as `signature::Pkcs8` |
+| `error::Unspecified`, `error::KeyRejected` | `rind::Error`, by kind of call (see [error](#error)) |
+
+## digest
+
+| aws-lc-rs | rind |
+|---|---|
+| `digest(alg, data)`, `Context::{new, update, finish}`, `Digest`'s bytes | the same |
+| `SHA256`, `SHA384`, `SHA512`, `SHA512_256` | the same |
+| `SHA1_FOR_LEGACY_USE_ONLY` | `legacy::SHA1` |
+| `SHA224`, `SHA3_256`, `SHA3_384`, `SHA3_512` (not in ring) | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `Algorithm::output_len()` | the same |
+| `Algorithm::block_len()`, `chaining_len()`, `MAX_BLOCK_LEN`, `MAX_CHAINING_LEN`, `MAX_OUTPUT_LEN`, `SHA*_OUTPUT_LEN` | none; `output_len()` gives each length |
+| `Context::algorithm()`, `Digest::algorithm()` | none |
+| `Digest::import_less_safe` | none |
+
+## hmac
+
+| aws-lc-rs | rind |
+|---|---|
+| `Key::new(HMAC_SHA256, key)` | `Key::new(&HMAC_SHA256, key)` |
+| `Key::generate(alg, rng)` | `rand::fill` a `tag_len()`-byte key, then `Key::new` |
+| `Key::algorithm()` | the same, as `&'static` |
+| `Context::{with_key, update, sign}`, `sign`, `Tag` | the same |
+| `verify(key, data, tag)` | the same, failing with `Error::BadSignature` |
+| `HMAC_SHA256`, `HMAC_SHA384`, `HMAC_SHA512` | the same |
+| `HMAC_SHA1_FOR_LEGACY_USE_ONLY` | `legacy::HMAC_SHA1` |
+| `HMAC_SHA224` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `Algorithm::digest_algorithm()` | none; `Algorithm::tag_len()` gives the output length |
+| `Signature`, `SigningContext`, `SigningKey`, `VerificationKey` (deprecated) | `Tag`, `Context`, `Key` |
+
+## hkdf
+
+| aws-lc-rs | rind |
+|---|---|
+| `Salt::new(HKDF_SHA256, salt)`, `extract` | `Salt::new(&HKDF_SHA256, salt)`, `extract` |
+| `Salt::none(alg)` | `Salt::new(&alg, &[])`, which extracts the same key as RFC 5869's absent salt |
+| `HKDF_SHA384`, `HKDF_SHA512`, `HKDF_SHA1_FOR_LEGACY_USE_ONLY` | [HKDF over every HMAC hash](quest/m3/parity/hkdf.md) |
+| `prk.expand(info, len)?` | `prk.expand(info, len)`, which cannot fail; `Okm::fill` checks a byte length |
+| your own `KeyType` | none: it is sealed, for a `usize` byte length or an `aead`, `aead::quic`, or `hmac` algorithm |
+| `UnboundKey::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)` | `aead::Key::from(okm)`, `HeaderProtectionKey::from(okm)`, `hmac::Key::from(okm)` |
+| `Okm::fill(out)` | the same, for a `usize` length only |
+| `Salt::from(okm)`, `Prk::from(okm)`, `Prk::new_less_safe` | none |
+| `Salt::algorithm()`, `Okm::len()`, `Algorithm::hmac_algorithm()` | none |
+
+## pbkdf2
+
+| aws-lc-rs | rind |
+|---|---|
+| `derive(alg, iterations, salt, secret, out)` | `Secret::new(&alg, secret).derive(iterations, salt, out)?`, which fails with `Error::WrongLength` where aws-lc-rs panics on an overlong `out` |
+| `verify(alg, iterations, salt, secret, previous)` | `Secret::new(&alg, secret).verify(iterations, salt, previous)` |
+| `PBKDF2_HMAC_SHA256`, `PBKDF2_HMAC_SHA384`, `PBKDF2_HMAC_SHA512` | the same |
+| `PBKDF2_HMAC_SHA1` | `legacy::PBKDF2_HMAC_SHA1` |
+
+A `Secret` keys HMAC once, so deriving or verifying with several salts
+reuses it. `verify` refuses a stored value shorter than the HMAC output with
+`Error::WrongLength`, where ring and aws-lc-rs compare any prefix.
+
+## aead
+
+| aws-lc-rs | rind |
+|---|---|
+| `LessSafeKey::new(UnboundKey::new(&alg, key)?)` | `Key::new(&alg, key)?` |
+| `SealingKey`, `OpeningKey`, `BoundKey`, `NonceSequence`, `nonce_sequence::{Counter32, Counter64}` and their builders | `Key`, given a `Nonce` per call from a sequence number the protocol keeps |
+| `seal_in_place_append_tag(nonce, Aad::from(aad), in_out)` | `seal_in_place_append_tag(nonce, aad, in_out)`, with `aad: &[u8]` |
+| `seal_in_place_separate_tag`, `open_in_place` | the same, with `aad: &[u8]` |
+| `open_in_place_separate_tag(nonce, aad, tag, in_out, range)` | `open_in_place_separate_tag(nonce, aad, Tag::try_from(tag)?, ciphertext)` |
+| `open_within(nonce, aad, in_out, range)` | `open_in_place` on the ciphertext's subslice, which leaves the plaintext there rather than moving it to the front |
+| `Aad::from(aad)`, `Aad::empty()` | `aad`, `&[]` |
+| `Nonce::assume_unique_for_key` | the same |
+| `Nonce::try_assume_unique_for_key`, `Nonce::from` | `assume_unique_for_key`, given a `[u8; 12]` |
+| `Tag`, ring's `Tag::try_from` | `Tag`, from `TryFrom<&[u8]>`, failing with `Error::WrongLength` |
+| `Algorithm::{key_len, tag_len, nonce_len}` | the same |
+| `NONCE_LEN`, `MAX_TAG_LEN`, `algorithm()` on each key | none; the `Algorithm` methods give each length |
+| `AES_128_GCM`, `AES_256_GCM`, `CHACHA20_POLY1305` | the same |
+| `AES_192_GCM`, `AES_128_GCM_SIV`, `AES_256_GCM_SIV` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `RandomizedNonceKey::new(&AES_256_GCM, key)`, with 96-bit random nonces | `RandomizedNonceKey::new(&key)`, XChaCha20-Poly1305 with 192-bit random nonces, which never collide in practice |
+| `RandomizedNonceKey::{seal_in_place_append_tag, open_in_place}` | the same, with the nonce a `RandomNonce` |
+| `RandomizedNonceKey::seal_in_place_separate_tag` | none |
+| `TlsRecordSealingKey`, `TlsRecordOpeningKey`, `TlsProtocolId` | `Key`; rind has no FIPS mode whose nonce rules they check |
+| `open_separate_gather`, `seal_in_place_scatter`, `seal_out_of_place_scatter`, `prepare_nonce`, `SealingKeyPreparedNonce`, `OpeningKeyPreparedNonce`, `seal_in_place` (deprecated) | none |
+| `chacha20_poly1305_openssh::{SealingKey, OpeningKey, KEY_LEN, TAG_LEN}` | none; ring has it, so [ring and aws-lc-rs parity](quest/m3/parity/README.md) covers it |
+
+### aead::quic
+
+| aws-lc-rs | rind |
+|---|---|
+| `HeaderProtectionKey::new(&alg, key)`, `HeaderProtectionKey::from(okm)` | the same |
+| `new_mask(sample)?` | `mask(&sample)`, which takes a `[u8; SAMPLE_LEN]` and cannot fail |
+| `Sample`, `Algorithm::sample_len()` | `[u8; SAMPLE_LEN]`, `SAMPLE_LEN` |
+| `Algorithm::key_len()`, `AES_128`, `AES_256`, `CHACHA20` | the same |
+| `HeaderProtectionKey::algorithm()` | none |
+
+## cipher
+
+aws-lc-rs's `cipher` offers AES in several modes; rind's offers only what
+protocols with their own integrity protection need. ring has none.
+
+| aws-lc-rs | rind |
+|---|---|
+| `UnboundCipherKey::new(&AES_128, key)` and `EncryptingKey::ctr` or `DecryptingKey::ctr` | `AesCtr::new(&AES_128, key)?` |
+| `less_safe_encrypt(in_out, EncryptionContext::Iv128(iv))`, `decrypt` | `apply_keystream(nonce, counter, in_out)?`, with `iv` as a 12-byte nonce and a big-endian 32-bit counter, refused rather than carried into the nonce when it would wrap |
+| `AES_128`, `AES_256` | the same |
+| `EncryptingKey::encrypt`, which picks a random IV | none: pick the nonce with `rand::fill` |
+| `AES_192`, `DES_EDE3_FOR_LEGACY_USE_ONLY` and the other DES, the CBC, ECB, CFB, and OFB modes, `PaddedBlockEncryptingKey`, `PaddedBlockDecryptingKey`, `StreamingEncryptingKey`, `StreamingDecryptingKey` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| none | `Aes::new(&alg, key)?.encrypt_block(block)`, one AES block |
+| none | `ChaCha20::new(key).apply_keystream(nonce, counter, in_out)?` |
+
+## agreement
+
+rind's agreement keys are ephemeral: each agrees once, and none loads or
+exports a private key.
+
+| aws-lc-rs | rind |
+|---|---|
+| `EphemeralPrivateKey::generate(alg, rng)`, `PrivateKey::generate(alg)` | `PrivateKey::generate(&alg)?` |
+| `compute_public_key()?` | `public_key()`, which cannot fail |
+| `agree_ephemeral(key, &UnparsedPublicKey::new(alg, peer), err, kdf)` | `key.agree(peer)?`, returning a `SharedSecret` wiped on drop |
+| `agree(&key, peer, err, kdf)` | `key.agree(peer)?`, which consumes the key |
+| `UnparsedPublicKey`, `ParsedPublicKey`, `ParsedPublicKeyFormat` | none: `agree` parses the peer's bytes for the key's algorithm |
+| `PublicKey`'s bytes | `PublicKey`'s bytes: an uncompressed point, or X25519's 32 bytes |
+| `X25519`, `ECDH_P256`, `ECDH_P384`, `ECDH_P521` | the same |
+| `PrivateKey::from_private_key_der`, `from_private_key`, `as_der`, `as_be_bytes`, `PublicKey::as_der`, `as_be_bytes` | none: no consumer stores an agreement key |
+| `algorithm()` on each type | none |
+
+`agree` refuses a compressed or DER-encoded peer key, which aws-lc-rs takes.
+
+## kem
+
+| aws-lc-rs | rind |
+|---|---|
+| `DecapsulationKey::generate(&ML_KEM_768)` | the same |
+| `encapsulation_key()?`, then `EncapsulationKey::key_bytes()?` | `public_key()`, and its bytes through `AsRef<[u8]>` |
+| `EncapsulationKey::new(alg, bytes)`, `encapsulate()` | the same |
+| `decapsulate(Ciphertext::from(bytes))` | `decapsulate(bytes)`, which consumes the key |
+| `DecapsulationKey::new(alg, bytes)`, `DecapsulationKey::key_bytes()` | none: decapsulation keys are ephemeral |
+| `ML_KEM_512`, `ML_KEM_1024` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `algorithm()`, `Algorithm::id()`, `AlgorithmId`, `AlgorithmIdentifier` | none |
+
+ring has no `kem`.
 
 ## signature
-
-ring's names match aws-lc-rs's here, except where noted.
 
 | aws-lc-rs | rind |
 |---|---|
 | `UnparsedPublicKey::new(alg, bytes).verify(m, s)` | `PublicKey::new(alg, bytes)?.verify(m, s)` |
-| `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, `verify` |
-| `RsaPublicKeyComponents::verify(alg, m, s)` | `components.to_public_key(alg)?.verify(m, s)` |
+| `UnparsedPublicKey::parse`, `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, `verify` |
+| `RsaPublicKeyComponents::verify(alg, m, s)`, `to_parsed_public_key(alg)` | `components.to_public_key(alg)?.verify(m, s)` |
+| `verify_digest`, `verify_digest_sig`, `sign_digest` | none: rind hashes the message itself |
+| `ParsedPublicKey::algorithm()`, `as_der()` | none; the key's bytes through `AsRef<[u8]>`, or a key pair's `to_spki()` |
 | `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `EdDSAParameters` | `VerificationAlgorithm` |
 | `RsaParameters` | `RsaVerificationAlgorithm`, which `PublicKey::new` also takes |
-| `EcdsaSigningAlgorithm`, `RsaEncoding`/`RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
+| `RsaParameters::{with_pss_salt_length, public_modulus_len, min_modulus_len, max_modulus_len}`, `RsaPssSaltLength` | none: a PSS salt is as long as its digest, aws-lc-rs's default |
+| `EcdsaSigningAlgorithm`, `RsaEncoding`, `RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
 | `ECDSA_P256_SHA256_ASN1_SIGNING` and the other `_SIGNING` | `sign::ECDSA_P256_SHA256_ASN1` |
-| `ECDSA_P256_SHA256_ASN1`, `ED25519` | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |
-| `RSA_PKCS1_SHA256`, `RSA_PSS_SHA256` | `sign::RSA_PKCS1_SHA256`, `sign::RSA_PSS_SHA256` |
-| `RSA_PKCS1_2048_8192_SHA256`, `RSA_PSS_2048_8192_SHA256` | `verify::RSA_PKCS1_SHA256`, `verify::RSA_PSS_SHA256` |
+| `ECDSA_P256_SHA256_ASN1`, `ED25519`, and the other verification constants | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |
+| ECDSA with SHA-1, SHA-224, or SHA-3, on secp256k1 (`P256K1`), or P-521 signing or `_FIXED` with another hash than SHA-512 | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `RSA_PKCS1_SHA256`, `RSA_PSS_SHA256`, and their SHA-384 and SHA-512 | `sign::RSA_PKCS1_SHA256`, `sign::RSA_PSS_SHA256`, and so on |
+| `RSA_PKCS1_2048_8192_SHA256`, `RSA_PSS_2048_8192_SHA256`, and their SHA-384 and SHA-512 | `verify::RSA_PKCS1_SHA256`, `verify::RSA_PSS_SHA256`, and so on |
 | `RSA_PKCS1_3072_8192_SHA384` | `verify::legacy::RSA_PKCS1_3072_SHA384` |
-| `RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY` (also SHA-1, SHA-512) | `verify::legacy::RSA_PKCS1_1024_SHA256` |
+| `RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY`, `_SHA256_`, `_SHA512_` | `verify::legacy::RSA_PKCS1_1024_SHA1`, `RSA_PKCS1_1024_SHA256`, `RSA_PKCS1_1024_SHA512` |
 | `RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY` | `verify::legacy::RSA_PKCS1_SHA1` |
-| `KeyPair::public_key()` | inherent `public_key()`, a `PublicKey`; `RsaKeyPair::public_key(&sign::X)` |
+| `KeyPair::public_key()`, ring's `RsaKeyPair::public()` | inherent `public_key()`, a `PublicKey`; `RsaKeyPair::public_key(&sign::X)` |
+| `Ed25519PublicKey`, `EcdsaPublicKey`, `RsaSubjectPublicKey` | `PublicKey` |
+| `generate_pkcs8(rng)`, `generate_pkcs8(alg, rng)`, `generate_pkcs8v1` | `generate(..)?.to_pkcs8()` |
+| `EcdsaKeyPair::from_pkcs8(alg, der)`, ring's `(alg, der, rng)` | `from_pkcs8(&alg, der)` |
+| `EcdsaKeyPair::from_private_key_and_public_key`, ring's with an `rng` | the same, with no random source |
 | `EcdsaKeyPair::from_private_key_der` | `from_sec1`, which refuses PKCS#8 |
 | `RsaKeyPair::from_der` | `from_pkcs1` |
+| `RsaKeyPair::from_components`, `KeyPairComponents` | none: load the key as PKCS#1 or PKCS#8 |
 | `Ed25519KeyPair::from_pkcs8_maybe_unchecked` | `from_pkcs8`, which takes v1 and v2 |
-| `to_pkcs8()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop |
-| `EcdsaKeyPair::sign(rng, m)`, `RsaKeyPair::sign(alg, rng, m, &mut sig)` | `sign(m)`, `sign(alg, m)`, which take no random source and return a `Signature` |
-| `rsa::KeySize` | `RsaKeySize` |
-| `Ed25519KeyPair::seed()`, `private_key().as_be_bytes()`, `public_modulus_len()` | none |
+| `Ed25519KeyPair::from_seed_unchecked` | `from_seed_and_public_key`, which checks the public key |
+| `to_pkcs8()`, `to_pkcs8v1()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop |
+| `EcdsaKeyPair::sign(rng, m)`, `RsaKeyPair::sign(alg, rng, m, &mut sig)`, `Ed25519KeyPair::try_sign` | `sign(m)`, `sign(alg, m)`, which take no random source and return a `Signature` |
+| `rsa::KeySize`, `RsaKeyPair::generate(size)` | `RsaKeySize`, which adds `Rsa6144`, and `generate(size)` |
+| `Ed25519KeyPair::seed()`, `EcdsaKeyPair::private_key()`, `public_modulus_len()`, `algorithm()`, `generate_fips` | none |
+| `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
+| `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 DER |
+| `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
+| `PqdsaKeyPair`, `ML_DSA_65` and the other ML-DSA items | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 
-`PublicKey::new` refuses a compressed ECDSA point, which aws-lc-rs takes.
+`PublicKey::new` refuses a compressed ECDSA point and a
+`SubjectPublicKeyInfo`, both of which aws-lc-rs takes.
+
+## rsa
+
+rind signs and verifies with RSA through `signature`, and encrypts with none.
+
+| aws-lc-rs | rind |
+|---|---|
+| `OaepPublicEncryptingKey`, `OaepPrivateDecryptingKey`, `OAEP_SHA256_MGF1SHA256` and the other OAEP items, `PublicEncryptingKey`, `PrivateDecryptingKey`, `EncryptionAlgorithmId` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `Pkcs1PublicEncryptingKey`, `Pkcs1PrivateDecryptingKey` | none: PKCS#1 v1.5 encryption invites padding-oracle attacks |
+
+## constant_time
+
+| aws-lc-rs | rind |
+|---|---|
+| `verify_slices_are_equal(a, b)` | `verify(a, b)`, failing with `Error::WrongLength` for unequal lengths and `Error::NotEqual` for unequal contents |
+
+## rand
+
+No rind call takes a random source, so there is nothing to pass one to.
+
+| aws-lc-rs | rind |
+|---|---|
+| `SystemRandom::new().fill(out)`, `rand::fill(out)` | `rand::fill(out)` |
+| `generate::<[u8; N]>(rng)?.expose()` | `rand::fill` into a `[u8; N]` |
+| `SecureRandom`, `RandomlyConstructable`, `Random` | none |
 
 ## error
 
@@ -51,6 +239,27 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 | `Unspecified`, from `SystemRandom::fill` or `generate` | `Error::RngFailed` |
 | `Unspecified`, from `constant_time::verify_slices_are_equal` | `Error::NotEqual` |
 | `Unspecified`, from RSA signing or ECDH when an internal check fails | `Error::Fault` |
+
+## cpu
+
+ring and aws-lc-rs detect CPU features and fall back to slower code. rind
+requires its features (see the README's Limitations), panics on a CPU
+missing one, and has no fallback.
+
+| aws-lc-rs | rind |
+|---|---|
+| none | `cpu::check()`, at startup, returns `cpu::MissingFeature` naming the feature |
+| none | `cpu::has_aes_hardware()`, for preferring ChaCha20-Poly1305 where AES runs in software |
+
+## Other modules
+
+| aws-lc-rs | rind |
+|---|---|
+| `cmac`, `key_wrap`, `kdf` (KBKDF and SSKDF), `tls_prf` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
+| `pkcs8::Document` | `signature::Pkcs8`, `signature::Spki` |
+| `encoding`'s `AsDer`, `AsBigEndian`, and `AsRawBytes` | `to_pkcs8()` and `to_spki()`; raw private keys none |
+| `io::Positive`, `io::der`, `iv::FixedLength`, `test`, `test_file!`, `unstable`, and ring's `deprecated_test` | none |
+| `init`, `try_fips_mode`, `fips_mode`, `try_fips_self_test`, `fips_version`, `try_fips_cpu_jitter_entropy`, `fips_cpu_jitter_entropy`, `awslc_version` | none: rind has no C library to initialize and no FIPS module |
 
 ## Adapter crates
 

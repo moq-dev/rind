@@ -186,8 +186,9 @@ Only RSA signing and verification are provided.  Signing keys have 2048- to
 8192-bit moduli; verification also takes 1024-bit moduli and SHA-1, but only
 under `signature::verify::legacy`.  Every key refuses an even public exponent
 or one of 1, and a private key whose components disagree is refused when it
-loads, as aws-lc's `RSA_check_key` does.  Our policy on RSA encryption is:
-"These are not made. They should never be made. We will not make them. We will not help make them."
+loads, as aws-lc's `RSA_check_key` does.  RSA encryption is not provided:
+OAEP waits on a consumer, and PKCS#1 v1.5 encryption, which invites
+padding-oracle attacks, is refused.
 
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
 All generated keys have e = 0x10001.  Unlike other private key operations in rind,
@@ -303,8 +304,9 @@ run time. [MIGRATING.md][migrating] maps each ring and aws-lc-rs item to it.
   one key type per role.
 - Algorithms only old protocols should use sit in `legacy` submodules, such
   as `digest::legacy::SHA1`.
-- Keys load and encode by format, all DER (`from_pkcs8`, `to_spki`), and
-  return their public half from `public_key()`.
+- Key pairs name the DER format they load or encode (`from_pkcs8`,
+  `from_sec1`, `to_spki`), and every private key returns its public half
+  from `public_key()`.
 - Encodings, signatures, and shared secrets are owned values of fixed
   capacity, such as `signature::Pkcs8`, rather than caller buffers or
   allocations. Keys wipe their secrets on drop.
