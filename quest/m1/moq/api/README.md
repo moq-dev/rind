@@ -1,4 +1,4 @@
-# Public API audit
+# [S] Public API audit
 
 ## Goal
 
@@ -8,7 +8,7 @@ compile rather than failing at runtime, nothing panics on caller input, and
 each name says its role. MoQ migrates onto 0.1.0, so breaking changes are
 cheapest now.
 
-This epic's own work, once its children land:
+What remains, now that its children have landed:
 
 - README's Architecture section describes the new design, not aws-lc-rs's
   shape.
@@ -92,11 +92,9 @@ them again; the chosen option is marked ✅.
 - rind-rcgen loads and generates P-256, P-384, P-521 (added 2026-10-31,
   after P-521 landed), and Ed25519 keys (RSA load only), exports PKCS#8
   wiped on drop, and maps errors to `rcgen::Error`, so no rind type leaks ✅
-  / P-256 only, renamed, with the leak fixed.
+  / P-256 only, renamed, with the leak fixed. P-521 waits on rcgen in
+  [its own quest](/quest/m3/parity/rcgen-p521.md), moved out of this audit
+  on 2026-10-31 since adding it later is not breaking.
 
 The names above are the decided direction, not exact signatures. Each child
 may adjust details as it learns, and records any change in its PR.
-
-## Required
-
-- [P-521 in rind-rcgen](/quest/m1/moq/api/adapters.md) - waiting on rcgen to export its P-521 algorithms without aws-lc-rs
