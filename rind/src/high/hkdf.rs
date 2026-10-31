@@ -116,6 +116,13 @@ impl KeyType for &'static aead::Algorithm {
     }
 }
 
+/// A key of the algorithm's [`aead::quic::Algorithm::key_len`].
+impl KeyType for &'static aead::quic::Algorithm {
+    fn len(&self) -> usize {
+        self.key_len()
+    }
+}
+
 /// A key of the algorithm's [`hmac::Algorithm::tag_len`].
 impl KeyType for hmac::Algorithm {
     fn len(&self) -> usize {
@@ -164,6 +171,13 @@ impl From<Okm<'_, &'static aead::Algorithm>> for aead::UnboundKey {
     }
 }
 
+impl From<Okm<'_, &'static aead::quic::Algorithm>> for aead::quic::HeaderProtectionKey {
+    fn from(okm: Okm<'_, &'static aead::quic::Algorithm>) -> Self {
+        okm.into_key(|algorithm, bytes| Self::new(algorithm, bytes))
+            .expect("HKDF output is the algorithm's key length")
+    }
+}
+
 impl From<Okm<'_, hmac::Algorithm>> for hmac::Key {
     fn from(okm: Okm<'_, hmac::Algorithm>) -> Self {
         okm.into_key(|algorithm, bytes| Self::new(*algorithm, bytes))
@@ -174,7 +188,7 @@ impl From<Okm<'_, hmac::Algorithm>> for hmac::Key {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::aead::{AES_128_GCM, AES_256_GCM, Aad, CHACHA20_POLY1305, LessSafeKey, Nonce};
+    use crate::aead::{AES_128_GCM, AES_256_GCM, Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, quic};
 
     #[test]
     fn rfc5869() {
@@ -291,6 +305,21 @@ mod tests {
                     prk.expand(&info, algorithm).unwrap()
                 )),
                 seal(aead::UnboundKey::new(algorithm, &bytes).unwrap()),
+            );
+        }
+
+        for algorithm in [&quic::AES_128, &quic::AES_256, &quic::CHACHA20] {
+            let mut bytes = vec![0u8; algorithm.key_len()];
+            prk.expand(&info, bytes.len())
+                .unwrap()
+                .fill(&mut bytes)
+                .unwrap();
+            let key = quic::HeaderProtectionKey::from(prk.expand(&info, algorithm).unwrap());
+            assert_eq!(
+                key.new_mask(&[7; 16]),
+                quic::HeaderProtectionKey::new(algorithm, &bytes)
+                    .unwrap()
+                    .new_mask(&[7; 16]),
             );
         }
 
