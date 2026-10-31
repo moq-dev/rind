@@ -196,6 +196,19 @@ pub mod hmac {
     };
 }
 
+/// Constant-time comparison, for checking a secret such as a MAC or token.
+///
+/// ```
+/// use rind::constant_time::verify_slices_are_equal;
+///
+/// verify_slices_are_equal(b"expected", b"expected").unwrap();
+/// assert_eq!(verify_slices_are_equal(b"expected", b"presented"), Err(rind::Error::WrongLength));
+/// assert_eq!(verify_slices_are_equal(b"expected", b"Expected"), Err(rind::Error::NotEqual));
+/// ```
+pub mod constant_time {
+    pub use crate::high::constant_time::verify_slices_are_equal;
+}
+
 /// Key derivation with HKDF.
 ///
 /// A [`hkdf::Salt`] extracts a [`hkdf::Prk`] from a secret, which then expands

@@ -29,6 +29,9 @@ pub enum Error {
     /// Presented AEAD tag/aad/ciphertext/nonce was wrong
     DecryptFailed,
 
+    /// Values compared in constant time were not equal.
+    NotEqual,
+
     /// A key encoding was malformed or did not match the expected algorithm.
     KeyRejected(KeyRejected),
 }
@@ -94,6 +97,7 @@ impl core::fmt::Display for Error {
             ),
             Self::BadSignature => write!(f, "presented signature is invalid"),
             Self::DecryptFailed => write!(f, "presented AEAD tag/aad/ciphertext/nonce was wrong"),
+            Self::NotEqual => write!(f, "values compared in constant time were not equal"),
             Self::KeyRejected(e) => write!(f, "a key was rejected: {e}"),
         }
     }
@@ -133,6 +137,10 @@ mod tests {
         assert_eq!(
             format!("{}", Error::DecryptFailed),
             "presented AEAD tag/aad/ciphertext/nonce was wrong"
+        );
+        assert_eq!(
+            format!("{}", Error::NotEqual),
+            "values compared in constant time were not equal"
         );
         assert_eq!(
             format!(
