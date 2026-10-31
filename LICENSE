@@ -122,15 +122,6 @@ BoringSSL <https://boringssl.googlesource.com/boringssl>
   Copyright 2024 The BoringSSL Authors
   License: Apache-2.0. BoringSSL has no NOTICE file.
 
-fiat-crypto <https://github.com/mit-plv/fiat-crypto>
-
-  What: rind/src/low/generic/p521_scalar.rs, fiat-crypto's arithmetic mod
-  P-521's group order, which its v0.1.6 release binary generated, as the
-  file's first lines record, with a widening multiply rind wrote.
-  Copyright (c) 2015-2020 the fiat-crypto authors
-  License: MIT OR Apache-2.0 OR BSD-1-Clause. fiat-crypto has no NOTICE
-  file.
-
 --
 
 SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0

@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! The s2n-bignum routines `mid::p521` uses, with their contracts, over
-//! fiat-crypto's 32-bit P-521 field arithmetic and its Montgomery
-//! arithmetic mod the group order, in 64-bit words of 32-bit products.
+//! fiat-crypto's 32-bit P-521 field arithmetic, and rind's arithmetic mod
+//! the group order.
 //!
-//! fiat-crypto proves each field and Montgomery operation correct, and
-//! emits it as straight-line code with no secret-dependent branch or
-//! index.  The rest composes those: the point formulas repeat s2n-bignum's,
+//! fiat-crypto proves each field operation correct, and emits it as
+//! straight-line code with no secret-dependent branch or index.  Mod n,
+//! rind multiplies by Montgomery's method, word by word over 18 32-bit
+//! words (CIOS), in loops whose bounds and indices are public: fiat-crypto's
+//! 17-word output for n overflows rustc's stack in debug builds, and its
+//! 9-word one, in 64-bit words, measured 5x slower on armv7.  The rest
+//! composes those: the point formulas repeat s2n-bignum's,
 //! and every coordinate is fully reduced, so results match it word for
 //! word; inversion is Fermat's little theorem, raising to a public exponent
 //! by a fixed sequence of squarings and multiplications; reduction mod n
@@ -18,10 +22,6 @@
 use fiat_crypto::p521_32 as fp;
 use fiat_crypto::p521_32::fiat_p521_loose_field_element as Loose;
 use fiat_crypto::p521_32::fiat_p521_tight_field_element as Fe;
-
-use super::p521_scalar as fs;
-use super::p521_scalar::fiat_p521_scalar_montgomery_domain_field_element as Fs;
-use super::p521_scalar::fiat_p521_scalar_non_montgomery_domain_field_element as FsPlain;
 
 /// z := (x * y) mod p_521, assuming x and y reduced
 pub(crate) fn bignum_mul_p521(z: &mut [u64; 9], x: &[u64; 9], y: &[u64; 9]) {
@@ -74,14 +74,7 @@ pub(crate) fn bignum_mod_n521(z: &mut [u64; 9], x: &[u64; 9]) {
         }
     }
 
-    let r = join(&r[..17].try_into().unwrap());
-    let mut diff = [0; 9];
-    let mut borrow = 0;
-    for ((d, r), n) in diff.iter_mut().zip(&r).zip(&N) {
-        let borrow_in = borrow;
-        fs::fiat_p521_scalar_subborrowx_u64(d, &mut borrow, borrow_in, *r, *n);
-    }
-    fs::fiat_p521_scalar_selectznz(z, opaque(borrow), &diff, &r);
+    *z = join(&subtract_n_if_above(&r));
 }
 
 /// Viewing table as rows of 18 words width, copy the 18 words at
@@ -143,17 +136,10 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
     // only if 32m + d is 2d, when m is zero and the accumulator is at
     // infinity, which is selected around, and opposite only if 32m + d is
     // zero, which leaves the accumulator at infinity too.
-    let mut neg_k = Fs([0; 9]);
-    fs::fiat_p521_scalar_opp(&mut neg_k, &Fs(k));
-    let mut above_half = 0;
-    for (k, half) in k.iter().zip(&HALF_N) {
-        let (mut diff, borrow_in) = (0, above_half);
-        fs::fiat_p521_scalar_subborrowx_u64(&mut diff, &mut above_half, borrow_in, *half, *k);
-    }
-    let above_half = opaque(above_half);
-    let mut chosen = [0; 9];
-    fs::fiat_p521_scalar_selectznz(&mut chosen, above_half, &k, &neg_k.0);
-    let k = chosen;
+    let (neg_k, _) = sub(&split(&N), &split(&k));
+    let (_, above_half) = sub(&split(&HALF_N), &split(&k));
+    let above_half = opaque(above_half as u8);
+    let k = join(&select_words(above_half, &split(&k), &neg_k));
     p[1] = select(above_half, &p[1], &fe_opp(&p[1]));
 
     let mut table = [p; 16];
@@ -291,23 +277,21 @@ fn jdouble([x, y, z]: &[Fe; 3]) -> [Fe; 3] {
 /// z := x * y / 2^576 mod m, for m = n_521, assuming x and y reduced
 pub(crate) fn bignum_montmul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
     assert_eq!(m, N);
-    z.copy_from_slice(&fs_mul(&Fs(scalar(x)), &Fs(scalar(y))).0);
+    z.copy_from_slice(&join(&mont_mul(&split(&scalar(x)), &split(&scalar(y)))));
 }
 
 /// z := x / 2^576 mod m, for m = n_521, assuming x reduced
 pub(crate) fn bignum_demont(z: &mut [u64], x: &[u64], m: &[u64]) {
     assert_eq!(m, N);
-    let mut r = FsPlain([0; 9]);
-    fs::fiat_p521_scalar_from_montgomery(&mut r, &Fs(scalar(x)));
-    z.copy_from_slice(&r.0);
+    z.copy_from_slice(&join(&mont_mul(&split(&scalar(x)), &split(&ONE))));
 }
 
 /// z := (x + y) mod m, for m = n_521, assuming x and y reduced
 pub(crate) fn bignum_modadd(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
     assert_eq!(m, N);
-    let mut r = Fs([0; 9]);
-    fs::fiat_p521_scalar_add(&mut r, &Fs(scalar(x)), &Fs(scalar(y)));
-    z.copy_from_slice(&r.0);
+    // Below 2n < 2^576, so the sum never carries out.
+    let (sum, _) = add(&split(&scalar(x)), &split(&scalar(y)));
+    z.copy_from_slice(&join(&subtract_n_if_above(&sum)));
 }
 
 /// z := a^-1 mod b, for b = n_521, or zero if a is zero mod n_521
@@ -317,23 +301,16 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64])
     assert_eq!(b, N);
     let mut a_reduced = [0; 9];
     bignum_mod_n521(&mut a_reduced, &scalar(a));
-    let mut a_mont = Fs([0; 9]);
-    fs::fiat_p521_scalar_to_montgomery(&mut a_mont, &FsPlain(a_reduced));
-    let mut r = FsPlain([0; 9]);
-    fs::fiat_p521_scalar_from_montgomery(&mut r, &fs_pow(&a_mont, &N_MINUS_2));
-    z.copy_from_slice(&r.0);
+    let a_mont = mont_mul(&split(&a_reduced), &split(&MM));
+    let r = mont_pow(&a_mont, &N_MINUS_2);
+    z.copy_from_slice(&join(&mont_mul(&r, &split(&ONE))));
 }
 
 /// z := 2^1152 mod m, for m = n_521
 #[cfg(test)]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     assert_eq!(m, N);
-    // to_montgomery multiplies by 2^576, so this is 2^576 * (2^576 mod n).
-    let mut one = Fs([0; 9]);
-    fs::fiat_p521_scalar_set_one(&mut one);
-    let mut r = Fs([0; 9]);
-    fs::fiat_p521_scalar_to_montgomery(&mut r, &FsPlain(one.0));
-    z.copy_from_slice(&r.0);
+    z.copy_from_slice(&MM);
 }
 
 /// `x^(p - 2)`, which is `x^-1` for a nonzero `x`, by an addition chain
@@ -359,16 +336,15 @@ fn fe_invert(x: &Fe) -> Fe {
     fe_mul(&sqr_n(&x519, 2), x)
 }
 
-/// `x^e` mod n_521 for a public exponent `e`, by a fixed 4-bit window,
-/// starting at `e`'s top window.
+/// `x^e` mod n_521, in the Montgomery domain, for a public exponent `e`,
+/// by a fixed 4-bit window starting at `e`'s top window.
 ///
 /// The exponent picks the table entries, so it must not be secret.
-fn fs_pow(x: &Fs, e: &[u64; 9]) -> Fs {
-    let mut one = Fs([0; 9]);
-    fs::fiat_p521_scalar_set_one(&mut one);
+fn mont_pow(x: &[u32; 18], e: &[u64; 9]) -> [u32; 18] {
+    let one = mont_mul(&split(&ONE), &split(&MM));
     let mut table = [one; 16];
     for i in 1..table.len() {
-        table[i] = fs_mul(&table[i - 1], x);
+        table[i] = mont_mul(&table[i - 1], x);
     }
 
     let window = |bit: usize| ((e[bit / 64] >> (bit % 64)) & 0xf) as usize;
@@ -379,19 +355,83 @@ fn fs_pow(x: &Fs, e: &[u64; 9]) -> Fs {
         .skip_while(|&bit| window(bit) == 0)
     {
         for _ in 0..4 {
-            let mut r = Fs([0; 9]);
-            fs::fiat_p521_scalar_square(&mut r, &acc);
-            acc = r;
+            acc = mont_mul(&acc, &acc);
         }
-        acc = fs_mul(&acc, &table[window(bit)]);
+        acc = mont_mul(&acc, &table[window(bit)]);
     }
     acc
 }
 
-fn fs_mul(x: &Fs, y: &Fs) -> Fs {
-    let mut r = Fs([0; 9]);
-    fs::fiat_p521_scalar_mul(&mut r, x, y);
-    r
+/// `x * y / 2^576 mod n`, for `x` and `y` below n, by Montgomery's method
+/// with the multiplication and reduction interleaved word by word (CIOS).
+///
+/// Each step adds `x * y[i]`, then the multiple of n that zeroes the low
+/// word, and drops it.  The running value stays below 2n, so the 18 words
+/// and the two above them hold it, and one subtraction of n reduces it.
+fn mont_mul(x: &[u32; 18], y: &[u32; 18]) -> [u32; 18] {
+    let n: [u32; 18] = split(&N);
+    let mut t = [0u32; 20];
+    for yi in y {
+        let mut carry = 0u64;
+        for (t, x) in t.iter_mut().zip(x) {
+            let s = u64::from(*t) + u64::from(*x) * u64::from(*yi) + carry;
+            *t = s as u32;
+            carry = s >> 32;
+        }
+        let s = u64::from(t[18]) + carry;
+        t[18] = s as u32;
+        t[19] = (s >> 32) as u32;
+
+        let m = t[0].wrapping_mul(N_INV_NEG);
+        let mut carry = (u64::from(t[0]) + u64::from(m) * u64::from(n[0])) >> 32;
+        for j in 1..18 {
+            let s = u64::from(t[j]) + u64::from(m) * u64::from(n[j]) + carry;
+            t[j - 1] = s as u32;
+            carry = s >> 32;
+        }
+        let s = u64::from(t[18]) + carry;
+        t[17] = s as u32;
+        t[18] = t[19] + (s >> 32) as u32;
+        t[19] = 0;
+    }
+    // Below 2n < 2^576, so t[18] is zero.
+    subtract_n_if_above(&t[..18].try_into().unwrap())
+}
+
+/// `x - n` if `x` is at least n, else `x`, for `x` below 2n.
+fn subtract_n_if_above(x: &[u32; 18]) -> [u32; 18] {
+    let (diff, borrow) = sub(x, &split(&N));
+    select_words(opaque(borrow as u8), &diff, x)
+}
+
+/// `x + y`, and the carry out.
+fn add(x: &[u32; 18], y: &[u32; 18]) -> ([u32; 18], u32) {
+    let mut carry = 0u64;
+    let r = core::array::from_fn(|i| {
+        let s = u64::from(x[i]) + u64::from(y[i]) + carry;
+        carry = s >> 32;
+        s as u32
+    });
+    (r, carry as u32)
+}
+
+/// `x - y`, and 1 if it borrowed.
+fn sub(x: &[u32; 18], y: &[u32; 18]) -> ([u32; 18], u32) {
+    let mut borrow = 0u64;
+    let r = core::array::from_fn(|i| {
+        let d = u64::from(x[i])
+            .wrapping_sub(u64::from(y[i]))
+            .wrapping_sub(borrow);
+        borrow = d >> 63;
+        d as u32
+    });
+    (r, borrow as u32)
+}
+
+/// `if_nonzero` if `flag` is 1, else `if_zero`.
+fn select_words(flag: u8, if_zero: &[u32; 18], if_nonzero: &[u32; 18]) -> [u32; 18] {
+    let mask = u32::from(flag).wrapping_neg();
+    core::array::from_fn(|i| (if_nonzero[i] & mask) | (if_zero[i] & !mask))
 }
 
 fn scalar(x: &[u64]) -> [u64; 9] {
@@ -403,12 +443,9 @@ fn split<const N: usize, const W: usize>(x: &[u64; N]) -> [u32; W] {
     core::array::from_fn(|i| x.get(i / 2).map_or(0, |w| (w >> (32 * (i % 2))) as u32))
 }
 
-/// The 64-bit words of 17 32-bit ones, low first.
-fn join(x: &[u32; 17]) -> [u64; 9] {
-    core::array::from_fn(|i| {
-        let high = x.get(2 * i + 1).copied().unwrap_or(0);
-        u64::from(x[2 * i]) | (u64::from(high) << 32)
-    })
+/// The 64-bit words of 18 32-bit ones, low first.
+fn join(x: &[u32; 18]) -> [u64; 9] {
+    core::array::from_fn(|i| u64::from(x[2 * i]) | (u64::from(x[2 * i + 1]) << 32))
 }
 
 /// The words of a fully reduced field element.
@@ -561,6 +598,25 @@ const HALF_N: [u64; 9] = [
     0xffff_ffff_ffff_ffff,
     0x0000_0000_0000_00ff,
 ];
+
+/// 1, as little-endian words.
+const ONE: [u64; 9] = [1, 0, 0, 0, 0, 0, 0, 0, 0];
+
+/// 2^1152 mod n_521, the Montgomery factor squared.
+const MM: [u64; 9] = [
+    0x137c_d04d_cf15_dd04,
+    0xf707_badc_e554_7ea3,
+    0x12a7_8d38_7945_73ff,
+    0xd372_1ef5_57f7_5e06,
+    0xdd6e_23d8_2e49_c7db,
+    0xcff3_d142_b775_6e3e,
+    0x5bcc_6d61_a8e5_67bc,
+    0x2d8e_03d1_492d_0d45,
+    0x0000_0000_0000_003d,
+];
+
+/// -n_521^-1 mod 2^32.
+const N_INV_NEG: u32 = 0x79a9_95c7;
 
 /// 2^521 - n_521, as little-endian words.
 const C: [u64; 5] = [

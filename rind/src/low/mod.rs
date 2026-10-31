@@ -30,10 +30,6 @@ mod generic {
     pub(crate) mod p384;
     #[cfg(any(target_arch = "arm", test))]
     pub(crate) mod p521;
-    // Generated, so its casts and unused items are allowed rather than edited.
-    #[cfg(any(target_arch = "arm", test))]
-    #[allow(dead_code, trivial_numeric_casts, unreachable_pub, clippy::all)]
-    mod p521_scalar;
     #[cfg(not(target_arch = "arm"))]
     pub(crate) mod poly1305;
     // armv7's SHA1 and SHA256, also built in x86_64 tests to check the AVX2
