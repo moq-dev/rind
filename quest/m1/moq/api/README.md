@@ -55,6 +55,16 @@ them again; the chosen option is marked ✅.
 - Signature constants live in `signature::sign` and `signature::verify`, and
   drop the default `_2048_8192` range; a different floor lives under
   `legacy` ✅ / a `_SIGNING` suffix on both / keep the names.
+- RSA verification constants are their own `RsaVerificationAlgorithm`, the
+  only type `RsaPublicKeyComponents::to_public_key` takes, so a non-RSA
+  algorithm there fails to compile; `PublicKey::new` takes either
+  (2026-10-31) ✅ / refuse a non-RSA algorithm at run time.
+- `verify::legacy::RSA_PKCS1_3072_SHA384` stays (2026-10-31) ✅ / delete it.
+- A failed internal consistency check (RSA signing's CRT check, ECDH's
+  on-curve shared point) returns a seventh variant, `Error::Fault`
+  (2026-10-31) ✅ / the call's own variant / panic.
+- Every public error enum is `#[non_exhaustive]`, so a new variant is not
+  breaking (2026-10-31) ✅.
 - Key formats are named by format, all DER: `from_pkcs1`, `from_sec1`,
   `from_pkcs8`, `to_pkcs8`, `to_spki`. "My public half" is `public_key()`
   everywhere, as an inherent method, so the `KeyPair` trait and its three
@@ -89,5 +99,4 @@ may adjust details as it learns, and records any change in its PR.
 
 ## Required
 
-- [Errors by role](/quest/m1/moq/api/errors.md) - about six variants, each from a distinct kind of call
 - [Adapter API](/quest/m1/moq/api/adapters.md) - rind-rustls mirrors rustls, rind-rcgen broadens, setup-time CPU checks

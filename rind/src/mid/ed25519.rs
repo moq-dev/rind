@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use crate::error::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::sha2::Sha512Context;
 use crate::mid::util;
@@ -121,7 +121,7 @@ pub(crate) struct VerifyingKey {
 impl VerifyingKey {
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let Ok(bytes) = bytes.try_into() else {
-            return Err(Error::WrongLength);
+            return Err(KeyFormatError::WrongLength.into());
         };
 
         EdwardsPoint::decompress_from(bytes).map(|point| Self {
@@ -231,14 +231,14 @@ impl EdwardsPoint {
 
     /// Try to decompress a curve point from input bytes.
     ///
-    /// Returns `Err(Error::NotOnCurve)` if the input is not reduced, not
-    /// on the curve, or not canonically encoded.
+    /// Fails if the input is not reduced, not on the curve, or not
+    /// canonically encoded.
     fn decompress_from(compressed: &[u8; 32]) -> Result<Self, Error> {
         let mut point = Self([0u64; 8]);
         if low::edwards25519_decode(&mut point.0, compressed) {
             Ok(point)
         } else {
-            Err(Error::NotOnCurve)
+            Err(KeyFormatError::NotOnCurve.into())
         }
     }
 

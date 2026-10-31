@@ -7,7 +7,7 @@ use rind::aead::{
 };
 use rind::cipher::ChaCha20;
 use rind::signature::verify::legacy;
-use rind::signature::{self, VerificationAlgorithm, sign, verify};
+use rind::signature::{self, RsaVerificationAlgorithm, sign, verify};
 use rind::{hkdf, hmac, pbkdf2};
 use serde::Deserialize;
 
@@ -360,10 +360,7 @@ fn test_verify_ecdsa() {
                 let result = public_key.verify(&test.msg, &test.sig);
                 match (test.result, result) {
                     (ExpectedResult::Valid, Ok(())) => {}
-                    (
-                        ExpectedResult::Invalid,
-                        Err(Error::BadSignature) | Err(Error::WrongLength),
-                    ) => {}
+                    (ExpectedResult::Invalid, Err(Error::BadSignature)) => {}
                     _ => panic!("expected {:?} got {:?}", test.result, result),
                 }
             }
@@ -522,7 +519,8 @@ fn test_rsa_pkcs1_verify() {
             summary.group(&group);
 
             // Each algorithm for this hash, with the smallest modulus it takes.
-            let algorithms: &[(&'static VerificationAlgorithm, usize)] = match group.sha.as_ref() {
+            let algorithms: &[(&'static RsaVerificationAlgorithm, usize)] = match group.sha.as_ref()
+            {
                 "SHA-256" => &[
                     (&verify::RSA_PKCS1_SHA256, 2048),
                     (&legacy::RSA_PKCS1_1024_SHA256, 1024),
@@ -546,11 +544,11 @@ fn test_rsa_pkcs1_verify() {
             for &(algorithm, min_bits) in algorithms {
                 let key = signature::PublicKey::new(algorithm, &group.public_key_asn);
                 if group.key_size < min_bits {
-                    assert_eq!(key.err(), Some(Error::OutOfRange));
-                    assert_eq!(
-                        components.to_public_key(algorithm).err(),
-                        Some(Error::OutOfRange)
-                    );
+                    assert!(matches!(key, Err(Error::KeyRejected(_))));
+                    assert!(matches!(
+                        components.to_public_key(algorithm),
+                        Err(Error::KeyRejected(_))
+                    ));
                     continue;
                 }
                 let key = key.unwrap();
@@ -606,7 +604,8 @@ fn test_rsa_pkcs1_legacy_verify() {
             summary.group(&group);
 
             // Each algorithm for this hash, with the smallest modulus it takes.
-            let algorithms: &[(&'static VerificationAlgorithm, usize)] = match group.sha.as_ref() {
+            let algorithms: &[(&'static RsaVerificationAlgorithm, usize)] = match group.sha.as_ref()
+            {
                 "SHA-1" => &[
                     (&legacy::RSA_PKCS1_1024_SHA1, 1024),
                     (&legacy::RSA_PKCS1_SHA1, 2048),
@@ -632,7 +631,7 @@ fn test_rsa_pkcs1_legacy_verify() {
             for &(algorithm, min_bits) in algorithms {
                 let key = signature::PublicKey::new(algorithm, &group.key_asn);
                 if group.key_size < min_bits {
-                    assert_eq!(key.err(), Some(Error::OutOfRange));
+                    assert!(matches!(key, Err(Error::KeyRejected(_))));
                     continue;
                 }
                 let key = key.unwrap();

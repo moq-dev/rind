@@ -6,7 +6,8 @@
 use core::fmt;
 use core::marker::PhantomData;
 
-use crate::{Error, low};
+use crate::error::{Error, KeyFormatError};
+use crate::low;
 use crate::{
     low::{ct_copy, ct_equal, ct_select_i16},
     mid::{
@@ -214,7 +215,7 @@ impl EncapKey {
         //
         // If test != ek[0 ∶ 384k], then input checking failed.
         if t_hat != Coeffs::from_bytes(&t_hat).to_bytes() {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::MlKemModulus.into());
         }
 
         let transpose_a_hat = Coeffs::sample_poly_transposed(&rho);
@@ -843,7 +844,7 @@ mod tests {
     fn encaps_modulus_test() {
         assert_eq!(
             EncapKey::from_bytes(&[0xffu8; 1184]).err(),
-            Some(Error::OutOfRange)
+            Some(KeyFormatError::MlKemModulus.into())
         );
     }
 }

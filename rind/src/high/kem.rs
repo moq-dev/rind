@@ -3,6 +3,7 @@
 use core::fmt;
 
 use crate::Error;
+use crate::error::KeyFormatError;
 use crate::mid::mlkem768;
 
 /// A key encapsulation mechanism.
@@ -71,12 +72,12 @@ pub struct EncapsulationKey {
 impl EncapsulationKey {
     /// Parses a peer's encapsulation key for `algorithm`.
     ///
-    /// Fails with [`Error::WrongLength`] for the wrong length, and
-    /// [`Error::OutOfRange`] if it fails FIPS-203's modulus check.
+    /// Fails with [`Error::KeyRejected`] for the wrong length, or if it fails
+    /// FIPS-203's modulus check.
     pub fn new(algorithm: &'static Algorithm, bytes: &[u8]) -> Result<Self, Error> {
         match algorithm.id {
             AlgorithmId::MlKem768 => {
-                let bytes = bytes.try_into().map_err(|_| Error::WrongLength)?;
+                let bytes = bytes.try_into().map_err(|_| KeyFormatError::WrongLength)?;
                 mlkem768::EncapKey::from_bytes(bytes).map(Self::wrap)
             }
         }
@@ -196,7 +197,7 @@ mod tests {
                     assert_eq!(secret, &test.k, "{}", test.id);
                     assert_eq!(&ciphertext.as_ref()[..], &test.c, "{}", test.id);
                 }
-                (Expected::Invalid, Err(Error::WrongLength | Error::OutOfRange)) => {}
+                (Expected::Invalid, Err(Error::KeyRejected(_))) => {}
                 _ => panic!("{}: expected {:?} got {:?}", test.id, test.result, result),
             }
         }

@@ -730,7 +730,7 @@ mod rsa {
     /// One padding and hash: each side's signing and verification constants.
     struct Scheme {
         ours_sign: &'static rind::signature::RsaSigningAlgorithm,
-        ours_verify: &'static rind::signature::VerificationAlgorithm,
+        ours_verify: &'static rind::signature::RsaVerificationAlgorithm,
         theirs_sign: &'static signature::RsaSignatureEncoding,
         theirs_verify: &'static signature::RsaParameters,
         /// PKCS#1 v1.5 signatures have no randomness, so both sides must agree.
@@ -846,7 +846,7 @@ mod rsa {
 
     // Every verification algorithm, beside aws-lc-rs's of the same name.
     const VERIFICATION: [(
-        &rind::signature::VerificationAlgorithm,
+        &rind::signature::RsaVerificationAlgorithm,
         &signature::RsaParameters,
     ); 11] = [
         (
@@ -954,15 +954,15 @@ mod rsa {
     fn refuses_modulus_below_2048_bits() {
         let private = include_bytes!("../src/high/rsa/rsa2047.pkcs8.der");
         assert!(KeyPair::from_pkcs8(private).is_err());
-        assert_eq!(
-            RsaKeyPair::from_pkcs8(private).err(),
-            Some(Error::OutOfRange)
-        );
+        assert!(matches!(
+            RsaKeyPair::from_pkcs8(private),
+            Err(Error::KeyRejected(_))
+        ));
         let public = include_bytes!("../src/high/rsa/rsa2047.pub.der");
-        assert_eq!(
-            rind::signature::PublicKey::new(&verify::RSA_PKCS1_SHA256, public).err(),
-            Some(Error::OutOfRange)
-        );
+        assert!(matches!(
+            rind::signature::PublicKey::new(&verify::RSA_PKCS1_SHA256, public),
+            Err(Error::KeyRejected(_))
+        ));
     }
 }
 

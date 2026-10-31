@@ -6,7 +6,7 @@
 use libcrux_hacl_rs::bignum::base::{self, bn_mont_ctx_u64};
 use libcrux_hacl_rs::bignum::bignum64;
 
-use crate::error::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 
 #[derive(Clone, Debug)]
@@ -28,12 +28,13 @@ impl RsaPublicKey {
     pub(crate) fn new(n: RsaPosInt, e: u32) -> Result<Self, Error> {
         if n.is_even()
             || !(MIN_PUBLIC_MODULUS_BITS..=MAX_PUBLIC_MODULUS_BITS).contains(&n.len_bits())
-            // As aws-lc requires: an even e has no inverse mod the even
-            // (p - 1)(q - 1), and e = 1 makes every message its own signature.
-            || e.is_multiple_of(2)
-            || e == 1
         {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::RsaModulus.into());
+        }
+        // As aws-lc requires: an even e has no inverse mod the even
+        // (p - 1)(q - 1), and e = 1 makes every message its own signature.
+        if e.is_multiple_of(2) || e == 1 {
+            return Err(KeyFormatError::RsaExponent.into());
         }
 
         let mu = base::mod_inv_uint64(n.as_words()[0]);
@@ -55,7 +56,7 @@ impl RsaPublicKey {
         let len = n.len() as u32;
         let c = c.words_at_width(n.len())?;
         if bignum64::lt_mask(len, c, n) != u64::MAX {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
 
         let k = [bn_mont_ctx_u64 {

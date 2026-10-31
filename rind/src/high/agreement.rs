@@ -192,6 +192,7 @@ mod tests {
     use serde::Deserialize;
 
     use super::*;
+    use crate::error::KeyFormatError;
     use crate::test::{Expected, wycheproof};
 
     #[test]
@@ -235,16 +236,23 @@ mod tests {
             let result = agree(&test);
             // Point compression is unsupported.
             if test.has_flag("CompressedPublic") || test.has_flag("CompressedPoint") {
-                assert_eq!(result, Err(Error::NotUncompressed), "{}", test.id);
+                assert_eq!(
+                    result,
+                    Err(KeyFormatError::Compressed.into()),
+                    "{}",
+                    test.id
+                );
                 continue;
             }
 
             match (test.result, &result) {
                 (Expected::Valid, Ok(shared)) => assert_eq!(shared, &test.shared, "{}", test.id),
-                (Expected::Invalid, Err(Error::NotOnCurve))
-                    if test.has_flag("InvalidCurveAttack") => {}
-                (Expected::Invalid, Err(Error::WrongLength))
-                    if test.has_flag("InvalidEncoding") => {}
+                (Expected::Invalid, Err(e))
+                    if test.has_flag("InvalidCurveAttack")
+                        && *e == KeyFormatError::NotOnCurve.into() => {}
+                (Expected::Invalid, Err(e))
+                    if test.has_flag("InvalidEncoding")
+                        && *e == KeyFormatError::WrongLength.into() => {}
                 _ => panic!("{}: expected {:?} got {:?}", test.id, test.result, result),
             }
         }
@@ -285,8 +293,9 @@ mod tests {
                 .and_then(|peer| private.diffie_hellman(&peer))
                 .map(|shared| low::ct::into_public(shared.0));
             match (test.result, &result) {
-                (Expected::Acceptable, Err(Error::NotOnCurve))
-                    if test.has_flag("ZeroSharedSecret") => {}
+                (Expected::Acceptable, Err(e))
+                    if test.has_flag("ZeroSharedSecret")
+                        && *e == KeyFormatError::SmallOrder.into() => {}
                 (Expected::Valid | Expected::Acceptable, Ok(shared)) => {
                     assert_eq!(&shared[..], &test.shared, "{}", test.id)
                 }

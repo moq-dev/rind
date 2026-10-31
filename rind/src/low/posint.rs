@@ -58,7 +58,7 @@ impl<const N: usize> PosInt<N> {
     /// and notably that is not the same as `1 << 64`!
     fn push_word(&mut self, word: u64) -> Result<(), Error> {
         if self.used == N {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
 
         self.words[self.used] = word;
@@ -72,7 +72,7 @@ impl<const N: usize> PosInt<N> {
         let bytes = trim_leading_zeroes(bytes);
 
         if bytes.len() > N * 8 {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
 
         let mut words = bytes.rchunks_exact(8);
@@ -96,7 +96,7 @@ impl<const N: usize> PosInt<N> {
 
     pub(crate) fn to_bytes<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let required_bytes = self.used * 8;
-        let out = out.get_mut(..required_bytes).ok_or(Error::OutOfRange)?;
+        let out = out.get_mut(..required_bytes).ok_or(Error::WrongLength)?;
 
         let (chunks, _) = out.as_chunks_mut::<8>();
         for (chunk, word) in chunks.iter_mut().rev().zip(self.as_words().iter()) {
@@ -112,7 +112,7 @@ impl<const N: usize> PosInt<N> {
     /// is positive.
     pub(crate) fn to_bytes_asn1<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let required_bytes = self.used * 8 + 1;
-        let out = out.get_mut(..required_bytes).ok_or(Error::OutOfRange)?;
+        let out = out.get_mut(..required_bytes).ok_or(Error::WrongLength)?;
 
         out[0] = 0x00;
         {
@@ -944,7 +944,7 @@ mod tests {
         // cannot parse > 8N bytes (excluding leading zeroes)
         assert_eq!(
             PosInt::<1>::from_bytes(&[1; 9]).unwrap_err(),
-            Error::OutOfRange
+            Error::WrongLength
         );
         PosInt::<1>::from_bytes(&[0; 9]).unwrap();
 
@@ -982,11 +982,11 @@ mod tests {
         let all_bits_set = PosInt::<2>::from_bytes(&[0xff; 16]).unwrap();
         assert_eq!(
             all_bits_set.to_bytes(&mut buf).unwrap_err(),
-            Error::OutOfRange
+            Error::WrongLength
         );
         assert_eq!(
             all_bits_set.to_bytes_asn1(&mut buf).unwrap_err(),
-            Error::OutOfRange
+            Error::WrongLength
         );
 
         let mut buf16 = [0; 16];

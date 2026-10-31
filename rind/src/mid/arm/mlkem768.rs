@@ -7,8 +7,9 @@ use core::fmt;
 use libcrux_ml_kem::mlkem768::portable;
 use libcrux_ml_kem::mlkem768::{MlKem768Ciphertext, MlKem768PrivateKey, MlKem768PublicKey};
 
+use crate::error::{Error, KeyFormatError};
+use crate::low;
 use crate::mid::rng::{RandomSource, SystemRandom};
-use crate::{Error, low};
 
 /// An ML-KEM-768 decapsulation key.
 pub(crate) struct DecapKey {
@@ -89,7 +90,7 @@ impl EncapKey {
         let ek = MlKem768PublicKey::from(input);
         // FIPS-203's modulus check.
         if !portable::validate_public_key(&ek) {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::MlKemModulus.into());
         }
         Ok(Self(ek))
     }

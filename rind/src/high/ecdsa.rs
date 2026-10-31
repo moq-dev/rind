@@ -92,7 +92,7 @@ impl<C: Curve> SigningKey<C> {
     ) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
         if private_key.len() != C::Scalar::LEN_BYTES {
-            return Err(Error::WrongLength);
+            return Err(KeyFormatError::WrongLength.into());
         }
 
         let key = Self {
@@ -307,8 +307,7 @@ impl<C: Curve> VerifyingKey<C> {
     ///
     /// `signature` is the purported signature.
     ///
-    /// Returns `Ok(())` when the signature is valid, or an error if not (typically --
-    /// but not limited to -- `Error::BadSignature`).
+    /// Fails with [`Error::BadSignature`] unless the signature is valid.
     pub(crate) fn verify<H: SignatureHash>(
         &self,
         message: &[u8],
@@ -316,7 +315,7 @@ impl<C: Curve> VerifyingKey<C> {
     ) -> Result<(), Error> {
         let _entry = Entry::new_public();
         if signature.len() != C::Scalar::LEN_BYTES * 2 {
-            return Err(Error::WrongLength);
+            return Err(Error::BadSignature);
         }
 
         // 1. If r and s are not both integers in the interval [1, n − 1], output “invalid” and stop.

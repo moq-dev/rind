@@ -150,7 +150,7 @@ impl Ed25519SigningKey {
         let _entry = Entry::new_secret();
         seed.try_into()
             .map(|seed| Self(ed25519::SigningKey::from_seed(&seed)))
-            .map_err(|_| Error::WrongLength)
+            .map_err(|_| KeyFormatError::WrongLength.into())
     }
 }
 
@@ -226,7 +226,7 @@ mod tests {
         assert!(Ed25519VerifyingKey::from_bytes(GOOD).is_ok());
         assert_eq!(
             Ed25519VerifyingKey::from_bytes(&[0xff; 32]).err(),
-            Some(Error::NotOnCurve)
+            Some(KeyFormatError::NotOnCurve.into())
         );
 
         // Each point has one encoding: `y` below `p`, and no sign on `x = 0`,
@@ -258,18 +258,18 @@ mod tests {
             let result = Ed25519VerifyingKey::from_bytes(&encode(y, negative));
             assert_eq!(
                 result.err(),
-                (!ok).then_some(Error::NotOnCurve),
+                (!ok).then_some(KeyFormatError::NotOnCurve.into()),
                 "{y:x?} {negative}"
             );
         }
 
         assert_eq!(
             Ed25519VerifyingKey::from_bytes(&[0; 31]).err(),
-            Some(Error::WrongLength)
+            Some(KeyFormatError::WrongLength.into())
         );
         assert_eq!(
             Ed25519VerifyingKey::from_bytes(&[0; 33]).err(),
-            Some(Error::WrongLength)
+            Some(KeyFormatError::WrongLength.into())
         );
     }
 }

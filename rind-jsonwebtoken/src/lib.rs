@@ -21,7 +21,8 @@ use jsonwebtoken::{Algorithm, DecodingKey, DecodingKeyKind, EncodingKey};
 use pkcs1::der::Decode;
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, PublicKey, RsaKeyPair,
-    RsaPublicKeyComponents, RsaSigningAlgorithm, VerificationAlgorithm, sign, verify,
+    RsaPublicKeyComponents, RsaSigningAlgorithm, RsaVerificationAlgorithm, VerificationAlgorithm,
+    sign, verify,
 };
 use rind::{digest, hmac};
 
@@ -122,7 +123,7 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
             ErrorKind::InvalidEcdsaKey,
         )
     };
-    let rsa = |verification: &'static VerificationAlgorithm| -> Result<Box<dyn JwtVerifier>> {
+    let rsa = |verification: &'static RsaVerificationAlgorithm| -> Result<Box<dyn JwtVerifier>> {
         let key = match key.kind() {
             DecodingKeyKind::SecretOrDer(der) => PublicKey::new(verification, der),
             DecodingKeyKind::RsaModulusExponent { n, e } => {

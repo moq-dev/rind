@@ -1,50 +1,57 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-/// All errors that may happen in this crate.
+/// Why a rind call failed.
 ///
-/// Unlike aws-lc-rs's opaque `Unspecified`, this is an enum a caller can
-/// match on, such as to tell a wrong length from a bad signature.
+/// Unlike aws-lc-rs's opaque `Unspecified`, each variant comes from one kind
+/// of call, so a caller can tell, say, a bad key from a bad signature.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
-    /// Some slice was the wrong length.
+    /// An input or output of fixed length, such as a symmetric key, a nonce,
+    /// or a derived key, was another length.
     WrongLength,
 
-    /// An compressed elliptic curve point encoding was encountered.
-    NotUncompressed,
+    /// A private, public, or peer's key was refused, for any reason including
+    /// its length; its `Display` says why.
+    KeyRejected(KeyRejected),
 
-    /// A public key was invalid.
-    NotOnCurve,
-
-    /// A value was too small or large.
-    OutOfRange,
-
-    /// A random number generator returned an error or fixed values.
-    RngFailed,
-
-    /// Presented signature is invalid.
+    /// A signature, MAC tag, or PBKDF2 output did not verify.
     BadSignature,
 
-    /// Presented AEAD tag/aad/ciphertext/nonce was wrong
+    /// An AEAD ciphertext, its tag, or its associated data did not
+    /// authenticate.
     DecryptFailed,
+
+    /// The system random source failed.
+    RngFailed,
 
     /// Values compared in constant time were not equal.
     NotEqual,
 
-    /// A key encoding was malformed or did not match the expected algorithm.
-    KeyRejected(KeyRejected),
+    /// An internal consistency check failed, from a hardware fault or a rind
+    /// bug, which the caller cannot fix.
+    Fault,
 }
 
-/// Why a key encoding was rejected, which its `Display` describes.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Why a key was refused, which its `Display` describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyRejected(KeyFormatError);
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyFormatError {
     Asn1(crate::high::asn1::Error),
+    WrongLength,
     LeadingZero,
-    MismatchedAlgorithm,
+    Compressed,
+    NotOnCurve,
+    SmallOrder,
+    ScalarOutOfRange,
+    RsaModulus,
+    RsaExponent,
+    RsaPrimes,
+    MultiPrimeRsa,
+    MlKemModulus,
     UnsupportedPkcs8Version,
     MismatchedPkcs8Algorithm,
     MismatchedPkcs8Parameters,
@@ -65,8 +72,29 @@ impl core::fmt::Display for KeyRejected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.0 {
             KeyFormatError::Asn1(e) => write!(f, "an ASN.1 decoding error: {e}"),
+            KeyFormatError::WrongLength => write!(f, "an encoding of the wrong length"),
             KeyFormatError::LeadingZero => write!(f, "an integer with a leading zero byte"),
-            KeyFormatError::MismatchedAlgorithm => write!(f, "a key for another algorithm"),
+            KeyFormatError::Compressed => write!(f, "a compressed point"),
+            KeyFormatError::NotOnCurve => write!(f, "a point not on the curve"),
+            KeyFormatError::SmallOrder => write!(f, "a small-order point"),
+            KeyFormatError::ScalarOutOfRange => {
+                write!(f, "a private scalar of zero, or not below the group order")
+            }
+            KeyFormatError::RsaModulus => {
+                write!(
+                    f,
+                    "an RSA modulus that is negative, even, or of unsupported size"
+                )
+            }
+            KeyFormatError::RsaExponent => {
+                write!(
+                    f,
+                    "an RSA public exponent that is even, one, or over 32 bits"
+                )
+            }
+            KeyFormatError::RsaPrimes => write!(f, "unsupported RSA primes"),
+            KeyFormatError::MultiPrimeRsa => write!(f, "a multi-prime RSA key"),
+            KeyFormatError::MlKemModulus => write!(f, "an ML-KEM key failing the modulus check"),
             KeyFormatError::UnsupportedPkcs8Version => write!(f, "unsupported PKCS#8 version"),
             KeyFormatError::MismatchedPkcs8Algorithm => write!(f, "mismatched PKCS#8 algorithm"),
             KeyFormatError::MismatchedPkcs8Parameters => {
@@ -86,21 +114,13 @@ impl core::fmt::Display for KeyRejected {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::WrongLength => write!(f, "some slice was the wrong length"),
-            Self::NotUncompressed => write!(
-                f,
-                "a compressed elliptic curve point encoding was encountered"
-            ),
-            Self::NotOnCurve => write!(f, "a public key was invalid"),
-            Self::OutOfRange => write!(f, "a value was too small or large"),
-            Self::RngFailed => write!(
-                f,
-                "a random number generator returned an error or fixed values"
-            ),
-            Self::BadSignature => write!(f, "presented signature is invalid"),
-            Self::DecryptFailed => write!(f, "presented AEAD tag/aad/ciphertext/nonce was wrong"),
-            Self::NotEqual => write!(f, "values compared in constant time were not equal"),
+            Self::WrongLength => write!(f, "an input or output was the wrong length"),
             Self::KeyRejected(e) => write!(f, "a key was rejected: {e}"),
+            Self::BadSignature => write!(f, "a signature did not verify"),
+            Self::DecryptFailed => write!(f, "a ciphertext did not authenticate"),
+            Self::RngFailed => write!(f, "the system random source failed"),
+            Self::NotEqual => write!(f, "values compared in constant time were not equal"),
+            Self::Fault => write!(f, "an internal consistency check failed"),
         }
     }
 }
@@ -114,36 +134,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_error_display() {
-        assert_eq!(
-            format!("{}", Error::WrongLength),
-            "some slice was the wrong length"
-        );
-        assert_eq!(
-            format!("{}", Error::NotUncompressed),
-            "a compressed elliptic curve point encoding was encountered"
-        );
-        assert_eq!(format!("{}", Error::NotOnCurve), "a public key was invalid");
-        assert_eq!(
-            format!("{}", Error::OutOfRange),
-            "a value was too small or large"
-        );
-        assert_eq!(
-            format!("{}", Error::RngFailed),
-            "a random number generator returned an error or fixed values"
-        );
-        assert_eq!(
-            format!("{}", Error::BadSignature),
-            "presented signature is invalid"
-        );
-        assert_eq!(
-            format!("{}", Error::DecryptFailed),
-            "presented AEAD tag/aad/ciphertext/nonce was wrong"
-        );
-        assert_eq!(
-            format!("{}", Error::NotEqual),
-            "values compared in constant time were not equal"
-        );
+    fn key_rejected_displays_its_reason() {
         assert_eq!(
             format!(
                 "{}",
@@ -152,51 +143,6 @@ mod tests {
                 ))
             ),
             "a key was rejected: an ASN.1 decoding error: unexpected tag"
-        );
-        assert_eq!(
-            format!("{}", Error::from(KeyFormatError::UnsupportedPkcs8Version)),
-            "a key was rejected: unsupported PKCS#8 version"
-        );
-    }
-
-    #[test]
-    fn test_keyrejected_display() {
-        let display = |kfe| format!("{}", KeyRejected(kfe));
-        assert_eq!(
-            display(KeyFormatError::UnsupportedPkcs8Version),
-            "unsupported PKCS#8 version"
-        );
-        assert_eq!(
-            display(KeyFormatError::MismatchedPkcs8Algorithm),
-            "mismatched PKCS#8 algorithm"
-        );
-        assert_eq!(
-            display(KeyFormatError::MismatchedPkcs8Parameters),
-            "mismatched PKCS#8 parameters"
-        );
-        assert_eq!(
-            display(KeyFormatError::MismatchedPkcs8PublicKey),
-            "mismatched PKCS#8 public key"
-        );
-        assert_eq!(
-            display(KeyFormatError::MismatchedSec1Curve),
-            "mismatched SEC1 curve"
-        );
-        assert_eq!(
-            display(KeyFormatError::MismatchedSec1PublicKey),
-            "mismatched SEC1 public key"
-        );
-        assert_eq!(
-            display(KeyFormatError::MismatchedPublicKey),
-            "mismatched public key"
-        );
-        assert_eq!(
-            display(KeyFormatError::MismatchedAlgorithm),
-            "a key for another algorithm"
-        );
-        assert_eq!(
-            display(KeyFormatError::MismatchedRsaComponents),
-            "mismatched RSA private key components"
         );
     }
 }

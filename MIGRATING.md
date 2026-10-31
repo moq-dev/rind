@@ -1,8 +1,8 @@
 # Migrating from ring and aws-lc-rs
 
 This guide will map each ring and aws-lc-rs item to rind's.
-So far it maps `signature`, and surveys the crates that pick a crypto backend
-for you.
+So far it maps `signature` and errors, and surveys the crates that pick a
+crypto backend for you.
 
 ## signature
 
@@ -13,7 +13,8 @@ ring's names match aws-lc-rs's here, except where noted.
 | `UnparsedPublicKey::new(alg, bytes).verify(m, s)` | `PublicKey::new(alg, bytes)?.verify(m, s)` |
 | `ParsedPublicKey::new(alg, bytes)`, `verify_sig` | `PublicKey::new(alg, bytes)`, `verify` |
 | `RsaPublicKeyComponents::verify(alg, m, s)` | `components.to_public_key(alg)?.verify(m, s)` |
-| `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `RsaParameters`, `EdDSAParameters` | `VerificationAlgorithm` |
+| `VerificationAlgorithm` trait, `EcdsaVerificationAlgorithm`, `EdDSAParameters` | `VerificationAlgorithm` |
+| `RsaParameters` | `RsaVerificationAlgorithm`, which `PublicKey::new` also takes |
 | `EcdsaSigningAlgorithm`, `RsaEncoding`/`RsaSignatureEncoding` | `EcdsaSigningAlgorithm`, `RsaSigningAlgorithm` |
 | `ECDSA_P256_SHA256_ASN1_SIGNING` and the other `_SIGNING` | `sign::ECDSA_P256_SHA256_ASN1` |
 | `ECDSA_P256_SHA256_ASN1`, `ED25519` | `verify::ECDSA_P256_SHA256_ASN1`, `verify::ED25519` |
@@ -32,6 +33,24 @@ ring's names match aws-lc-rs's here, except where noted.
 | `Ed25519KeyPair::seed()`, `private_key().as_be_bytes()`, `public_modulus_len()` | none |
 
 `PublicKey::new` refuses a compressed ECDSA point, which aws-lc-rs takes.
+
+## error
+
+aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
+`rind::Error`, whose variant depends on the kind of call. ring's names match.
+`Error` is `#[non_exhaustive]`, so a `match` on it needs a wildcard arm.
+
+| aws-lc-rs | rind |
+|---|---|
+| `KeyRejected`, from loading a key pair | `Error::KeyRejected` |
+| `Unspecified`, from a peer's or public key that is malformed, off the curve, or the wrong length | `Error::KeyRejected`, from `PublicKey::new`, `agree`, or `EncapsulationKey::new` |
+| `KeyRejected::description_()` | `KeyRejected`'s `Display` |
+| `Unspecified`, from `verify`, `hmac::verify`, or `pbkdf2::verify` | `Error::BadSignature` |
+| `Unspecified`, from `open_in_place` | `Error::DecryptFailed` |
+| `Unspecified`, from a symmetric key, nonce, tag, or output of the wrong length | `Error::WrongLength` |
+| `Unspecified`, from `SystemRandom::fill` or `generate` | `Error::RngFailed` |
+| `Unspecified`, from `constant_time::verify_slices_are_equal` | `Error::NotEqual` |
+| `Unspecified`, from RSA signing or ECDH when an internal check fails | `Error::Fault` |
 
 ## Crates with their own crypto backend
 

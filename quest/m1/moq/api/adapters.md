@@ -35,7 +35,3 @@ The inventory also found these, which don't need a decision:
 MoQ uses only the provider entry point of each adapter but rind-dimpl, whose
 dimpl it vendors, so check MoQ's planned call sites (moq-dev/moq
 `quest/m2/rind/`) against the new signatures.
-
-## Required
-
-- [Errors by role](/quest/m1/moq/api/errors.md) - the last rind change the adapters move onto
