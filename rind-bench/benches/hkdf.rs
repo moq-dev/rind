@@ -38,7 +38,7 @@ fn sha256(c: &mut Criterion) {
     });
     group.bench_function("extract/rind", |b| {
         b.iter(|| {
-            black_box(rind::hkdf::Salt::new(rind::hkdf::HKDF_SHA256, b"salt").extract(&secret))
+            black_box(rind::hkdf::Salt::new(&rind::hkdf::HKDF_SHA256, b"salt").extract(&secret))
         })
     });
 
@@ -67,21 +67,18 @@ fn sha256(c: &mut Criterion) {
         })
     });
 
-    let prk = rind::hkdf::Salt::new(rind::hkdf::HKDF_SHA256, b"salt").extract(&secret);
+    let prk = rind::hkdf::Salt::new(&rind::hkdf::HKDF_SHA256, b"salt").extract(&secret);
     group.bench_function("expand/rind", |b| {
         b.iter(|| {
             let mut out = [0u8; 32];
-            prk.expand(&info, out.len())
-                .unwrap()
-                .fill(&mut out)
-                .unwrap();
+            prk.expand(&info, out.len()).fill(&mut out).unwrap();
             black_box(out)
         })
     });
     group.bench_function("expand-aes-256-gcm-key/rind", |b| {
         b.iter(|| {
-            black_box(rind::aead::UnboundKey::from(
-                prk.expand(&info, &rind::aead::AES_256_GCM).unwrap(),
+            black_box(rind::aead::Key::from(
+                prk.expand(&info, &rind::aead::AES_256_GCM),
             ))
         })
     });

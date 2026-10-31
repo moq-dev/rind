@@ -3,9 +3,7 @@
 
 use core::ops::{Deref, DerefMut};
 
-use super::digest::{
-    Algorithm, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, SHA512_256,
-};
+use super::digest::{Algorithm, Digest, SHA1, SHA256, SHA384, SHA512, SHA512_256};
 use crate::mid::{sha1, sha2};
 
 /// One block of hash function input.
@@ -105,7 +103,7 @@ pub(crate) struct LegacySha1;
 
 impl Hash for LegacySha1 {
     type Context = sha1::Sha1Context;
-    const ALGORITHM: &'static Algorithm = &SHA1_FOR_LEGACY_USE_ONLY;
+    const ALGORITHM: &'static Algorithm = &SHA1;
 
     fn new() -> Self::Context {
         sha1::Sha1Context::new()

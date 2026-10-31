@@ -47,22 +47,18 @@ fuzz_target!(|op: Operation| {
 
     let right = baseline_encrypt(theirs, key, nonce, aad, plain);
     let left = {
-        use rind::aead::{Aad, LessSafeKey, Nonce, UnboundKey};
-        let k = LessSafeKey::new(UnboundKey::new(ours, key).unwrap());
+        use rind::aead::{Key, Nonce};
+        let k = Key::new(ours, key).unwrap();
         let mut cipher = plain.clone();
         let tag = k
-            .seal_in_place_separate_tag(
-                Nonce::assume_unique_for_key(*nonce),
-                Aad::from(aad),
-                &mut cipher,
-            )
+            .seal_in_place_separate_tag(Nonce::assume_unique_for_key(*nonce), aad, &mut cipher)
             .unwrap();
 
         let mut roundtrip = cipher.clone();
         k.open_in_place_separate_tag(
             Nonce::assume_unique_for_key(*nonce),
-            Aad::from(aad),
-            tag.as_ref(),
+            aad,
+            tag,
             &mut roundtrip,
         )
         .unwrap();

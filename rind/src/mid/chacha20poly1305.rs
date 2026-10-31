@@ -68,7 +68,7 @@ impl ChaCha20Poly1305 {
         nonce: &[u8; 12],
         aad: &[u8],
         cipher_inout: &mut [u8],
-        tag: &[u8],
+        tag: &[u8; 16],
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         check_counter(1, cipher_inout.len())?;

@@ -13,7 +13,7 @@ fn bench(
     name: &str,
     ring: ring::pbkdf2::Algorithm,
     aws: aws_lc_rs::pbkdf2::Algorithm,
-    ours: rind::pbkdf2::Algorithm,
+    ours: &'static rind::pbkdf2::Algorithm,
     len: usize,
 ) {
     let mut group = c.benchmark_group(name);
@@ -49,7 +49,7 @@ fn pbkdf2(c: &mut Criterion) {
         "pbkdf2-sha1",
         ring::pbkdf2::PBKDF2_HMAC_SHA1,
         aws_lc_rs::pbkdf2::PBKDF2_HMAC_SHA1,
-        rind::pbkdf2::PBKDF2_HMAC_SHA1,
+        &rind::pbkdf2::legacy::PBKDF2_HMAC_SHA1,
         20,
     );
     bench(
@@ -57,7 +57,7 @@ fn pbkdf2(c: &mut Criterion) {
         "pbkdf2-sha256",
         ring::pbkdf2::PBKDF2_HMAC_SHA256,
         aws_lc_rs::pbkdf2::PBKDF2_HMAC_SHA256,
-        rind::pbkdf2::PBKDF2_HMAC_SHA256,
+        &rind::pbkdf2::PBKDF2_HMAC_SHA256,
         32,
     );
     bench(
@@ -65,7 +65,7 @@ fn pbkdf2(c: &mut Criterion) {
         "pbkdf2-sha384",
         ring::pbkdf2::PBKDF2_HMAC_SHA384,
         aws_lc_rs::pbkdf2::PBKDF2_HMAC_SHA384,
-        rind::pbkdf2::PBKDF2_HMAC_SHA384,
+        &rind::pbkdf2::PBKDF2_HMAC_SHA384,
         48,
     );
     bench(
@@ -73,7 +73,7 @@ fn pbkdf2(c: &mut Criterion) {
         "pbkdf2-sha512",
         ring::pbkdf2::PBKDF2_HMAC_SHA512,
         aws_lc_rs::pbkdf2::PBKDF2_HMAC_SHA512,
-        rind::pbkdf2::PBKDF2_HMAC_SHA512,
+        &rind::pbkdf2::PBKDF2_HMAC_SHA512,
         64,
     );
 }

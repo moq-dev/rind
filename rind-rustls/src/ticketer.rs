@@ -2,7 +2,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use std::fmt;
 use std::sync::Arc;
 
-use rind::aead::{Aad, RandomNonce, RandomizedNonceKey};
+use rind::aead::{RandomNonce, RandomizedNonceKey};
 use rind::rand;
 use rustls::crypto::GetRandomFailed;
 use rustls::server::ProducesTickets;
@@ -76,7 +76,7 @@ impl ProducesTickets for XChaCha20Ticketer {
         let mut sealed = message.to_vec();
         let nonce = self
             .key
-            .seal_in_place_append_tag(Aad::from(self.key_name), &mut sealed)
+            .seal_in_place_append_tag(&self.key_name, &mut sealed)
             .ok()?;
 
         let mut res = Vec::with_capacity(self.key_name.len() + NONCE_LEN + sealed.len());
@@ -115,7 +115,7 @@ impl ProducesTickets for XChaCha20Ticketer {
         let mut plain = sealed.to_vec();
 
         self.key
-            .open_in_place(nonce, Aad::from(alleged_key_name), &mut plain)
+            .open_in_place(nonce, alleged_key_name, &mut plain)
             .ok()?;
         plain.truncate(plain_len);
         Some(plain)

@@ -57,7 +57,7 @@ fn bench_header_protection(c: &mut Criterion) {
             use rind::aead::quic::{AES_128, CHACHA20, HeaderProtectionKey};
             let algorithm = if key_len == 16 { &AES_128 } else { &CHACHA20 };
             let key = HeaderProtectionKey::new(algorithm, key).unwrap();
-            b.iter(|| key.new_mask(&sample));
+            b.iter(|| key.mask(&sample));
         });
     }
 }
