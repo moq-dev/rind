@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! The s2n-bignum routines `mid::p521` uses, with their contracts, over
-//! fiat-crypto's 32-bit P-521 field arithmetic and its 32-bit Montgomery
-//! arithmetic mod the group order.
+//! fiat-crypto's 32-bit P-521 field arithmetic and its Montgomery
+//! arithmetic mod the group order, in 64-bit words of 32-bit products.
 //!
 //! fiat-crypto proves each field and Montgomery operation correct, and
 //! emits it as straight-line code with no secret-dependent branch or
 //! index.  The rest composes those: the point formulas repeat s2n-bignum's,
 //! and every coordinate is fully reduced, so results match it word for
 //! word; inversion is Fermat's little theorem, raising to a public exponent
-//! by a fixed sequence of squarings and multiplications; fiat-crypto's
-//! Montgomery factor is 2^544, for 17 words, so a multiplication by a
-//! constant converts to s2n-bignum's 2^576, for 9 words; reduction mod n
+//! by a fixed sequence of squarings and multiplications; reduction mod n
 //! folds the bits above 2^521 into 2^521 mod n, which is below 2^260, then
 //! subtracts n at most once; and scalar multiplication is by Booth-recoded
 //! 5-bit windows, after negating a scalar above n / 2 so that no addition
@@ -76,21 +74,14 @@ pub(crate) fn bignum_mod_n521(z: &mut [u64; 9], x: &[u64; 9]) {
         }
     }
 
-    let n: [u32; 17] = split(&N);
-    let mut diff = [0u32; 17];
+    let r = join(&r[..17].try_into().unwrap());
+    let mut diff = [0; 9];
     let mut borrow = 0;
-    for ((d, r), n) in diff.iter_mut().zip(&r).zip(&n) {
+    for ((d, r), n) in diff.iter_mut().zip(&r).zip(&N) {
         let borrow_in = borrow;
-        fs::fiat_p521_scalar_subborrowx_u32(d, &mut borrow, borrow_in, *r, *n);
+        fs::fiat_p521_scalar_subborrowx_u64(d, &mut borrow, borrow_in, *r, *n);
     }
-    let mut out = [0u32; 17];
-    fs::fiat_p521_scalar_selectznz(
-        &mut out,
-        opaque(borrow),
-        &diff,
-        &r[..17].try_into().unwrap(),
-    );
-    *z = join(&out);
+    fs::fiat_p521_scalar_selectznz(z, opaque(borrow), &diff, &r);
 }
 
 /// Viewing table as rows of 18 words width, copy the 18 words at
@@ -152,19 +143,17 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
     // only if 32m + d is 2d, when m is zero and the accumulator is at
     // infinity, which is selected around, and opposite only if 32m + d is
     // zero, which leaves the accumulator at infinity too.
-    let k = Fs(scalar32(&k));
-    let mut neg_k = Fs([0; 17]);
-    fs::fiat_p521_scalar_opp(&mut neg_k, &k);
+    let mut neg_k = Fs([0; 9]);
+    fs::fiat_p521_scalar_opp(&mut neg_k, &Fs(k));
     let mut above_half = 0;
-    for (k, half) in k.0.iter().zip(&split::<9, 17>(&HALF_N)) {
-        let mut diff = 0;
-        let borrow_in = above_half;
-        fs::fiat_p521_scalar_subborrowx_u32(&mut diff, &mut above_half, borrow_in, *half, *k);
+    for (k, half) in k.iter().zip(&HALF_N) {
+        let (mut diff, borrow_in) = (0, above_half);
+        fs::fiat_p521_scalar_subborrowx_u64(&mut diff, &mut above_half, borrow_in, *half, *k);
     }
     let above_half = opaque(above_half);
-    let mut chosen = [0u32; 17];
-    fs::fiat_p521_scalar_selectznz(&mut chosen, above_half, &k.0, &neg_k.0);
-    let k = join(&chosen);
+    let mut chosen = [0; 9];
+    fs::fiat_p521_scalar_selectznz(&mut chosen, above_half, &k, &neg_k.0);
+    let k = chosen;
     p[1] = select(above_half, &p[1], &fe_opp(&p[1]));
 
     let mut table = [p; 16];
@@ -302,26 +291,23 @@ fn jdouble([x, y, z]: &[Fe; 3]) -> [Fe; 3] {
 /// z := x * y / 2^576 mod m, for m = n_521, assuming x and y reduced
 pub(crate) fn bignum_montmul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
     assert_eq!(m, N);
-    // x * y / 2^544, then times 2^512 / 2^544.
-    let xy = fs_mul(&Fs(scalar32(x)), &Fs(scalar32(y)));
-    z.copy_from_slice(&join(&fs_mul(&xy, &Fs(split(&TWO_512))).0));
+    z.copy_from_slice(&fs_mul(&Fs(scalar(x)), &Fs(scalar(y))).0);
 }
 
 /// z := x / 2^576 mod m, for m = n_521, assuming x reduced
 pub(crate) fn bignum_demont(z: &mut [u64], x: &[u64], m: &[u64]) {
     assert_eq!(m, N);
-    // x times 2^-32 / 2^544.
-    z.copy_from_slice(&join(
-        &fs_mul(&Fs(scalar32(x)), &Fs(split(&TWO_MINUS_32))).0,
-    ));
+    let mut r = FsPlain([0; 9]);
+    fs::fiat_p521_scalar_from_montgomery(&mut r, &Fs(scalar(x)));
+    z.copy_from_slice(&r.0);
 }
 
 /// z := (x + y) mod m, for m = n_521, assuming x and y reduced
 pub(crate) fn bignum_modadd(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
     assert_eq!(m, N);
-    let mut r = Fs([0; 17]);
-    fs::fiat_p521_scalar_add(&mut r, &Fs(scalar32(x)), &Fs(scalar32(y)));
-    z.copy_from_slice(&join(&r.0));
+    let mut r = Fs([0; 9]);
+    fs::fiat_p521_scalar_add(&mut r, &Fs(scalar(x)), &Fs(scalar(y)));
+    z.copy_from_slice(&r.0);
 }
 
 /// z := a^-1 mod b, for b = n_521, or zero if a is zero mod n_521
@@ -330,26 +316,24 @@ pub(crate) fn bignum_modadd(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64]) {
 pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64]) {
     assert_eq!(b, N);
     let mut a_reduced = [0; 9];
-    bignum_mod_n521(&mut a_reduced, &a.try_into().unwrap());
-    let mut a_mont = Fs([0; 17]);
-    fs::fiat_p521_scalar_to_montgomery(&mut a_mont, &FsPlain(scalar32(&a_reduced)));
-    let mut r = FsPlain([0; 17]);
+    bignum_mod_n521(&mut a_reduced, &scalar(a));
+    let mut a_mont = Fs([0; 9]);
+    fs::fiat_p521_scalar_to_montgomery(&mut a_mont, &FsPlain(a_reduced));
+    let mut r = FsPlain([0; 9]);
     fs::fiat_p521_scalar_from_montgomery(&mut r, &fs_pow(&a_mont, &N_MINUS_2));
-    z.copy_from_slice(&join(&r.0));
+    z.copy_from_slice(&r.0);
 }
 
 /// z := 2^1152 mod m, for m = n_521
 #[cfg(test)]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     assert_eq!(m, N);
-    // to_montgomery multiplies by 2^544, so this is 2^64 * 2^544 * 2^544.
-    let mut two_64 = [0u32; 17];
-    two_64[2] = 1;
-    let mut once = Fs([0; 17]);
-    fs::fiat_p521_scalar_to_montgomery(&mut once, &FsPlain(two_64));
-    let mut twice = Fs([0; 17]);
-    fs::fiat_p521_scalar_to_montgomery(&mut twice, &FsPlain(once.0));
-    z.copy_from_slice(&join(&twice.0));
+    // to_montgomery multiplies by 2^576, so this is 2^576 * (2^576 mod n).
+    let mut one = Fs([0; 9]);
+    fs::fiat_p521_scalar_set_one(&mut one);
+    let mut r = Fs([0; 9]);
+    fs::fiat_p521_scalar_to_montgomery(&mut r, &FsPlain(one.0));
+    z.copy_from_slice(&r.0);
 }
 
 /// `x^(p - 2)`, which is `x^-1` for a nonzero `x`, by an addition chain
@@ -380,7 +364,7 @@ fn fe_invert(x: &Fe) -> Fe {
 ///
 /// The exponent picks the table entries, so it must not be secret.
 fn fs_pow(x: &Fs, e: &[u64; 9]) -> Fs {
-    let mut one = Fs([0; 17]);
+    let mut one = Fs([0; 9]);
     fs::fiat_p521_scalar_set_one(&mut one);
     let mut table = [one; 16];
     for i in 1..table.len() {
@@ -395,7 +379,7 @@ fn fs_pow(x: &Fs, e: &[u64; 9]) -> Fs {
         .skip_while(|&bit| window(bit) == 0)
     {
         for _ in 0..4 {
-            let mut r = Fs([0; 17]);
+            let mut r = Fs([0; 9]);
             fs::fiat_p521_scalar_square(&mut r, &acc);
             acc = r;
         }
@@ -405,16 +389,13 @@ fn fs_pow(x: &Fs, e: &[u64; 9]) -> Fs {
 }
 
 fn fs_mul(x: &Fs, y: &Fs) -> Fs {
-    let mut r = Fs([0; 17]);
+    let mut r = Fs([0; 9]);
     fs::fiat_p521_scalar_mul(&mut r, x, y);
     r
 }
 
-/// The 17 32-bit words of a reduced scalar, whose top 32 of 576 bits are zero.
-fn scalar32(x: &[u64]) -> [u32; 17] {
-    split::<9, 18>(&x.try_into().unwrap())[..17]
-        .try_into()
-        .unwrap()
+fn scalar(x: &[u64]) -> [u64; 9] {
+    x.try_into().unwrap()
 }
 
 /// The 32-bit words of `x`, low first.
@@ -579,22 +560,6 @@ const HALF_N: [u64; 9] = [
     0xffff_ffff_ffff_ffff,
     0xffff_ffff_ffff_ffff,
     0x0000_0000_0000_00ff,
-];
-
-/// 2^512, below n_521, as little-endian words.
-const TWO_512: [u64; 9] = [0, 0, 0, 0, 0, 0, 0, 0, 1];
-
-/// 2^-32 mod n_521, as little-endian words.
-const TWO_MINUS_32: [u64; 9] = [
-    0xd725_f639_0f3d_a8cb,
-    0x88b2_6ef9_9c95_ec97,
-    0x6ce9_493a_6a43_1c3e,
-    0x4cc5_14e5_67c9_ba33,
-    0xffff_ffff_ffff_fffd,
-    0xffff_ffff_ffff_ffff,
-    0xffff_ffff_ffff_ffff,
-    0x532b_8dff_ffff_ffff,
-    0x0000_0000_0000_00f3,
 ];
 
 /// 2^521 - n_521, as little-endian words.
