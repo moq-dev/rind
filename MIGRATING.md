@@ -94,7 +94,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | `RandomizedNonceKey::seal_in_place_separate_tag` | none |
 | `TlsRecordSealingKey`, `TlsRecordOpeningKey`, `TlsProtocolId` | `Key`; rind has no FIPS mode whose nonce rules they check |
 | `open_separate_gather`, `seal_in_place_scatter`, `seal_out_of_place_scatter`, `prepare_nonce`, `SealingKeyPreparedNonce`, `OpeningKeyPreparedNonce`, `seal_in_place` (deprecated) | none |
-| `chacha20_poly1305_openssh::{SealingKey, OpeningKey, KEY_LEN, TAG_LEN}` | none; ring has it, so [ring and aws-lc-rs parity](quest/m3/parity/README.md) covers it |
+| `chacha20_poly1305_openssh::{SealingKey, OpeningKey, KEY_LEN, TAG_LEN}` | none: only SSH transports use it, and rind has no SSH consumer |
 
 ### aead::quic
 
