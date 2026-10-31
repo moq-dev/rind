@@ -12,9 +12,8 @@ This epic's own work, once its children land:
 
 - README's Architecture section describes the new design, not aws-lc-rs's
   shape.
-- The migration guide (`MIGRATING.md`, started by the
-  [adapter survey](/quest/m3/parity/adapter-survey.md)) maps every
-  aws-lc-rs and ring item to its rind name. The per-item "deviates from
+- The migration guide, `MIGRATING.md`, maps every aws-lc-rs and ring item
+  to its rind name, beside its survey of crates with their own backend. The per-item "deviates from
   aws-lc-rs" doc notes move there as each child lands.
 
 ## Plan
@@ -80,9 +79,10 @@ them again; the chosen option is marked ✅.
   modules, every group a `&dyn` static, `DEFAULT_*` lists in
   `default_provider()`'s order, and `Ticketer` kept ✅ / only
   `default_provider()`.
-- rind-rcgen loads and generates P-256, P-384, and Ed25519 keys (RSA load
-  only), exports PKCS#8 wiped on drop, and maps errors to `rcgen::Error`, so
-  no rind type leaks ✅ / P-256 only, renamed, with the leak fixed.
+- rind-rcgen loads and generates P-256, P-384, P-521 (added 2026-10-31,
+  after P-521 landed), and Ed25519 keys (RSA load only), exports PKCS#8
+  wiped on drop, and maps errors to `rcgen::Error`, so no rind type leaks ✅
+  / P-256 only, renamed, with the leak fixed.
 
 The names above are the decided direction, not exact signatures. Each child
 may adjust details as it learns, and records any change in its PR.

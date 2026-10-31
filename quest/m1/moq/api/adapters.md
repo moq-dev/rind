@@ -7,8 +7,8 @@ Each `rind-*` adapter's own API is as small and safe as its upstream allows:
 - rind-rustls mirrors rustls's providers: `kx_group` and `cipher_suite`
   modules, every group a `&dyn` static, `DEFAULT_*` lists in
   `default_provider()`'s order, and `Ticketer`.
-- rind-rcgen loads and generates P-256, P-384, and Ed25519 keys (RSA load
-  only), exports PKCS#8 wiped on drop, and returns `rcgen::Error`, so no rind
+- rind-rcgen loads and generates P-256, P-384, P-521, and Ed25519 keys (RSA
+  load only), exports PKCS#8 wiped on drop, and returns `rcgen::Error`, so no rind
   type appears in its API.
 - Entry points that rind invented, such as `default_provider()`, call
   `rind::cpu::check()` and return its error at setup. Statics that upstream
