@@ -50,6 +50,7 @@ pub(crate) enum KeyFormatError {
     MismatchedPkcs8Parameters,
     MismatchedPkcs8PublicKey,
     MismatchedPublicKey,
+    MismatchedRsaComponents,
     MismatchedSec1Curve,
     MismatchedSec1PublicKey,
 }
@@ -73,6 +74,9 @@ impl core::fmt::Display for KeyRejected {
             }
             KeyFormatError::MismatchedPkcs8PublicKey => write!(f, "mismatched PKCS#8 public key"),
             KeyFormatError::MismatchedPublicKey => write!(f, "mismatched public key"),
+            KeyFormatError::MismatchedRsaComponents => {
+                write!(f, "mismatched RSA private key components")
+            }
             KeyFormatError::MismatchedSec1Curve => write!(f, "mismatched SEC1 curve"),
             KeyFormatError::MismatchedSec1PublicKey => write!(f, "mismatched SEC1 public key"),
         }
@@ -185,6 +189,14 @@ mod tests {
         assert_eq!(
             display(KeyFormatError::MismatchedPublicKey),
             "mismatched public key"
+        );
+        assert_eq!(
+            display(KeyFormatError::MismatchedAlgorithm),
+            "a key for another algorithm"
+        );
+        assert_eq!(
+            display(KeyFormatError::MismatchedRsaComponents),
+            "mismatched RSA private key components"
         );
     }
 }

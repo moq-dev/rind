@@ -847,4 +847,315 @@ mod tests {
             check_all_algs(&mut [0u8; 1024], &key, &key.public_key());
         }
     }
+
+    /// A PKCS#1 private key's integers, as big-endian magnitudes.
+    #[derive(Clone)]
+    struct Pkcs1 {
+        n: Vec<u8>,
+        e: Vec<u8>,
+        d: Vec<u8>,
+        p: Vec<u8>,
+        q: Vec<u8>,
+        dp: Vec<u8>,
+        dq: Vec<u8>,
+        iqmp: Vec<u8>,
+    }
+
+    impl Pkcs1 {
+        fn decode(der: &[u8]) -> Self {
+            let k = pkix::RSAPrivateKey::from_bytes(der).unwrap();
+            let int = |i: asn1::Integer<'_>| trim(i.as_ref()).to_vec();
+            Self {
+                n: int(k.modulus),
+                e: int(k.publicExponent),
+                d: int(k.privateExponent),
+                p: int(k.prime1),
+                q: int(k.prime2),
+                dp: int(k.exponent1),
+                dq: int(k.exponent2),
+                iqmp: int(k.coefficient),
+            }
+        }
+
+        fn encode(&self) -> Vec<u8> {
+            let signed = |x: &[u8]| [&[0][..], x].concat();
+            let ints = [
+                &self.n, &self.e, &self.d, &self.p, &self.q, &self.dp, &self.dq, &self.iqmp,
+            ]
+            .map(|x| signed(x));
+            let [n, e, d, p, q, dp, dq, iqmp] = ints.each_ref().map(|x| asn1::Integer::new(x));
+            let mut out = vec![0u8; 8192];
+            let len = pkix::RSAPrivateKey {
+                version: pkix::Version::two_prime,
+                modulus: n,
+                publicExponent: e,
+                privateExponent: d,
+                prime1: p,
+                prime2: q,
+                exponent1: dp,
+                exponent2: dq,
+                coefficient: iqmp,
+            }
+            .encode(&mut asn1::Encoder::new(&mut out))
+            .unwrap();
+            out.truncate(len);
+            out
+        }
+    }
+
+    fn trim(x: &[u8]) -> &[u8] {
+        let start = x.iter().position(|b| *b != 0).unwrap_or(x.len());
+        &x[start..]
+    }
+
+    /// `a + b`, or `a - b` if `negate`, big-endian.
+    fn add_sub(a: &[u8], b: &[u8], negate: bool) -> Vec<u8> {
+        let len = a.len().max(b.len()) + 1;
+        let at = |x: &[u8], i: usize| x.len().checked_sub(i + 1).map_or(0, |j| i32::from(x[j]));
+        let mut out = vec![0u8; len];
+        let mut carry = 0;
+        for i in 0..len {
+            let b = if negate { -at(b, i) } else { at(b, i) };
+            let sum = at(a, i) + b + carry;
+            out[len - 1 - i] = sum.rem_euclid(256) as u8;
+            carry = sum.div_euclid(256);
+        }
+        assert_eq!(carry, 0);
+        trim(&out).to_vec()
+    }
+
+    fn add(a: &[u8], b: &[u8]) -> Vec<u8> {
+        add_sub(a, b, false)
+    }
+
+    fn sub(a: &[u8], b: &[u8]) -> Vec<u8> {
+        add_sub(a, b, true)
+    }
+
+    /// Each key breaks one relation between its components, which rind and
+    /// aws-lc-rs both refuse. Those that stay congruent but are unreduced
+    /// are caught only by a range check.
+    #[test]
+    fn refuses_mismatched_private_key() {
+        let key = Pkcs1::decode(include_bytes!("rsa/rsa2048.der"));
+        let p_1 = sub(&key.p, &[1]);
+        let q_1 = sub(&key.q, &[1]);
+        let mutants = [
+            (
+                "n + 2",
+                Pkcs1 {
+                    n: add(&key.n, &[2]),
+                    ..key.clone()
+                },
+            ),
+            (
+                "e = 3",
+                Pkcs1 {
+                    e: vec![3],
+                    ..key.clone()
+                },
+            ),
+            (
+                "d + 2",
+                Pkcs1 {
+                    d: add(&key.d, &[2]),
+                    ..key.clone()
+                },
+            ),
+            // Still right mod p - 1, so only the check mod q - 1 refuses it.
+            (
+                "d + p - 1",
+                Pkcs1 {
+                    d: add(&key.d, &p_1),
+                    ..key.clone()
+                },
+            ),
+            (
+                "d + q - 1",
+                Pkcs1 {
+                    d: add(&key.d, &q_1),
+                    ..key.clone()
+                },
+            ),
+            (
+                "dp + 2",
+                Pkcs1 {
+                    dp: add(&key.dp, &[2]),
+                    ..key.clone()
+                },
+            ),
+            (
+                "dp - 2",
+                Pkcs1 {
+                    dp: sub(&key.dp, &[2]),
+                    ..key.clone()
+                },
+            ),
+            (
+                "dp + p - 1",
+                Pkcs1 {
+                    dp: add(&key.dp, &p_1),
+                    ..key.clone()
+                },
+            ),
+            (
+                "dq + q - 1",
+                Pkcs1 {
+                    dq: add(&key.dq, &q_1),
+                    ..key.clone()
+                },
+            ),
+            (
+                "dp = 0",
+                Pkcs1 {
+                    dp: vec![],
+                    ..key.clone()
+                },
+            ),
+            (
+                "iqmp + 1",
+                Pkcs1 {
+                    iqmp: add(&key.iqmp, &[1]),
+                    ..key.clone()
+                },
+            ),
+            (
+                "iqmp + p",
+                Pkcs1 {
+                    iqmp: add(&key.iqmp, &key.p),
+                    ..key.clone()
+                },
+            ),
+            (
+                "iqmp = 0",
+                Pkcs1 {
+                    iqmp: vec![],
+                    ..key.clone()
+                },
+            ),
+            // Swapping the primes with their exponents leaves only iqmp wrong.
+            (
+                "p and q swapped",
+                Pkcs1 {
+                    p: key.q.clone(),
+                    q: key.p.clone(),
+                    dp: key.dq.clone(),
+                    dq: key.dp.clone(),
+                    ..key.clone()
+                },
+            ),
+            (
+                "n from another key",
+                Pkcs1 {
+                    n: Pkcs1::decode(include_bytes!("rsa/rsa3072.der")).n,
+                    ..key.clone()
+                },
+            ),
+        ];
+
+        for (name, mutant) in mutants {
+            let der = mutant.encode();
+            assert!(
+                matches!(SigningKey::from_pkcs1_der(&der), Err(Error::KeyRejected(_))),
+                "{name}"
+            );
+            assert!(aws_lc_rs::rsa::KeyPair::from_der(&der).is_err(), "{name}");
+        }
+
+        // d + (p - 1)(q - 1) still inverts e mod p - 1 and q - 1, which is
+        // all d must do.
+        let phi = sub(&add(&key.n, &[1]), &add(&key.p, &key.q));
+        let der = Pkcs1 {
+            d: add(&key.d, &phi),
+            ..key.clone()
+        }
+        .encode();
+        aws_lc_rs::rsa::KeyPair::from_der(&der).unwrap();
+        let private_key = SigningKey::from_pkcs1_der(&der).unwrap();
+        check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
+    }
+
+    /// PKCS#1 does not order the primes, and aws-lc-rs loads either order.
+    #[test]
+    fn loads_q_above_p() {
+        let der = include_bytes!("rsa/rsa2048-q-above-p.der");
+        let key = Pkcs1::decode(der);
+        assert!(key.q.len() == key.p.len() && key.q > key.p);
+        aws_lc_rs::rsa::KeyPair::from_der(der).unwrap();
+        let private_key = SigningKey::from_pkcs1_der(der).unwrap();
+        check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
+    }
+
+    /// e must be odd and above one, as in aws-lc-rs, for public keys as
+    /// components or DER, and for private keys.
+    #[test]
+    fn refuses_even_or_unit_exponent() {
+        let key = Pkcs1::decode(include_bytes!("rsa/rsa2048.der"));
+        let n = [&[0][..], &key.n].concat();
+        for (e, ok) in [
+            (&[1][..], false),
+            (&[2], false),
+            (&[4], false),
+            (&[1, 0, 0], false),
+            (&[3], true),
+            (&[1, 0, 1], true),
+        ] {
+            let mut der = [0u8; 512];
+            let len = pkix::RSAPublicKey {
+                modulus: asn1::Integer::new(&n),
+                publicExponent: asn1::Integer::new(e),
+            }
+            .encode(&mut asn1::Encoder::new(&mut der))
+            .unwrap();
+            let want = if ok { Ok(()) } else { Err(Error::OutOfRange) };
+            assert_eq!(
+                VerifyingKey::from_pkcs1_der(&der[..len]).map(|_| ()),
+                want,
+                "{e:?}"
+            );
+            assert_eq!(
+                VerifyingKey::from_components(&key.n, e).map(|_| ()),
+                want,
+                "{e:?}"
+            );
+
+            // Only the original exponent agrees with d.
+            let der = Pkcs1 {
+                e: e.to_vec(),
+                ..key.clone()
+            }
+            .encode();
+            let ours = SigningKey::from_pkcs1_der(&der).map(|_| ()).err();
+            assert!(
+                aws_lc_rs::rsa::KeyPair::from_der(&der).is_ok() == (e == [1, 0, 1]),
+                "{e:?}"
+            );
+            match e {
+                [1, 0, 1] => assert_eq!(ours, None),
+                _ if ok => assert!(matches!(ours, Some(Error::KeyRejected(_)))),
+                _ => assert_eq!(ours, Some(Error::OutOfRange), "{e:?}"),
+            }
+        }
+
+        // With e = 1 a signature is its own encoded message, so anyone could
+        // forge one.
+        let mut em = [0u8; 256];
+        pkcs1::encode_pkcs1_sig(
+            &mut em,
+            pkcs1::DIGESTINFO_SHA256,
+            hash::Sha256::hash(b"hello").as_ref(),
+        );
+        assert!(
+            aws_lc_rs::signature::RsaPublicKeyComponents {
+                n: &key.n[..],
+                e: &[1][..]
+            }
+            .verify(
+                &aws_lc_rs::signature::RSA_PKCS1_2048_8192_SHA256,
+                b"hello",
+                &em
+            )
+            .is_err()
+        );
+    }
 }
