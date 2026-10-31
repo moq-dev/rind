@@ -499,7 +499,7 @@ macro_rules! ec_crosschecks {
                     let spki = theirs_from_ours.public_key().as_der().unwrap();
                     prop_assert_eq!(spki.as_ref(), ours.to_spki_der(&mut [0; 256]).unwrap().to_vec());
                     let scalar = theirs_from_ours.private_key().as_be_bytes().unwrap();
-                    prop_assert_eq!(scalar.as_ref(), ours.to_private_key_be(&mut [0; 64]).unwrap().to_vec());
+                    prop_assert_eq!(scalar.as_ref(), ours.to_private_key_be(&mut [0; 66]).unwrap().to_vec());
 
                     // We load its scalar and point as the same key, and refuse
                     // the scalar with another key's point.
@@ -588,6 +588,15 @@ ec_crosschecks!(
     ECDSA_P384_SHA384_FIXED,
     ECDSA_P384_SHA384_ASN1_SIGNING,
     ECDSA_P384_SHA384_ASN1
+);
+
+ec_crosschecks!(
+    p521,
+    ECDH_P521,
+    ECDSA_P521_SHA512_FIXED_SIGNING,
+    ECDSA_P521_SHA512_FIXED,
+    ECDSA_P521_SHA512_ASN1_SIGNING,
+    ECDSA_P521_SHA512_ASN1
 );
 
 mod ed25519 {

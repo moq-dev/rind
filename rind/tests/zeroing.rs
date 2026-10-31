@@ -67,6 +67,10 @@ fn ecdsa() {
             &ECDSA_P384_SHA384_ASN1_SIGNING,
             &include_bytes!("../src/high/ecdsa/secp384r1.pkcs8.der")[..],
         ),
+        (
+            &ECDSA_P521_SHA512_ASN1_SIGNING,
+            &include_bytes!("../src/high/ecdsa/secp521r1.pkcs8.der")[..],
+        ),
     ] {
         check_zeroed_on_drop(Box::pin(
             EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap(),
@@ -86,7 +90,7 @@ fn ed25519() {
 #[test]
 fn ecdh() {
     use rind::agreement::*;
-    for algorithm in [&X25519, &ECDH_P256, &ECDH_P384] {
+    for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
         let key = EphemeralPrivateKey::generate(algorithm).unwrap();
         check_zeroed_on_drop(Box::pin(key));
     }

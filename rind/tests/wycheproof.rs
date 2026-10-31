@@ -254,6 +254,14 @@ fn test_verify_ecdsa() {
             "ecdsa_secp384r1_sha512_test.json",
             &signature::ECDSA_P384_SHA512_ASN1,
         ),
+        (
+            "ecdsa_secp521r1_sha512_p1363_test.json",
+            &signature::ECDSA_P521_SHA512_FIXED,
+        ),
+        (
+            "ecdsa_secp521r1_sha512_test.json",
+            &signature::ECDSA_P521_SHA512_ASN1,
+        ),
     ] {
         let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
             .unwrap_or_else(|_| panic!("failed to open data file {}", file));

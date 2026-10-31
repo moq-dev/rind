@@ -15,6 +15,9 @@ fuzz_target!(|op: Operation| {
         Operation::P384 { scalar, peer } => {
             check(&ours::ECDH_P384, &theirs::ECDH_P384, &scalar, &peer);
         }
+        Operation::P521 { scalar, peer } => {
+            check(&ours::ECDH_P521, &theirs::ECDH_P521, &scalar, &peer);
+        }
     }
 });
 
@@ -72,4 +75,5 @@ enum Operation {
     X25519 { scalar: [u8; 32], peer: [u8; 32] },
     P256 { scalar: [u8; 32], peer: [u8; 65] },
     P384 { scalar: [u8; 48], peer: [u8; 97] },
+    P521 { scalar: [u8; 66], peer: [u8; 133] },
 }
