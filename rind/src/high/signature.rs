@@ -150,8 +150,8 @@ impl PublicKey {
     /// any signature arrives.
     ///
     /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
-    /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. Unlike
-    /// aws-lc-rs, a compressed ECDSA point is refused: no consumer sends one.
+    /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. A compressed
+    /// ECDSA point is refused: no consumer sends one.
     pub fn new(algorithm: &'static VerificationAlgorithm, bytes: &[u8]) -> Result<Self, Error> {
         let key = match algorithm.0 {
             Verification::Ecdsa(ecdsa) => match ecdsa.curve {
@@ -403,8 +403,8 @@ impl EcdsaKeyPair {
 
     /// Loads a SEC1 (RFC 5915) `ECPrivateKey` on `algorithm`'s curve.
     ///
-    /// Unlike aws-lc-rs, this refuses PKCS#8, which [`Self::from_pkcs8`] takes:
-    /// a caller always knows which of the two it holds.
+    /// This refuses PKCS#8, which [`Self::from_pkcs8`] takes: a caller always
+    /// knows which of the two it holds.
     pub fn from_sec1(algorithm: &'static EcdsaSigningAlgorithm, der: &[u8]) -> Result<Self, Error> {
         load_ecdsa!(algorithm, from_sec1_der(der))
     }
@@ -453,9 +453,6 @@ impl EcdsaKeyPair {
     }
 
     /// Signs `message` with a fresh nonce.
-    ///
-    /// Unlike aws-lc-rs, this takes no random source: aws-lc-rs ignores its
-    /// own, a leftover of ring's API.
     pub fn sign(&self, message: &[u8]) -> Result<Signature, Error> {
         Buffer::write(|output| {
             on_ecdsa!(self, |key| with_hash!(self.algorithm.hash, |H| {
@@ -469,10 +466,6 @@ impl EcdsaKeyPair {
     }
 
     /// Encodes the private key as PKCS#8.
-    ///
-    /// Unlike aws-lc-rs, this and the other encodings return a value of
-    /// fixed capacity rather than an allocated `Document`, since rind does
-    /// not allocate.
     pub fn to_pkcs8(&self) -> Pkcs8 {
         Pkcs8(Buffer::encode(|output| {
             on_ecdsa!(self, |key| key.to_pkcs8_der(output))
@@ -721,9 +714,6 @@ impl RsaKeyPair {
     }
 
     /// Signs `message` with `algorithm`, as long as the modulus.
-    ///
-    /// Unlike aws-lc-rs, this takes no random source, which aws-lc-rs
-    /// ignores.
     pub fn sign(
         &self,
         algorithm: &'static RsaSigningAlgorithm,
@@ -740,10 +730,6 @@ impl RsaKeyPair {
     }
 
     /// Encodes the private key as PKCS#8.
-    ///
-    /// Unlike aws-lc-rs, this and the other encodings return a value of
-    /// fixed capacity rather than an allocated `Document`, since rind does
-    /// not allocate.
     pub fn to_pkcs8(&self) -> Pkcs8 {
         Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
     }
@@ -786,8 +772,7 @@ impl Ed25519KeyPair {
     /// Loads a PKCS#8 Ed25519 key, refused if it carries a public key
     /// (v2, RFC 5958) that does not match.
     ///
-    /// Unlike aws-lc-rs, this also takes PKCS#8 v1, which carries no public
-    /// key, as aws-lc-rs's `from_pkcs8_maybe_unchecked` does: common tools
+    /// This also takes PKCS#8 v1, which carries no public key: common tools
     /// write v1, and such a key is no less valid.
     pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
         Ok(Self::new(Ed25519SigningKey::from_pkcs8_der(der)?))
@@ -823,10 +808,6 @@ impl Ed25519KeyPair {
     }
 
     /// Encodes the key pair as PKCS#8 v2 (RFC 5958).
-    ///
-    /// Unlike aws-lc-rs, this and [`Self::to_spki`] return a value of fixed
-    /// capacity rather than an allocated `Document`, since rind does not
-    /// allocate.
     pub fn to_pkcs8(&self) -> Pkcs8 {
         Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
     }
