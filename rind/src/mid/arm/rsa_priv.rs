@@ -223,7 +223,7 @@ impl RsaPrivateKey {
         });
         match agrees {
             true => Ok(m),
-            false => Err(Error::BadSignature),
+            false => Err(Error::Fault),
         }
     }
 }

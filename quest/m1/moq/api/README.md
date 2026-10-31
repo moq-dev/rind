@@ -60,6 +60,11 @@ them again; the chosen option is marked ✅.
   algorithm there fails to compile; `PublicKey::new` takes either
   (2026-10-31) ✅ / refuse a non-RSA algorithm at run time.
 - `verify::legacy::RSA_PKCS1_3072_SHA384` stays (2026-10-31) ✅ / delete it.
+- A failed internal consistency check (RSA signing's CRT check, ECDH's
+  on-curve shared point) returns a seventh variant, `Error::Fault`
+  (2026-10-31) ✅ / the call's own variant / panic.
+- Every public error enum is `#[non_exhaustive]`, so a new variant is not
+  breaking (2026-10-31) ✅.
 - Key formats are named by format, all DER: `from_pkcs1`, `from_sec1`,
   `from_pkcs8`, `to_pkcs8`, `to_spki`. "My public half" is `public_key()`
   everywhere, as an inherent method, so the `KeyPair` trait and its three

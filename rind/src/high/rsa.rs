@@ -572,7 +572,7 @@ impl SigningKey {
         pkcs1::encode_pkcs1_sig(m, digest_info, hash);
 
         let m = PosInt::from_bytes(m)?;
-        let c = self.0.private_op(&m).map_err(|_| Error::BadSignature)?;
+        let c = self.0.private_op(&m)?;
         self.to_signature(&c, signature)
     }
 
@@ -596,7 +596,7 @@ impl SigningKey {
 
         pkcs1::encode_pss_sig::<H>(em, em_bits, &mut SystemRandom, hash.as_ref())?;
         let m = PosInt::from_bytes(em)?;
-        let c = self.0.private_op(&m).map_err(|_| Error::BadSignature)?;
+        let c = self.0.private_op(&m)?;
         self.to_signature(&c, signature)
     }
 
@@ -1090,7 +1090,7 @@ mod tests {
         key.0.swap_crt_exponents();
         assert_eq!(
             key.sign_pkcs1_sha256(&mut [0u8; 256], b"message").err(),
-            Some(Error::BadSignature)
+            Some(Error::Fault)
         );
     }
 

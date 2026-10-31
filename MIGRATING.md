@@ -38,6 +38,7 @@ ring's names match aws-lc-rs's here, except where noted.
 
 aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 `rind::Error`, whose variant depends on the kind of call. ring's names match.
+`Error` is `#[non_exhaustive]`, so a `match` on it needs a wildcard arm.
 
 | aws-lc-rs | rind |
 |---|---|
@@ -49,6 +50,7 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 | `Unspecified`, from a symmetric key, nonce, tag, or output of the wrong length | `Error::WrongLength` |
 | `Unspecified`, from `SystemRandom::fill` or `generate` | `Error::RngFailed` |
 | `Unspecified`, from `constant_time::verify_slices_are_equal` | `Error::NotEqual` |
+| `Unspecified`, from RSA signing or ECDH when an internal check fails | `Error::Fault` |
 
 ## Crates with their own crypto backend
 

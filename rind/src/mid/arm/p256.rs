@@ -100,7 +100,7 @@ impl PrivateKey {
         low::zeroise(&mut point);
         match low::ct::into_public(ok) {
             true => Ok(secret),
-            false => Err(KeyFormatError::NotOnCurve.into()),
+            false => Err(Error::Fault),
         }
     }
 

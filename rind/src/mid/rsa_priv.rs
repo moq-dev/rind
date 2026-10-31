@@ -217,7 +217,7 @@ impl RsaPrivateKey {
         // the key's components, so only a fault fails this.
         match self.public.public_op(m.clone()) {
             Ok(c2) if c2.equals(c) => Ok(m),
-            _ => Err(Error::BadSignature),
+            _ => Err(Error::Fault),
         }
     }
 }

@@ -16,9 +16,7 @@ pub enum Error {
     /// its length; its `Display` says why.
     KeyRejected(KeyRejected),
 
-    /// A signature, MAC tag, or PBKDF2 output did not verify, or an RSA
-    /// signature failed the check made before returning it, which only a
-    /// hardware fault fails.
+    /// A signature, MAC tag, or PBKDF2 output did not verify.
     BadSignature,
 
     /// An AEAD ciphertext, its tag, or its associated data did not
@@ -30,6 +28,10 @@ pub enum Error {
 
     /// Values compared in constant time were not equal.
     NotEqual,
+
+    /// An internal consistency check failed, from a hardware fault or a rind
+    /// bug, which the caller cannot fix.
+    Fault,
 }
 
 /// Why a key was refused, which its `Display` describes.
@@ -118,6 +120,7 @@ impl core::fmt::Display for Error {
             Self::DecryptFailed => write!(f, "a ciphertext did not authenticate"),
             Self::RngFailed => write!(f, "the system random source failed"),
             Self::NotEqual => write!(f, "values compared in constant time were not equal"),
+            Self::Fault => write!(f, "an internal consistency check failed"),
         }
     }
 }

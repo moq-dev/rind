@@ -124,7 +124,7 @@ impl PrivateKey {
         low::zeroise(&mut shared_point.xyz);
         match low::ct::into_public(result.on_curve()) {
             true => Ok(SharedSecret(result.x().as_bytes())),
-            false => Err(KeyFormatError::NotOnCurve.into()),
+            false => Err(Error::Fault),
         }
     }
 

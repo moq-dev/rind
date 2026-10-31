@@ -124,7 +124,7 @@ impl PrivateKey {
             true => Ok(SharedSecret(util::u64x6_to_big_endian(
                 &result.x().demont().0,
             ))),
-            false => Err(KeyFormatError::NotOnCurve.into()),
+            false => Err(Error::Fault),
         }
     }
 
