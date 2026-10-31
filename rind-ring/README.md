@@ -37,6 +37,10 @@ These inputs ring takes are refused with an error:
 
 And these behave differently:
 
+- `pbkdf2::derive` returns `Result<(), error::Unspecified>`, failing for
+  an output over (2^32 - 1) hash outputs, where ring returns `()` and
+  panics. A call that ignores the result draws an `unused_must_use`
+  warning.
 - Where ring takes a `rand::SecureRandom` to generate a key or sign,
   rind draws from the system random source itself, as
   `rand::SystemRandom`, the only `SecureRandom`, does.
