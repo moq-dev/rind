@@ -737,12 +737,18 @@ mod tests {
 
         k.rfc6979_sign_with_random::<hash::Sha256>(b"sample", &[], &mut signature)
             .unwrap();
-        assert_eq!(hex::encode(signature), "01511bb4d675114fe266fc4372b87682baecc01d3cc62cf2303c92b3526012659d16876e25c7c1e57648f23b73564d67f61c6f14d527d54972810421e7d87589e1a7004a171143a83163d6df460aaf61522695f207a58b95c0644d87e52aa1a347916e4f7a72930b1bc06dbe22ce3f58264afd23704cbb63b29b931f7de6c9d949a7ecfc");
+        assert_eq!(
+            hex::encode(signature),
+            "01511bb4d675114fe266fc4372b87682baecc01d3cc62cf2303c92b3526012659d16876e25c7c1e57648f23b73564d67f61c6f14d527d54972810421e7d87589e1a7004a171143a83163d6df460aaf61522695f207a58b95c0644d87e52aa1a347916e4f7a72930b1bc06dbe22ce3f58264afd23704cbb63b29b931f7de6c9d949a7ecfc"
+        );
         v.verify::<hash::Sha256>(b"sample", &signature).unwrap();
 
         k.rfc6979_sign_with_random::<hash::Sha512>(b"sample", &[], &mut signature)
             .unwrap();
-        assert_eq!(hex::encode(signature), "00c328fafcbd79dd77850370c46325d987cb525569fb63c5d3bc53950e6d4c5f174e25a1ee9017b5d450606add152b534931d7d4e8455cc91f9b15bf05ec36e377fa00617cce7cf5064806c467f678d3b4080d6f1cc50af26ca209417308281b68af282623eaa63e5b5c0723d8b8c37ff0777b1a20f8ccb1dccc43997f1ee0e44da4a67a");
+        assert_eq!(
+            hex::encode(signature),
+            "00c328fafcbd79dd77850370c46325d987cb525569fb63c5d3bc53950e6d4c5f174e25a1ee9017b5d450606add152b534931d7d4e8455cc91f9b15bf05ec36e377fa00617cce7cf5064806c467f678d3b4080d6f1cc50af26ca209417308281b68af282623eaa63e5b5c0723d8b8c37ff0777b1a20f8ccb1dccc43997f1ee0e44da4a67a"
+        );
         v.verify::<hash::Sha512>(b"sample", &signature).unwrap();
 
         let mut asn1_sig = [0u8; 160];
@@ -751,12 +757,18 @@ mod tests {
 
         k.rfc6979_sign_with_random::<hash::Sha256>(b"test", &[], &mut signature)
             .unwrap();
-        assert_eq!(hex::encode(signature), "000e871c4a14f993c6c7369501900c4bc1e9c7b0b4ba44e04868b30b41d8071042eb28c4c250411d0ce08cd197e4188ea4876f279f90b3d8d74a3c76e6f1e4656aa800cd52dbaa33b063c3a6cd8058a1fb0a46a4754b034fcc644766ca14da8ca5ca9fde00e88c1ad60ccba759025299079d7a427ec3cc5b619bfbc828e7769bcd694e86");
+        assert_eq!(
+            hex::encode(signature),
+            "000e871c4a14f993c6c7369501900c4bc1e9c7b0b4ba44e04868b30b41d8071042eb28c4c250411d0ce08cd197e4188ea4876f279f90b3d8d74a3c76e6f1e4656aa800cd52dbaa33b063c3a6cd8058a1fb0a46a4754b034fcc644766ca14da8ca5ca9fde00e88c1ad60ccba759025299079d7a427ec3cc5b619bfbc828e7769bcd694e86"
+        );
         v.verify::<hash::Sha256>(b"test", &signature).unwrap();
 
         k.rfc6979_sign_with_random::<hash::Sha512>(b"test", &[], &mut signature)
             .unwrap();
-        assert_eq!(hex::encode(signature), "013e99020abf5cee7525d16b69b229652ab6bdf2affcaef38773b4b7d08725f10cdb93482fdcc54edcee91eca4166b2a7c6265ef0ce2bd7051b7cef945babd47ee6d01fbd0013c674aa79cb39849527916ce301c66ea7ce8b80682786ad60f98f7e78a19ca69eff5c57400e3b3a0ad66ce0978214d13baf4e9ac60752f7b155e2de4dce3");
+        assert_eq!(
+            hex::encode(signature),
+            "013e99020abf5cee7525d16b69b229652ab6bdf2affcaef38773b4b7d08725f10cdb93482fdcc54edcee91eca4166b2a7c6265ef0ce2bd7051b7cef945babd47ee6d01fbd0013c674aa79cb39849527916ce301c66ea7ce8b80682786ad60f98f7e78a19ca69eff5c57400e3b3a0ad66ce0978214d13baf4e9ac60752f7b155e2de4dce3"
+        );
         v.verify::<hash::Sha512>(b"test", &signature).unwrap();
     }
 

@@ -81,8 +81,8 @@ pub mod doc {
 /// ```
 pub mod agreement {
     pub use crate::high::agreement::{
-        Algorithm, ECDH_P256, ECDH_P384, ECDH_P521, EphemeralPrivateKey, PublicKey,
-        SharedSecret, UnparsedPublicKey, X25519, agree_ephemeral,
+        Algorithm, ECDH_P256, ECDH_P384, ECDH_P521, EphemeralPrivateKey, PublicKey, SharedSecret,
+        UnparsedPublicKey, X25519, agree_ephemeral,
     };
 }
 
@@ -140,8 +140,7 @@ pub mod signature {
         ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA384_FIXED_SIGNING, ECDSA_P384_SHA512_ASN1,
         ECDSA_P521_SHA256_ASN1, ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1,
         ECDSA_P521_SHA512_ASN1_SIGNING, ECDSA_P521_SHA512_FIXED, ECDSA_P521_SHA512_FIXED_SIGNING,
-        ED25519,
-        EcdsaKeyPair, EcdsaPublicKey, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm,
+        ED25519, EcdsaKeyPair, EcdsaPublicKey, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm,
         Ed25519KeyPair, Ed25519PublicKey, EdDSAParameters, KeyPair, KeySize, ParsedPublicKey,
         RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_2048_8192_SHA512,
         RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_2048_8192_SHA256,

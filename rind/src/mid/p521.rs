@@ -29,26 +29,6 @@ impl PublicKey {
         let point = AffinePoint::from_x962_uncompressed(bytes)?;
         Ok(Self { point })
     }
-}
-
-/// A P-521 public key for ECDSA verification.
-///
-/// It keeps the point's multiples, so verifying again with the same key
-/// skips computing them; Diffie-Hellman's [`PublicKey`] is used once and
-/// never needs them.
-#[derive(Clone, Debug)]
-pub(crate) struct VerifyingKey {
-    precomp_w5: JacobianPointTableW5,
-}
-
-impl VerifyingKey {
-    /// Create a [`VerifyingKey`] as [`PublicKey::from_x962_uncompressed`] does.
-    pub(crate) fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
-        let PublicKey { point } = PublicKey::from_x962_uncompressed(bytes)?;
-        Ok(Self {
-            precomp_w5: point.public_precomp_w5(),
-        })
-    }
 
     pub(crate) fn raw_ecdsa_verify(&self, r: &Scalar, s: &Scalar, e: &Scalar) -> Result<(), Error> {
         // 4. Compute: u1 = e s^-1 mod n and u2 = r s^−1 mod n
@@ -59,7 +39,7 @@ impl VerifyingKey {
         // 5. Compute: R = (xR, yR) = u1 G + u2 QU
         //  If R = O, output "invalid" and stop.
         let lhs = JacobianPoint::public_base_multiply(&u1);
-        let rhs = JacobianPoint::public_multiply_w5(&u2, &self.precomp_w5);
+        let rhs = JacobianPoint::multiply(&u2, &self.point);
         let point = JacobianPoint::public_add(&lhs, &rhs);
 
         if point.public_is_infinity() {
@@ -139,7 +119,9 @@ impl PrivateKey {
             low::ct::secret_slice(&r);
             let words = util::big_endian_slice_any_size_to_u64x9(&r).unwrap();
             let words = core::array::from_fn(|i| {
-                let above = words.get(i + 1).map_or(0, |w| w << (64 - Scalar::EXCESS_BITS));
+                let above = words
+                    .get(i + 1)
+                    .map_or(0, |w| w << (64 - Scalar::EXCESS_BITS));
                 (words[i] >> Scalar::EXCESS_BITS) | above
             });
             if let Ok(scalar) = Scalar(words).into_range_check() {
@@ -381,46 +363,6 @@ impl AffinePoint {
         let result = FieldElement::select(&y, &neg_y, sign);
         self.xy[Self::Y].copy_from_slice(&result.0);
     }
-
-    fn public_precomp_w5(&self) -> JacobianPointTableW5 {
-        let mut r = [JacobianPoint::infinity(); 16];
-
-        // indices into r are intuitively 1-based; index i contains i * G,
-        // and 0 * G is not useful to store.
-        macro_rules! index {
-            ($i:literal) => {
-                $i - 1
-            };
-        }
-
-        // Each sum adds distinct multiples below n, none at infinity, as
-        // `p521_jadd` requires.
-        r[index!(1)] = JacobianPoint::from_affine(self);
-        r[index!(2)] = r[index!(1)].double();
-        r[index!(3)] = r[index!(1)].add(&r[index!(2)]);
-        r[index!(4)] = r[index!(2)].double();
-        r[index!(5)] = r[index!(1)].add(&r[index!(4)]);
-        r[index!(6)] = r[index!(3)].double();
-        r[index!(7)] = r[index!(1)].add(&r[index!(6)]);
-        r[index!(8)] = r[index!(4)].double();
-        r[index!(9)] = r[index!(1)].add(&r[index!(8)]);
-        r[index!(10)] = r[index!(5)].double();
-        r[index!(11)] = r[index!(1)].add(&r[index!(10)]);
-        r[index!(12)] = r[index!(6)].double();
-        r[index!(13)] = r[index!(1)].add(&r[index!(12)]);
-        r[index!(14)] = r[index!(7)].double();
-        r[index!(15)] = r[index!(1)].add(&r[index!(14)]);
-        r[index!(16)] = r[index!(8)].double();
-
-        let mut t = [0; 432];
-
-        let (chunks, _) = t.as_chunks_mut::<27>();
-        for (out, rr) in chunks.iter_mut().zip(r) {
-            out.copy_from_slice(&rr.xyz);
-        }
-
-        t
-    }
 }
 
 /// A point in Jacobian coordinates, at infinity when z is zero.
@@ -538,44 +480,13 @@ impl JacobianPoint {
     }
 
     /// `scalar * point`, by s2n-bignum's `p521_jscalarmul`.
+    ///
+    /// Verification's public scalar takes it too: it measured as fast as a
+    /// variable-time window over the point's cached multiples.
     fn multiply(scalar: &Scalar, point: &AffinePoint) -> Self {
         let mut r = Self::infinity();
         low::p521_jscalarmul(&mut r.xyz, &scalar.0, &Self::from_affine(point).xyz);
         r
-    }
-
-    /// `scalar * P`, for a public `scalar` below n, from `P`'s multiples in
-    /// `precomp`, by Booth-recoded 5-bit windows.
-    ///
-    /// Before each addition, the accumulator is `32m P` for the value `m`
-    /// of the windows above, and the table point is `d P` for a digit `d`
-    /// of at most 16.  `32m + d` is the value of the windows so far, below
-    /// n, so the two are never opposites; they are equal only if `32m - d`
-    /// is n, which needs `32m + d` within 32 of n, so only the last window,
-    /// for a `scalar` from n - 32 to n - 2, can double.
-    fn public_multiply_w5(scalar: &Scalar, precomp: &JacobianPointTableW5) -> Self {
-        let mut terms = scalar.reversed_booth_recoded_w5();
-
-        let (digit, _, _) = terms.next().unwrap();
-        let mut result = Self::public_lookup_w5(precomp, digit, 0);
-
-        for (digit, sign, last) in terms {
-            if !result.public_is_infinity() {
-                result.double_inplace_n(5);
-            }
-            if digit == 0 {
-                continue;
-            }
-
-            let term = Self::public_lookup_w5(precomp, digit, sign);
-            result = match (result.public_is_infinity(), last) {
-                (true, _) => term,
-                (false, false) => result.add(&term),
-                (false, true) => Self::public_add(&result, &term),
-            };
-        }
-
-        result
     }
 
     /// `a + b`, for any points, including at infinity, equal, or opposite.
@@ -670,21 +581,6 @@ impl JacobianPoint {
         let mut r = Self::infinity();
         let select = select as u64;
         low::bignum_mux(select, &mut r.xyz[..], &p1.xyz[..], &p0.xyz[..]);
-        r
-    }
-
-    /// Returns `table[index - 1]`, negated if `sign` is set, or infinity
-    /// for a zero `index`.
-    fn public_lookup_w5(table: &JacobianPointTableW5, index: u8, sign: u8) -> Self {
-        let mut r = Self::infinity();
-        if index > 0 {
-            let offs = (index - 1) as usize * 27;
-            r.xyz.copy_from_slice(&table[offs..offs + 27]);
-            if sign > 0 {
-                let neg_y = r.y().negate();
-                r.xyz[Self::Y].copy_from_slice(&neg_y.0);
-            }
-        }
         r
     }
 }
@@ -950,9 +846,6 @@ impl Iterator for BoothRecodeW5 {
     }
 }
 
-/// 16 jacobian points
-type JacobianPointTableW5 = [u64; 432];
-
 /// 27 tables of 16 affine points
 type AffinePointTableComb = [[u64; 288]; 27];
 
@@ -1055,8 +948,7 @@ mod tests {
     }
 
     /// Scalars at the edges of the windowed multiplications: small ones,
-    /// one top bit, and those near n, including n - 2 to n - 32, whose last
-    /// window doubles in `public_multiply_w5`.
+    /// one top bit, and those near n.
     fn edge_scalars() -> impl Iterator<Item = Scalar> {
         [1, 2, 3, 16, 17, 31, 32, 33, 99999999]
             .into_iter()
@@ -1073,17 +965,10 @@ mod tests {
     #[test]
     fn multiplications_match_double_and_add() {
         let point = CURVE_GENERATOR.slow_multiply(&Scalar::small_u64(5));
-        let precomp = point.public_precomp_w5();
         for scalar in edge_scalars() {
             let expected = point.slow_multiply(&scalar).xy;
             assert_eq!(
                 JacobianPoint::multiply(&scalar, &point).as_affine().xy,
-                expected
-            );
-            assert_eq!(
-                JacobianPoint::public_multiply_w5(&scalar, &precomp)
-                    .as_affine()
-                    .xy,
                 expected
             );
 
@@ -1175,7 +1060,10 @@ mod tests {
         );
 
         let order = Scalar(CURVE_ORDER).as_bytes();
-        assert_eq!(PrivateKey::from_bytes(&order).unwrap_err(), Error::OutOfRange);
+        assert_eq!(
+            PrivateKey::from_bytes(&order).unwrap_err(),
+            Error::OutOfRange
+        );
         let mut order_plus_1 = order;
         order_plus_1[65] += 1;
         assert_eq!(

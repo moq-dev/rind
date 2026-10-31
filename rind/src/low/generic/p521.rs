@@ -302,8 +302,7 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64])
     bignum_mod_n521(&mut a_reduced, &scalar(a));
     let a_mont = fs::fiat_p521_scalar_to_montgomery(&a_reduced);
     z.copy_from_slice(&fs::fiat_p521_scalar_from_montgomery(&fs_pow(
-        &a_mont,
-        &N_MINUS_2,
+        &a_mont, &N_MINUS_2,
     )));
 }
 
@@ -353,7 +352,11 @@ fn fs_pow(x: &[u64; 9], e: &[u64; 9]) -> [u64; 9] {
 
     let window = |bit: usize| ((e[bit / 64] >> (bit % 64)) & 0xf) as usize;
     let mut acc = one;
-    for bit in (0..576).step_by(4).rev().skip_while(|&bit| window(bit) == 0) {
+    for bit in (0..576)
+        .step_by(4)
+        .rev()
+        .skip_while(|&bit| window(bit) == 0)
+    {
         for _ in 0..4 {
             acc = fs::fiat_p521_scalar_square(&acc);
         }
@@ -609,7 +612,11 @@ mod tests {
                 let q = p;
                 low::p521_jdouble(&mut p, &q);
             }
-            let lambda = if lambda == [0; 9] { [1, 0, 0, 0, 0, 0, 0, 0, 0] } else { lambda };
+            let lambda = if lambda == [0; 9] {
+                [1, 0, 0, 0, 0, 0, 0, 0, 0]
+            } else {
+                lambda
+            };
             rescale(&p, &lambda)
         })
     }
@@ -776,7 +783,14 @@ mod tests {
     #[test]
     fn scalar_multiply_edges() {
         // Zero, n, and either side of n / 2, where the scalar is negated.
-        for k in [[0; 9], N, HALF_N, add_small(HALF_N, 1), add_small(N, -1), [1, 0, 0, 0, 0, 0, 0, 0, 0]] {
+        for k in [
+            [0; 9],
+            N,
+            HALF_N,
+            add_small(HALF_N, 1),
+            add_small(N, -1),
+            [1, 0, 0, 0, 0, 0, 0, 0, 0],
+        ] {
             let (mut ours, mut theirs) = ([0; 27], [0; 27]);
             p521_jscalarmul(&mut ours, &k, &GENERATOR);
             low::p521_jscalarmul(&mut theirs, &k, &GENERATOR);
