@@ -27,10 +27,9 @@ fn check(
     peer: &[u8],
 ) {
     // Both accept or refuse the same peer key, whatever their own scalar.
-    let ours_result = ours::agree_ephemeral(
-        ours::EphemeralPrivateKey::generate(ours_algorithm).unwrap(),
-        &ours::UnparsedPublicKey::new(ours_algorithm, peer),
-    );
+    let ours_result = ours::PrivateKey::generate(ours_algorithm)
+        .unwrap()
+        .agree(peer);
     let theirs_result = theirs::agree_ephemeral(
         theirs::EphemeralPrivateKey::generate(
             theirs_algorithm,
@@ -48,15 +47,11 @@ fn check(
     let Ok(theirs_key) = theirs::PrivateKey::from_private_key(theirs_algorithm, scalar) else {
         return;
     };
-    let ours_key = ours::EphemeralPrivateKey::generate(ours_algorithm).unwrap();
-    let ours_public = ours_key.compute_public_key();
+    let ours_key = ours::PrivateKey::generate(ours_algorithm).unwrap();
+    let ours_public = ours_key.public_key();
     let theirs_public = theirs_key.compute_public_key().unwrap();
 
-    let ours_secret = ours::agree_ephemeral(
-        ours_key,
-        &ours::UnparsedPublicKey::new(ours_algorithm, theirs_public.as_ref()),
-    )
-    .unwrap();
+    let ours_secret = ours_key.agree(theirs_public.as_ref()).unwrap();
     let theirs_secret = theirs::agree(
         &theirs_key,
         theirs::UnparsedPublicKey::new(theirs_algorithm, ours_public.as_ref()),

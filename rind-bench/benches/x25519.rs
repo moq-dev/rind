@@ -85,12 +85,11 @@ fn x25519(c: &mut Criterion) {
     group.bench_function("rind", |b| {
         b.iter(|| {
             use rind::agreement::*;
-            let our_private_key = EphemeralPrivateKey::generate(&X25519).unwrap();
-            let our_public_key = our_private_key.compute_public_key();
+            let our_private_key = PrivateKey::generate(&X25519).unwrap();
+            let our_public_key = our_private_key.public_key();
             black_box(our_public_key);
 
-            let peer = UnparsedPublicKey::new(&X25519, PUBLIC_KEY);
-            let secret = agree_ephemeral(our_private_key, &peer).unwrap();
+            let secret = our_private_key.agree(PUBLIC_KEY).unwrap();
             black_box(secret);
         })
     });
@@ -132,8 +131,8 @@ fn keygen(c: &mut Criterion) {
     group.bench_function("rind", |b| {
         b.iter(|| {
             use rind::agreement::*;
-            let key = EphemeralPrivateKey::generate(&X25519).unwrap();
-            black_box(key.compute_public_key());
+            let key = PrivateKey::generate(&X25519).unwrap();
+            black_box(key.public_key());
         })
     });
 }

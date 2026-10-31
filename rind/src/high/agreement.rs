@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::error::{Error, KeyFormatError};
+use crate::error::Error;
 use crate::low;
 use crate::mid::{p256, p384, x25519};
 
@@ -48,7 +48,7 @@ pub static ECDH_P384: Algorithm = Algorithm {
 /// A private key used for one key agreement, wiped on drop.
 ///
 /// There is no static private key: no consumer agrees twice with one key.
-pub struct EphemeralPrivateKey(Private);
+pub struct PrivateKey(Private);
 
 // `repr(u8)` puts `X25519` at tag zero, and every variant's key is plain
 // words, so all-bits-zero is a valid value and `Drop` can wipe the tag and
@@ -62,11 +62,8 @@ enum Private {
 
 impl low::Zeroable for Private {}
 
-impl EphemeralPrivateKey {
+impl PrivateKey {
     /// Generates a private key for `algorithm` from the system random source.
-    ///
-    /// Unlike aws-lc-rs, this takes no random source: aws-lc-rs ignores its
-    /// own, a leftover of ring's API.
     pub fn generate(algorithm: &'static Algorithm) -> Result<Self, Error> {
         Ok(Self(match algorithm.id {
             AlgorithmId::X25519 => Private::X25519(x25519::PrivateKey::new_random()?),
@@ -75,8 +72,8 @@ impl EphemeralPrivateKey {
         }))
     }
 
-    /// Computes the public key to send to the peer.
-    pub fn compute_public_key(&self) -> PublicKey {
+    /// Returns the public key to send to the peer.
+    pub fn public_key(&self) -> PublicKey {
         let mut public = PublicKey {
             bytes: [0; PublicKey::MAX_LEN],
             len: 0,
@@ -90,18 +87,37 @@ impl EphemeralPrivateKey {
         public.len = encoded.len();
         public
     }
+
+    /// Agrees on a secret with the peer's encoded public key, consuming this key.
+    ///
+    /// The peer's key is parsed for this key's algorithm, and refused if it
+    /// is malformed or off the curve, and so is X25519's all-zero output from
+    /// a small-order point
+    /// ([RFC7748 section 6.1](https://datatracker.ietf.org/doc/html/rfc7748#section-6.1)).
+    pub fn agree(self, peer: &[u8]) -> Result<SharedSecret, Error> {
+        Ok(SharedSecret(match &self.0 {
+            Private::X25519(key) => {
+                Secret::X25519(key.diffie_hellman(&x25519::PublicKey::try_from_slice(peer)?)?)
+            }
+            Private::P256(key) => {
+                Secret::P256(key.diffie_hellman(&p256::PublicKey::from_x962_uncompressed(peer)?)?)
+            }
+            Private::P384(key) => {
+                Secret::P384(key.diffie_hellman(&p384::PublicKey::from_x962_uncompressed(peer)?)?)
+            }
+        }))
+    }
 }
 
-impl Drop for EphemeralPrivateKey {
+impl Drop for PrivateKey {
     fn drop(&mut self) {
         low::zeroise_value(&mut self.0);
     }
 }
 
-impl fmt::Debug for EphemeralPrivateKey {
+impl fmt::Debug for PrivateKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("EphemeralPrivateKey")
-            .finish_non_exhaustive()
+        f.debug_struct("PrivateKey").finish_non_exhaustive()
     }
 }
 
@@ -126,20 +142,6 @@ impl AsRef<[u8]> for PublicKey {
 impl fmt::Debug for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("PublicKey").field(&self.as_ref()).finish()
-    }
-}
-
-/// A peer's public key, parsed for `algorithm` only at agreement.
-#[derive(Clone, Copy, Debug)]
-pub struct UnparsedPublicKey<B: AsRef<[u8]>> {
-    algorithm: &'static Algorithm,
-    bytes: B,
-}
-
-impl<B: AsRef<[u8]>> UnparsedPublicKey<B> {
-    /// Wraps a peer's encoded public key for `algorithm`.
-    pub fn new(algorithm: &'static Algorithm, bytes: B) -> Self {
-        Self { algorithm, bytes }
     }
 }
 
@@ -168,36 +170,6 @@ impl fmt::Debug for SharedSecret {
     }
 }
 
-/// Agrees on a secret with a peer, consuming our private key.
-///
-/// The peer's key is refused if it is malformed, off the curve, or for
-/// another algorithm than ours, and so is X25519's all-zero output from a
-/// small-order point
-/// ([RFC7748 section 6.1](https://datatracker.ietf.org/doc/html/rfc7748#section-6.1)).
-///
-/// Unlike aws-lc-rs, this returns the secret instead of passing it to a
-/// key derivation closure; [`SharedSecret`] wipes itself on drop instead.
-pub fn agree_ephemeral<B: AsRef<[u8]>>(
-    my_private_key: EphemeralPrivateKey,
-    peer_public_key: &UnparsedPublicKey<B>,
-) -> Result<SharedSecret, Error> {
-    let peer = peer_public_key.bytes.as_ref();
-    Ok(SharedSecret(
-        match (&my_private_key.0, peer_public_key.algorithm.id) {
-            (Private::X25519(key), AlgorithmId::X25519) => {
-                Secret::X25519(key.diffie_hellman(&x25519::PublicKey::try_from_slice(peer)?)?)
-            }
-            (Private::P256(key), AlgorithmId::EcdhP256) => {
-                Secret::P256(key.diffie_hellman(&p256::PublicKey::from_x962_uncompressed(peer)?)?)
-            }
-            (Private::P384(key), AlgorithmId::EcdhP384) => {
-                Secret::P384(key.diffie_hellman(&p384::PublicKey::from_x962_uncompressed(peer)?)?)
-            }
-            _ => return Err(KeyFormatError::MismatchedAgreementAlgorithm.into()),
-        },
-    ))
-}
-
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -209,36 +181,16 @@ mod tests {
     #[test]
     fn agrees() {
         for algorithm in [&X25519, &ECDH_P256, &ECDH_P384] {
-            let alice = EphemeralPrivateKey::generate(algorithm).unwrap();
-            let bob = EphemeralPrivateKey::generate(algorithm).unwrap();
-            let alice_public = alice.compute_public_key();
-            let bob_public = bob.compute_public_key();
+            let alice = PrivateKey::generate(algorithm).unwrap();
+            let bob = PrivateKey::generate(algorithm).unwrap();
+            let alice_public = alice.public_key();
+            let bob_public = bob.public_key();
 
-            let alice_secret =
-                agree_ephemeral(alice, &UnparsedPublicKey::new(algorithm, &bob_public)).unwrap();
-            let bob_secret =
-                agree_ephemeral(bob, &UnparsedPublicKey::new(algorithm, &alice_public)).unwrap();
+            let alice_secret = alice.agree(bob_public.as_ref()).unwrap();
+            let bob_secret = bob.agree(alice_public.as_ref()).unwrap();
             low::ct::public_slice(alice_secret.as_ref());
             low::ct::public_slice(bob_secret.as_ref());
             assert_eq!(alice_secret.as_ref(), bob_secret.as_ref());
-        }
-    }
-
-    #[test]
-    fn refuses_another_algorithms_peer() {
-        for (ours, theirs) in [
-            (&X25519, &ECDH_P256),
-            (&ECDH_P256, &ECDH_P384),
-            (&ECDH_P384, &X25519),
-        ] {
-            let peer = EphemeralPrivateKey::generate(theirs)
-                .unwrap()
-                .compute_public_key();
-            let key = EphemeralPrivateKey::generate(ours).unwrap();
-            assert_eq!(
-                agree_ephemeral(key, &UnparsedPublicKey::new(theirs, &peer)).err(),
-                Some(KeyFormatError::MismatchedAgreementAlgorithm.into())
-            );
         }
     }
 

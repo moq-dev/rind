@@ -66,23 +66,24 @@ pub mod doc {
 /// ```
 /// use rind::agreement::*;
 ///
-/// let alice = EphemeralPrivateKey::generate(&X25519).unwrap();
-/// let bob = EphemeralPrivateKey::generate(&X25519).unwrap();
+/// let alice = PrivateKey::generate(&X25519).unwrap();
+/// let bob = PrivateKey::generate(&X25519).unwrap();
 ///
-/// let alice_pub = alice.compute_public_key();
-/// let bob_pub = bob.compute_public_key();
+/// let alice_pub = alice.public_key();
+/// let bob_pub = bob.public_key();
 ///
-/// let alice_secret = agree_ephemeral(alice, &UnparsedPublicKey::new(&X25519, bob_pub))
+/// let alice_secret = alice
+///     .agree(bob_pub.as_ref())
 ///     .expect("bob gave an invalid public key");
-/// let bob_secret = agree_ephemeral(bob, &UnparsedPublicKey::new(&X25519, alice_pub))
+/// let bob_secret = bob
+///     .agree(alice_pub.as_ref())
 ///     .expect("alice gave an invalid public key");
 ///
 /// assert_eq!(alice_secret.as_ref(), bob_secret.as_ref());
 /// ```
 pub mod agreement {
     pub use crate::high::agreement::{
-        Algorithm, ECDH_P256, ECDH_P384, EphemeralPrivateKey, PublicKey, SharedSecret,
-        UnparsedPublicKey, X25519, agree_ephemeral,
+        Algorithm, ECDH_P256, ECDH_P384, PrivateKey, PublicKey, SharedSecret, X25519,
     };
 }
 
@@ -95,15 +96,15 @@ pub mod agreement {
 /// // The recipient generates a key pair, and sends the encapsulation key to
 /// // the sender.
 /// let decapsulation_key = DecapsulationKey::generate(&ML_KEM_768)?;
-/// let encapsulation_key = decapsulation_key.encapsulation_key();
+/// let encapsulation_key = decapsulation_key.public_key();
 ///
 /// // The sender parses the encapsulation key, encapsulates a fresh secret,
 /// // and sends the ciphertext back to the recipient.
-/// let peer_key = EncapsulationKey::new(&ML_KEM_768, encapsulation_key.key_bytes())?;
+/// let peer_key = EncapsulationKey::new(&ML_KEM_768, encapsulation_key.as_ref())?;
 /// let (ciphertext, sender_secret) = peer_key.encapsulate()?;
 ///
 /// // The recipient decapsulates the ciphertext, recovering the same secret.
-/// let recipient_secret = decapsulation_key.decapsulate(Ciphertext::from(ciphertext.as_ref()))?;
+/// let recipient_secret = decapsulation_key.decapsulate(ciphertext.as_ref())?;
 ///
 /// assert_eq!(sender_secret.as_ref(), recipient_secret.as_ref());
 /// # Ok(())

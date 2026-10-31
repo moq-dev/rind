@@ -63,7 +63,7 @@ pub(crate) type VerifyingKey = PublicKey;
 
 /// A P-256 ephemeral private key.
 ///
-/// `agreement::EphemeralPrivateKey` uses one for a single Diffie-Hellman
+/// `agreement::PrivateKey` uses one for a single Diffie-Hellman
 /// operation.
 pub(crate) struct PrivateKey {
     scalar: Scalar,

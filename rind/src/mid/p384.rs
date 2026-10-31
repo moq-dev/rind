@@ -88,7 +88,7 @@ impl VerifyingKey {
 
 /// A P-384 ephemeral private key.
 ///
-/// `agreement::EphemeralPrivateKey` uses one for a single Diffie-Hellman
+/// `agreement::PrivateKey` uses one for a single Diffie-Hellman
 /// operation.
 pub(crate) struct PrivateKey {
     scalar: Scalar,

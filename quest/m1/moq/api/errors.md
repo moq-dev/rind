@@ -24,5 +24,4 @@ mismatches), and the enum should cover what is left.
 ## Required
 
 - [Signature API](/quest/m1/moq/api/signature.md) - removes buffer-size errors
-- [Agreement and KEM API](/quest/m1/moq/api/agreement-kem.md) - removes the algorithm-mismatch error
 - [Symmetric API](/quest/m1/moq/api/symmetric.md) - removes the tag-length and HKDF errors
