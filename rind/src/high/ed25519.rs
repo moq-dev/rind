@@ -152,11 +152,6 @@ impl Ed25519SigningKey {
             .map(|seed| Self(ed25519::SigningKey::from_seed(&seed)))
             .map_err(|_| Error::WrongLength)
     }
-
-    /// Return a copy of the 32-byte seed.
-    pub(crate) fn as_seed(&self) -> [u8; 32] {
-        ct::into_public(*self.0.as_seed_bytes())
-    }
 }
 
 #[cfg(test)]
@@ -175,13 +170,6 @@ mod tests {
 
             pk.verify(&sig, &msg).unwrap();
         }
-    }
-
-    #[test]
-    fn test_round_trip_seed() {
-        let seed = [0xff; 32];
-        let key = Ed25519SigningKey::from_bytes(&seed).unwrap();
-        assert_eq!(key.as_seed(), seed);
     }
 
     #[test]

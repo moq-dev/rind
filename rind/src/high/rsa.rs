@@ -1,8 +1,6 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-pub(crate) use rsa_priv::KeySize;
-
 use crate::Error;
 use crate::error::KeyFormatError;
 use crate::high::asn1::{self, Type, pkix};
@@ -11,7 +9,20 @@ use crate::high::{pkcs1, pkcs8};
 use crate::low::Entry;
 use crate::low::PosInt;
 use crate::mid::rng::SystemRandom;
+use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::{rsa_priv, rsa_pub};
+
+/// The longest PKCS#1 `RSAPublicKey`: the modulus and its DER framing, with
+/// room for the exponent.
+pub(crate) const MAX_PUBLIC_KEY_LEN: usize = rsa_pub::MAX_PUBLIC_MODULUS_BYTES + 64;
+
+/// The longest `SubjectPublicKeyInfo`: an `RSAPublicKey` in a bit string,
+/// after its algorithm identifier.
+pub(crate) const MAX_SPKI_LEN: usize = MAX_PUBLIC_KEY_LEN + 32;
+
+/// The longest PKCS#8 private key: an `RSAPrivateKey` in an octet string,
+/// after its version and algorithm identifier.
+pub(crate) const MAX_PKCS8_LEN: usize = SigningKey::MAX_PKCS1_BUFFER_LEN + 64;
 
 /// An RSA verification public key.
 ///
@@ -75,7 +86,7 @@ impl VerifyingKey {
     pub(crate) fn to_spki_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
         let _entry = Entry::new_public();
 
-        let mut pub_key_buffer = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES + 64];
+        let mut pub_key_buffer = [0u8; MAX_PUBLIC_KEY_LEN];
         let pub_key_buffer = self.to_pkcs1_der(&mut pub_key_buffer)?;
 
         let spki = pkix::SubjectPublicKeyInfo {
@@ -297,7 +308,7 @@ impl SigningKey {
     /// # Warning
     /// Unlike other private key operations in rind, RSA key generation is not side-channel safe.
     /// Avoid generating keys in untrusted multi-tenant or physical environments.
-    pub(crate) fn generate(size: KeySize) -> Result<Self, Error> {
+    pub(crate) fn generate(size: RsaKeySize) -> Result<Self, Error> {
         let _entry = Entry::new_secret();
         rsa_priv::RsaPrivateKey::generate(size, &mut SystemRandom, &mut SystemRandom)
             .map(SigningKey)
@@ -802,7 +813,7 @@ mod tests {
             .collect::<Vec<_>>();
         let key = SigningKey(
             rsa_priv::RsaPrivateKey::generate(
-                KeySize::Rsa2048,
+                RsaKeySize::Rsa2048,
                 &mut SliceRandomSource(&candidates),
                 &mut HmacDrbg::<hash::Sha256>::new(b"", b"", b""),
             )
@@ -818,16 +829,20 @@ mod tests {
 
     #[test]
     fn key_generation_smoke_test() {
-        let mut sizes = vec![2048, 3072];
+        let mut sizes = vec![RsaKeySize::Rsa2048, RsaKeySize::Rsa3072];
 
         if std::env::var_os("SLOW_TESTS").is_some() {
-            sizes.extend_from_slice(&[4096, 6144, 8192]);
+            sizes.extend_from_slice(&[
+                RsaKeySize::Rsa4096,
+                RsaKeySize::Rsa6144,
+                RsaKeySize::Rsa8192,
+            ]);
         }
 
         for size in sizes {
             println!("generating {size:?}...");
             let start = std::time::Instant::now();
-            let key = SigningKey::generate(KeySize::try_from(size).unwrap()).unwrap();
+            let key = SigningKey::generate(size).unwrap();
             println!("generated (took {}ms)", start.elapsed().as_millis());
             check_all_algs(&mut [0u8; 1024], &key, &key.public_key());
         }

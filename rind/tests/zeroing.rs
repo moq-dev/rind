@@ -51,30 +51,31 @@ use std::alloc::{Layout, dealloc};
 #[test]
 fn rsa() {
     use rind::signature::RsaKeyPair;
-    let rsa = RsaKeyPair::from_der(include_bytes!("../src/high/rsa/rsa8192.der")).unwrap();
+    let rsa = RsaKeyPair::from_pkcs1(include_bytes!("../src/high/rsa/rsa8192.der")).unwrap();
+    check_zeroed_on_drop(Box::pin(rsa.to_pkcs8()));
     check_zeroed_on_drop(Box::pin(rsa));
 }
 
 #[test]
 fn ecdsa() {
-    use rind::signature::*;
+    use rind::signature::{EcdsaKeyPair, sign};
     for (algorithm, pkcs8) in [
         (
-            &ECDSA_P256_SHA256_ASN1_SIGNING,
+            &sign::ECDSA_P256_SHA256_ASN1,
             &include_bytes!("../src/high/ecdsa/secp256r1.pkcs8.der")[..],
         ),
         (
-            &ECDSA_P384_SHA384_ASN1_SIGNING,
+            &sign::ECDSA_P384_SHA384_ASN1,
             &include_bytes!("../src/high/ecdsa/secp384r1.pkcs8.der")[..],
         ),
         (
-            &ECDSA_P521_SHA512_ASN1_SIGNING,
+            &sign::ECDSA_P521_SHA512_ASN1,
             &include_bytes!("../src/high/ecdsa/secp521r1.pkcs8.der")[..],
         ),
     ] {
-        check_zeroed_on_drop(Box::pin(
-            EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap(),
-        ));
+        let key = EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap();
+        check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
+        check_zeroed_on_drop(Box::pin(key));
     }
 }
 
@@ -84,6 +85,7 @@ fn ed25519() {
     let ed25519 =
         Ed25519KeyPair::from_pkcs8(include_bytes!("../src/high/asn1/testdata/ed25519-p8v2.bin"))
             .unwrap();
+    check_zeroed_on_drop(Box::pin(ed25519.to_pkcs8()));
     check_zeroed_on_drop(Box::pin(ed25519));
 }
 

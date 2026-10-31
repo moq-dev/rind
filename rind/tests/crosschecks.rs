@@ -2,61 +2,57 @@ use aws_lc_rs::rsa::KeyPair;
 use aws_lc_rs::{digest, hmac, signature::Ed25519KeyPair};
 use proptest::collection::vec;
 use proptest::prelude::*;
-use rind::signature::{self, KeySize, RsaKeyPair};
+use rind::signature::{self, RsaKeyPair, RsaKeySize};
 
 #[test]
 fn rsa_2048_key_generation() {
-    check_key_generation(KeySize::Rsa2048);
+    check_key_generation(RsaKeySize::Rsa2048);
 }
 
 #[test]
 fn rsa_2048_key_generation_soak() {
     if std::env::var_os("SLOW_TESTS").is_some() {
         for _ in 0..512 {
-            check_key_generation(KeySize::Rsa2048);
+            check_key_generation(RsaKeySize::Rsa2048);
         }
     }
 }
 
 #[test]
 fn rsa_3072_key_generation() {
-    check_key_generation(KeySize::Rsa3072);
+    check_key_generation(RsaKeySize::Rsa3072);
 }
 
 #[test]
 fn rsa_4096_key_generation() {
-    check_key_generation(KeySize::Rsa4096);
+    check_key_generation(RsaKeySize::Rsa4096);
 }
 
 #[test]
 fn rsa_6144_key_generation() {
     if std::env::var_os("SLOW_TESTS").is_some() {
-        check_key_generation(KeySize::Rsa6144);
+        check_key_generation(RsaKeySize::Rsa6144);
     }
 }
 
 #[test]
 fn rsa_8192_key_generation() {
     if std::env::var_os("SLOW_TESTS").is_some() {
-        check_key_generation(KeySize::Rsa8192);
+        check_key_generation(RsaKeySize::Rsa8192);
     }
 }
 
-fn check_key_generation(size: KeySize) {
+fn check_key_generation(size: RsaKeySize) {
     let key = RsaKeyPair::generate(size).unwrap();
-    let mut buf = [0u8; 8192];
-    let key_enc = key.to_pkcs8_der(&mut buf).unwrap();
-
-    KeyPair::from_pkcs8(key_enc).expect("aws-lc-rs rejected a key we generated");
+    KeyPair::from_pkcs8(key.to_pkcs8().as_ref()).expect("aws-lc-rs rejected a key we generated");
 }
 
 #[test]
 fn ed25519_key_generation() {
     for _ in 0..100 {
         let key = signature::Ed25519KeyPair::generate().unwrap();
-
-        let mut buf = [0u8; 128];
-        let key_enc = key.to_pkcs8_der(&mut buf).unwrap();
+        let key_enc = key.to_pkcs8();
+        let key_enc = key_enc.as_ref();
 
         let aws = Ed25519KeyPair::from_pkcs8(key_enc)
             .expect("aws-lc-rs rejected an ed25519 key we generated");
@@ -550,7 +546,7 @@ macro_rules! ec_crosschecks {
             };
             use proptest::collection::vec;
             use proptest::prelude::*;
-            use rind::signature::{self, KeyPair as _};
+            use rind::signature::{self, sign, verify};
 
             // Each case generates keys on both sides, which is slow under emulation.
             proptest! {
@@ -560,31 +556,33 @@ macro_rules! ec_crosschecks {
                 fn ecdsa(message in vec(any::<u8>(), 0..300)) {
                     // aws-lc-rs accepts our key and derives the same public
                     // key, encodings, and scalar.
-                    let ours = signature::EcdsaKeyPair::generate(&signature::$fixed_signing).unwrap();
-                    let public = ours.public_key().as_ref();
+                    let ours = signature::EcdsaKeyPair::generate(&sign::$fixed).unwrap();
+                    let encoded = ours.public_key();
+                    let public = encoded.as_ref();
                     let theirs_from_ours = EcdsaKeyPair::from_pkcs8(
                         &$fixed_signing,
-                        ours.to_pkcs8_der(&mut [0; 256]).unwrap(),
+                        ours.to_pkcs8().as_ref(),
                     )
                     .expect("aws-lc-rs rejected a key we generated");
                     prop_assert_eq!(theirs_from_ours.public_key().as_ref(), public);
                     let spki = theirs_from_ours.public_key().as_der().unwrap();
-                    prop_assert_eq!(spki.as_ref(), ours.to_spki_der(&mut [0; 256]).unwrap().to_vec());
+                    let ours_spki = ours.to_spki();
+                    prop_assert_eq!(spki.as_ref(), ours_spki.as_ref());
                     let scalar = theirs_from_ours.private_key().as_be_bytes().unwrap();
-                    prop_assert_eq!(scalar.as_ref(), ours.to_private_key_be(&mut [0; 66]).unwrap().to_vec());
 
                     // We load its scalar and point as the same key, and refuse
                     // the scalar with another key's point.
                     let reloaded = signature::EcdsaKeyPair::from_private_key_and_public_key(
-                        &signature::$asn1_signing,
+                        &sign::$asn1,
                         scalar.as_ref(),
                         public,
                     )
                     .unwrap();
-                    prop_assert_eq!(reloaded.public_key().as_ref(), public);
+                    let (reloaded_pkcs8, ours_pkcs8) = (reloaded.to_pkcs8(), ours.to_pkcs8());
+                    prop_assert_eq!(reloaded_pkcs8.as_ref(), ours_pkcs8.as_ref());
                     let other = EcdsaKeyPair::generate(&$fixed_signing).unwrap();
                     prop_assert!(signature::EcdsaKeyPair::from_private_key_and_public_key(
-                        &signature::$asn1_signing,
+                        &sign::$asn1,
                         scalar.as_ref(),
                         other.public_key().as_ref(),
                     )
@@ -600,13 +598,14 @@ macro_rules! ec_crosschecks {
                     // We verify its signatures, in both encodings, and refuse
                     // one over another message.
                     for (signing, ours_verification) in [
-                        (&$fixed_signing, &signature::$fixed),
-                        (&$asn1_signing, &signature::$asn1),
+                        (&$fixed_signing, &verify::$fixed),
+                        (&$asn1_signing, &verify::$asn1),
                     ] {
                         let theirs = EcdsaKeyPair::generate(signing).unwrap();
                         let signature = theirs.sign(&SystemRandom::new(), &message).unwrap();
                         let verifier =
-                            signature::UnparsedPublicKey::new(ours_verification, theirs.public_key());
+                            signature::PublicKey::new(ours_verification, theirs.public_key().as_ref())
+                                .unwrap();
                         verifier.verify(&message, signature.as_ref()).unwrap();
                         prop_assert!(
                             verifier.verify(&[&message[..], b"!"].concat(), signature.as_ref()).is_err()
@@ -686,8 +685,10 @@ mod ed25519 {
             let public = theirs.public_key().as_ref();
             let ours = signature::Ed25519KeyPair::from_seed_and_public_key(&seed, public).unwrap();
             let spki = theirs.public_key().as_der().unwrap();
-            prop_assert_eq!(ours.to_spki_der(&mut [0; 64]).unwrap().to_vec(), spki.as_ref());
-            prop_assert_eq!(ours.seed(), seed);
+            let ours_spki = ours.to_spki();
+            prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
+            let (ours_pkcs8, theirs_pkcs8) = (ours.to_pkcs8(), theirs.to_pkcs8().unwrap());
+            prop_assert_eq!(ours_pkcs8.as_ref(), theirs_pkcs8.as_ref());
             let signature = ours.sign(&message);
             let theirs_signature = theirs.sign(&message);
             prop_assert_eq!(signature.as_ref(), theirs_signature.as_ref());
@@ -698,8 +699,9 @@ mod ed25519 {
                 let bit = flip.index(signature.len() * 8);
                 signature[bit / 8] ^= 1 << (bit % 8);
             }
-            let ours_result =
-                signature::UnparsedPublicKey::new(&signature::ED25519, public).verify(&message, &signature);
+            let ours_result = signature::PublicKey::new(&signature::verify::ED25519, public)
+                .unwrap()
+                .verify(&message, &signature);
             let theirs_result = UnparsedPublicKey::new(&ED25519, public).verify(&message, &signature);
             prop_assert_eq!(ours_result.is_ok(), flip.is_none());
             prop_assert_eq!(theirs_result.is_ok(), flip.is_none());
@@ -737,12 +739,12 @@ mod rsa {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use rind::Error;
-    use rind::signature::{KeyPair as _, RsaKeyPair};
+    use rind::signature::{RsaKeyPair, sign, verify};
 
     /// One padding and hash: each side's signing and verification constants.
     struct Scheme {
-        ours_sign: &'static rind::signature::RsaSignatureEncoding,
-        ours_verify: &'static rind::signature::RsaParameters,
+        ours_sign: &'static rind::signature::RsaSigningAlgorithm,
+        ours_verify: &'static rind::signature::VerificationAlgorithm,
         theirs_sign: &'static signature::RsaSignatureEncoding,
         theirs_verify: &'static signature::RsaParameters,
         /// PKCS#1 v1.5 signatures have no randomness, so both sides must agree.
@@ -751,43 +753,43 @@ mod rsa {
 
     const SCHEMES: [Scheme; 6] = [
         Scheme {
-            ours_sign: &rind::signature::RSA_PKCS1_SHA256,
-            ours_verify: &rind::signature::RSA_PKCS1_2048_8192_SHA256,
+            ours_sign: &sign::RSA_PKCS1_SHA256,
+            ours_verify: &verify::RSA_PKCS1_SHA256,
             theirs_sign: &signature::RSA_PKCS1_SHA256,
             theirs_verify: &signature::RSA_PKCS1_2048_8192_SHA256,
             deterministic: true,
         },
         Scheme {
-            ours_sign: &rind::signature::RSA_PKCS1_SHA384,
-            ours_verify: &rind::signature::RSA_PKCS1_2048_8192_SHA384,
+            ours_sign: &sign::RSA_PKCS1_SHA384,
+            ours_verify: &verify::RSA_PKCS1_SHA384,
             theirs_sign: &signature::RSA_PKCS1_SHA384,
             theirs_verify: &signature::RSA_PKCS1_2048_8192_SHA384,
             deterministic: true,
         },
         Scheme {
-            ours_sign: &rind::signature::RSA_PKCS1_SHA512,
-            ours_verify: &rind::signature::RSA_PKCS1_2048_8192_SHA512,
+            ours_sign: &sign::RSA_PKCS1_SHA512,
+            ours_verify: &verify::RSA_PKCS1_SHA512,
             theirs_sign: &signature::RSA_PKCS1_SHA512,
             theirs_verify: &signature::RSA_PKCS1_2048_8192_SHA512,
             deterministic: true,
         },
         Scheme {
-            ours_sign: &rind::signature::RSA_PSS_SHA256,
-            ours_verify: &rind::signature::RSA_PSS_2048_8192_SHA256,
+            ours_sign: &sign::RSA_PSS_SHA256,
+            ours_verify: &verify::RSA_PSS_SHA256,
             theirs_sign: &signature::RSA_PSS_SHA256,
             theirs_verify: &signature::RSA_PSS_2048_8192_SHA256,
             deterministic: false,
         },
         Scheme {
-            ours_sign: &rind::signature::RSA_PSS_SHA384,
-            ours_verify: &rind::signature::RSA_PSS_2048_8192_SHA384,
+            ours_sign: &sign::RSA_PSS_SHA384,
+            ours_verify: &verify::RSA_PSS_SHA384,
             theirs_sign: &signature::RSA_PSS_SHA384,
             theirs_verify: &signature::RSA_PSS_2048_8192_SHA384,
             deterministic: false,
         },
         Scheme {
-            ours_sign: &rind::signature::RSA_PSS_SHA512,
-            ours_verify: &rind::signature::RSA_PSS_2048_8192_SHA512,
+            ours_sign: &sign::RSA_PSS_SHA512,
+            ours_verify: &verify::RSA_PSS_SHA512,
             theirs_sign: &signature::RSA_PSS_SHA512,
             theirs_verify: &signature::RSA_PSS_2048_8192_SHA512,
             deterministic: false,
@@ -819,19 +821,22 @@ mod rsa {
             for theirs in &*THEIRS {
                 let ours = RsaKeyPair::from_pkcs8(theirs.as_der().unwrap().as_ref()).unwrap();
                 let public = theirs.public_key().as_ref();
-                prop_assert_eq!(ours.public_key().as_ref(), public);
                 let spki = theirs.public_key().as_der().unwrap();
-                prop_assert_eq!(ours.to_spki_der(&mut [0; 512]).unwrap().to_vec(), spki.as_ref());
+                let ours_spki = ours.to_spki();
+                prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
                 let rng = SystemRandom::new();
                 let len = theirs.public_modulus_len();
-                prop_assert_eq!(ours.public_modulus_len(), len);
 
                 for scheme in &SCHEMES {
+                    let ours_public = ours.public_key(scheme.ours_sign);
+                    prop_assert_eq!(ours_public.as_ref(), public);
+
                     // It verifies our signature.
-                    let mut ours_signature = vec![0u8; len];
-                    ours.sign(scheme.ours_sign, &message, &mut ours_signature).unwrap();
+                    let ours_signature = ours.sign(scheme.ours_sign, &message).unwrap();
+                    let ours_signature = ours_signature.as_ref();
+                    prop_assert_eq!(ours_signature.len(), len);
                     UnparsedPublicKey::new(scheme.theirs_verify, public)
-                        .verify(&message, &ours_signature)
+                        .verify(&message, ours_signature)
                         .unwrap();
 
                     // We verify its signature, and refuse it over another message.
@@ -840,9 +845,9 @@ mod rsa {
                         .sign(scheme.theirs_sign, &rng, &message, &mut theirs_signature)
                         .unwrap();
                     if scheme.deterministic {
-                        prop_assert_eq!(&ours_signature, &theirs_signature);
+                        prop_assert_eq!(ours_signature, &theirs_signature[..]);
                     }
-                    let verifier = rind::signature::UnparsedPublicKey::new(scheme.ours_verify, public);
+                    let verifier = rind::signature::PublicKey::new(scheme.ours_verify, public).unwrap();
                     verifier.verify(&message, &theirs_signature).unwrap();
                     prop_assert_eq!(
                         verifier.verify(&[&message[..], b"!"].concat(), &theirs_signature),
@@ -854,49 +859,49 @@ mod rsa {
     }
 
     // Every verification algorithm, beside aws-lc-rs's of the same name.
-    const VERIFICATION: [(&rind::signature::RsaParameters, &signature::RsaParameters); 11] = [
+    const VERIFICATION: [(&rind::signature::VerificationAlgorithm, &signature::RsaParameters); 11] = [
         (
-            &rind::signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            &verify::legacy::RSA_PKCS1_1024_SHA1,
             &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
         ),
         (
-            &rind::signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+            &verify::legacy::RSA_PKCS1_1024_SHA256,
             &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
         ),
         (
-            &rind::signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+            &verify::legacy::RSA_PKCS1_1024_SHA512,
             &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
         ),
         (
-            &rind::signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            &verify::legacy::RSA_PKCS1_SHA1,
             &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
         ),
         (
-            &rind::signature::RSA_PKCS1_2048_8192_SHA256,
+            &verify::RSA_PKCS1_SHA256,
             &signature::RSA_PKCS1_2048_8192_SHA256,
         ),
         (
-            &rind::signature::RSA_PKCS1_2048_8192_SHA384,
+            &verify::RSA_PKCS1_SHA384,
             &signature::RSA_PKCS1_2048_8192_SHA384,
         ),
         (
-            &rind::signature::RSA_PKCS1_2048_8192_SHA512,
+            &verify::RSA_PKCS1_SHA512,
             &signature::RSA_PKCS1_2048_8192_SHA512,
         ),
         (
-            &rind::signature::RSA_PKCS1_3072_8192_SHA384,
+            &verify::legacy::RSA_PKCS1_3072_SHA384,
             &signature::RSA_PKCS1_3072_8192_SHA384,
         ),
         (
-            &rind::signature::RSA_PSS_2048_8192_SHA256,
+            &verify::RSA_PSS_SHA256,
             &signature::RSA_PSS_2048_8192_SHA256,
         ),
         (
-            &rind::signature::RSA_PSS_2048_8192_SHA384,
+            &verify::RSA_PSS_SHA384,
             &signature::RSA_PSS_2048_8192_SHA384,
         ),
         (
-            &rind::signature::RSA_PSS_2048_8192_SHA512,
+            &verify::RSA_PSS_SHA512,
             &signature::RSA_PSS_2048_8192_SHA512,
         ),
     ];
@@ -937,14 +942,15 @@ mod rsa {
                             let case = format!("{file} {i} {ours:?}");
                             for n in [n, &modulus] {
                                 let ours = rind::signature::RsaPublicKeyComponents { n, e: &e }
-                                    .verify(ours, message, &signature);
+                                    .to_public_key(ours)
+                                    .and_then(|key| key.verify(message, &signature));
                                 let theirs = signature::RsaPublicKeyComponents { n, e: &e }
                                     .verify(theirs, message, &signature);
                                 assert_eq!(ours.is_ok(), theirs.is_ok(), "{case} {ours:?}");
                             }
 
-                            let ours = rind::signature::UnparsedPublicKey::new(ours, &der)
-                                .verify(message, &signature);
+                            let ours = rind::signature::PublicKey::new(ours, &der)
+                                .and_then(|key| key.verify(message, &signature));
                             let theirs =
                                 UnparsedPublicKey::new(theirs, &der).verify(message, &signature);
                             assert_eq!(ours.is_ok(), theirs.is_ok(), "{case} {ours:?}");
@@ -965,12 +971,7 @@ mod rsa {
         );
         let public = include_bytes!("../src/high/rsa/rsa2047.pub.der");
         assert_eq!(
-            rind::signature::UnparsedPublicKey::new(
-                &rind::signature::RSA_PKCS1_2048_8192_SHA256,
-                public
-            )
-            .verify(b"", &[0; 256])
-            .err(),
+            rind::signature::PublicKey::new(&verify::RSA_PKCS1_SHA256, public).err(),
             Some(Error::OutOfRange)
         );
     }

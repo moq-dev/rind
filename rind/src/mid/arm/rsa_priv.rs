@@ -12,10 +12,10 @@ use super::rsa_pub::{MAX_PUBLIC_MODULUS_BYTES, RsaPublicKey};
 use crate::error::Error;
 use crate::low;
 use crate::mid::rng::RandomSource;
+use crate::mid::rsa_key_size::RsaKeySize;
 
 #[path = "rsa_priv/generate.rs"]
 mod generate;
-pub use generate::KeySize;
 
 /// `public` comes first so its (non-secret) bytes form a prefix.
 #[repr(C)]
@@ -79,7 +79,7 @@ impl RsaPrivateKey {
     }
 
     pub(crate) fn generate(
-        size: KeySize,
+        size: RsaKeySize,
         candidate_source: &mut dyn RandomSource,
         witness_source: &mut dyn RandomSource,
     ) -> Result<Self, Error> {

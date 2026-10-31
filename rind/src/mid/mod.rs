@@ -36,6 +36,7 @@ pub(super) mod chacha20poly1305;
 pub(super) mod p384;
 pub(super) mod p521;
 pub(super) mod rng;
+pub(super) mod rsa_key_size;
 pub(super) mod sha1;
 pub(super) mod sha2;
 pub(super) mod util;

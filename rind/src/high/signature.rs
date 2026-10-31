@@ -9,7 +9,7 @@ use super::hash::{Sha256, Sha384, Sha512};
 use super::rsa;
 use crate::error::{Error, KeyFormatError};
 use crate::low::{self, Zeroable};
-pub use crate::mid::rsa_priv::KeySize;
+pub use crate::mid::rsa_key_size::RsaKeySize;
 use crate::mid::rsa_pub::MAX_PUBLIC_MODULUS_BYTES;
 
 /// The hash a signature algorithm applies to the message.
@@ -44,48 +44,96 @@ macro_rules! with_hash {
     };
 }
 
-mod sealed {
-    use crate::Error;
+/// Up to `N` bytes, as the owned encodings and signatures hold them.
+#[derive(Clone, Copy)]
+struct Buffer<const N: usize> {
+    bytes: [u8; N],
+    len: usize,
+}
 
-    pub trait Sealed {
-        fn parse(&self, public_key: &[u8]) -> Result<Key, Error>;
+impl<const N: usize> Buffer<N> {
+    fn new() -> Self {
+        Self {
+            bytes: [0; N],
+            len: 0,
+        }
     }
 
-    /// A parsed key, opaque so the sealed trait names no crate-private type.
-    pub struct Key(pub(super) super::Parsed);
-}
+    fn copy_from(bytes: &[u8]) -> Result<Self, Error> {
+        let mut buffer = Self::new();
+        buffer
+            .bytes
+            .get_mut(..bytes.len())
+            .ok_or(Error::WrongLength)?
+            .copy_from_slice(bytes);
+        buffer.len = bytes.len();
+        Ok(buffer)
+    }
 
-/// A signature verification algorithm, for [`UnparsedPublicKey`] and [`ParsedPublicKey`].
-pub trait VerificationAlgorithm: fmt::Debug + Sync + sealed::Sealed {}
+    /// Runs `write`, which writes to the start of its argument and returns
+    /// the written span.
+    fn write(write: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Result<Self, Error> {
+        let mut buffer = Self::new();
+        buffer.len = write(&mut buffer.bytes)?.len();
+        Ok(buffer)
+    }
 
-/// A peer's public key, parsed for `algorithm` only at verification.
-#[derive(Clone, Copy, Debug)]
-pub struct UnparsedPublicKey<B: AsRef<[u8]>> {
-    algorithm: &'static dyn VerificationAlgorithm,
-    bytes: B,
-}
+    /// Copies into a buffer at least as large.
+    fn widen<const M: usize>(&self) -> Buffer<M> {
+        const { assert!(M >= N) };
+        let mut wide = Buffer::new();
+        wide.bytes[..N].copy_from_slice(&self.bytes);
+        wide.len = self.len;
+        wide
+    }
 
-impl<B: AsRef<[u8]>> UnparsedPublicKey<B> {
-    /// Wraps a peer's encoded public key for `algorithm`.
+    /// Runs `encode` as [`Self::write`] does, for an encoder `N` is sized
+    /// for.
     ///
-    /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
-    /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. Unlike
-    /// aws-lc-rs, a compressed ECDSA point is refused: no consumer sends one.
-    pub fn new(algorithm: &'static dyn VerificationAlgorithm, bytes: B) -> Self {
-        Self { algorithm, bytes }
-    }
-
-    /// Verifies `signature` over `message`, refusing a malformed key or signature.
-    pub fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
-        ParsedPublicKey::new(self.algorithm, self.bytes.as_ref())?.verify(message, signature)
+    /// Every `N` holds the encoding of the largest key a loader accepts, so
+    /// an encoder that runs out of room is a bug in rind, not bad input.
+    fn encode(encode: impl FnOnce(&mut [u8]) -> Result<&[u8], Error>) -> Self {
+        Self::write(encode).expect("sized for the largest key")
     }
 }
 
-/// A peer's public key, parsed for `algorithm` once, so a malformed key is
-/// refused before any signature arrives.
-pub struct ParsedPublicKey {
-    algorithm: &'static dyn VerificationAlgorithm,
+impl<const N: usize> From<[u8; N]> for Buffer<N> {
+    fn from(bytes: [u8; N]) -> Self {
+        Self { bytes, len: N }
+    }
+}
+
+impl<const N: usize> AsRef<[u8]> for Buffer<N> {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes[..self.len]
+    }
+}
+
+// Bytes and a length, both valid at zero.
+impl<const N: usize> Zeroable for Buffer<N> {}
+
+/// A signature verification algorithm, which a [`PublicKey`] is bound to.
+pub struct VerificationAlgorithm(Verification);
+
+#[derive(Clone, Copy, Debug)]
+enum Verification {
+    Ecdsa(Ecdsa),
+    Rsa(Rsa),
+    Ed25519,
+}
+
+impl fmt::Debug for VerificationAlgorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// A public key, bound to the one algorithm it verifies signatures with.
+///
+/// Its bytes are its encoding, as [`PublicKey::new`] takes it.
+pub struct PublicKey {
     key: Parsed,
+    encoding: Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -97,22 +145,49 @@ enum Parsed {
     Ed25519(Ed25519VerifyingKey),
 }
 
-impl ParsedPublicKey {
-    /// Parses a peer's encoded public key, as [`UnparsedPublicKey::new`] takes it, for `algorithm`.
-    pub fn new(
-        algorithm: &'static dyn VerificationAlgorithm,
-        bytes: impl AsRef<[u8]>,
-    ) -> Result<Self, Error> {
+impl PublicKey {
+    /// Parses a public key for `algorithm`, refusing a malformed key before
+    /// any signature arrives.
+    ///
+    /// ECDSA keys are X9.62 uncompressed points, RSA keys are PKCS#1
+    /// `RSAPublicKey` DER, and Ed25519 keys are their 32 bytes. Unlike
+    /// aws-lc-rs, a compressed ECDSA point is refused: no consumer sends one.
+    pub fn new(algorithm: &'static VerificationAlgorithm, bytes: &[u8]) -> Result<Self, Error> {
+        let key = match algorithm.0 {
+            Verification::Ecdsa(ecdsa) => match ecdsa.curve {
+                CurveId::P256 => {
+                    Parsed::EcdsaP256(ecdsa::VerifyingKey::from_x962_uncompressed(bytes)?, ecdsa)
+                }
+                CurveId::P384 => {
+                    Parsed::EcdsaP384(ecdsa::VerifyingKey::from_x962_uncompressed(bytes)?, ecdsa)
+                }
+                CurveId::P521 => {
+                    Parsed::EcdsaP521(ecdsa::VerifyingKey::from_x962_uncompressed(bytes)?, ecdsa)
+                }
+            },
+            Verification::Rsa(rsa) => {
+                return Self::rsa(rsa, rsa::VerifyingKey::from_pkcs1_der(bytes)?);
+            }
+            Verification::Ed25519 => Parsed::Ed25519(Ed25519VerifyingKey::from_bytes(bytes)?),
+        };
         Ok(Self {
-            algorithm,
-            key: algorithm.parse(bytes.as_ref())?.0,
+            key,
+            encoding: Buffer::copy_from(bytes)?,
+        })
+    }
+
+    /// Binds an RSA key to `rsa`, refusing it below the algorithm's floor.
+    ///
+    /// The encoding is the key's DER, whether it came as DER or components.
+    fn rsa(rsa: Rsa, key: rsa::VerifyingKey) -> Result<Self, Error> {
+        let key = rsa.check(key)?;
+        Ok(Self {
+            encoding: Buffer::write(|output| key.to_pkcs1_der(output))?,
+            key: Parsed::Rsa(key, rsa.verification),
         })
     }
 
     /// Verifies `signature` over `message`, refusing a malformed signature.
-    ///
-    /// aws-lc-rs names this `verify_sig`; it matches
-    /// [`UnparsedPublicKey::verify`] here.
     pub fn verify(&self, message: &[u8], signature: &[u8]) -> Result<(), Error> {
         match &self.key {
             Parsed::EcdsaP256(key, algorithm) => algorithm.verify(key, message, signature),
@@ -124,52 +199,82 @@ impl ParsedPublicKey {
     }
 }
 
-impl fmt::Debug for ParsedPublicKey {
+impl AsRef<[u8]> for PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        self.encoding.as_ref()
+    }
+}
+
+impl fmt::Debug for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ParsedPublicKey")
-            .field("algorithm", &self.algorithm)
-            .finish_non_exhaustive()
+        let mut f = f.debug_struct("PublicKey");
+        match &self.key {
+            Parsed::EcdsaP256(_, algorithm)
+            | Parsed::EcdsaP384(_, algorithm)
+            | Parsed::EcdsaP521(_, algorithm) => f.field("algorithm", algorithm),
+            Parsed::Rsa(_, verification) => f.field("algorithm", verification),
+            Parsed::Ed25519(_) => f.field("algorithm", &Verification::Ed25519),
+        };
+        f.field("bytes", &self.as_ref()).finish()
     }
 }
 
-/// A key pair, which reveals its public key.
-pub trait KeyPair {
-    /// The public key's encoding, as [`UnparsedPublicKey`] takes it.
-    type PublicKey: AsRef<[u8]>;
-
-    /// Returns the public key.
-    fn public_key(&self) -> &Self::PublicKey;
-}
-
-/// A signature from an ECDSA or Ed25519 key pair.
+/// A signature from any key pair.
 #[derive(Clone, Copy)]
-pub struct Signature {
-    bytes: [u8; Self::MAX_LEN],
-    len: usize,
-}
+pub struct Signature(Buffer<SIGNATURE_MAX_LEN>);
 
-impl Signature {
-    // A DER `SEQUENCE`, whose length takes two bytes, of two P-521
-    // `INTEGER`s, each with a sign byte.
-    const MAX_LEN: usize = 3 + 2 * (2 + MAX_SCALAR_LEN + 1);
-
-    fn new() -> Self {
-        Self {
-            bytes: [0; Self::MAX_LEN],
-            len: 0,
-        }
-    }
-}
+// RSA's, as long as the largest modulus, is longer than any ECDSA DER
+// signature: a `SEQUENCE`, whose length takes two bytes, of two P-521
+// `INTEGER`s, each with a sign byte.
+const SIGNATURE_MAX_LEN: usize = MAX_PUBLIC_MODULUS_BYTES;
+const _: () = assert!(3 + 2 * (2 + MAX_SCALAR_LEN + 1) <= SIGNATURE_MAX_LEN);
 
 impl AsRef<[u8]> for Signature {
     fn as_ref(&self) -> &[u8] {
-        &self.bytes[..self.len]
+        self.0.as_ref()
     }
 }
 
 impl fmt::Debug for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Signature").field(&self.as_ref()).finish()
+    }
+}
+
+/// A private key encoded as PKCS#8 DER, wiped on drop.
+pub struct Pkcs8(Buffer<{ rsa::MAX_PKCS8_LEN }>);
+
+impl AsRef<[u8]> for Pkcs8 {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Debug for Pkcs8 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Pkcs8").finish_non_exhaustive()
+    }
+}
+
+impl Drop for Pkcs8 {
+    fn drop(&mut self) {
+        low::zeroise_value(&mut self.0);
+    }
+}
+
+/// A public key encoded as a `SubjectPublicKeyInfo` in DER.
+#[derive(Clone)]
+pub struct Spki(Buffer<{ rsa::MAX_SPKI_LEN }>);
+
+impl AsRef<[u8]> for Spki {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Debug for Spki {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Spki").field(&self.as_ref()).finish()
     }
 }
 
@@ -212,152 +317,72 @@ impl Ecdsa {
     }
 }
 
-/// An ECDSA verification algorithm: a curve, a hash, and a signature encoding.
-#[derive(Debug)]
-pub struct EcdsaVerificationAlgorithm(Ecdsa);
-
-impl sealed::Sealed for EcdsaVerificationAlgorithm {
-    fn parse(&self, public_key: &[u8]) -> Result<sealed::Key, Error> {
-        Ok(sealed::Key(match self.0.curve {
-            CurveId::P256 => Parsed::EcdsaP256(
-                ecdsa::VerifyingKey::from_x962_uncompressed(public_key)?,
-                self.0,
-            ),
-            CurveId::P384 => Parsed::EcdsaP384(
-                ecdsa::VerifyingKey::from_x962_uncompressed(public_key)?,
-                self.0,
-            ),
-            CurveId::P521 => Parsed::EcdsaP521(
-                ecdsa::VerifyingKey::from_x962_uncompressed(public_key)?,
-                self.0,
-            ),
-        }))
-    }
-}
-
-impl VerificationAlgorithm for EcdsaVerificationAlgorithm {}
-
-/// ECDSA on P-256 with SHA-256, ASN.1 signatures.
-pub static ECDSA_P256_SHA256_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P256, HashId::Sha256, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-256 with SHA-384, ASN.1 signatures.
-pub static ECDSA_P256_SHA384_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P256, HashId::Sha384, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-256 with SHA-512, ASN.1 signatures.
-pub static ECDSA_P256_SHA512_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P256, HashId::Sha512, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-384 with SHA-256, ASN.1 signatures.
-pub static ECDSA_P384_SHA256_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P384, HashId::Sha256, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-384 with SHA-384, ASN.1 signatures.
-pub static ECDSA_P384_SHA384_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P384, HashId::Sha384, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-384 with SHA-512, ASN.1 signatures.
-pub static ECDSA_P384_SHA512_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P384, HashId::Sha512, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-521 with SHA-256, ASN.1 signatures.
-pub static ECDSA_P521_SHA256_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P521, HashId::Sha256, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-521 with SHA-384, ASN.1 signatures.
-pub static ECDSA_P521_SHA384_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P521, HashId::Sha384, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-521 with SHA-512, ASN.1 signatures.
-pub static ECDSA_P521_SHA512_ASN1: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P521, HashId::Sha512, EcdsaEncoding::Asn1);
-
-/// ECDSA on P-256 with SHA-256, fixed-length `r || s` signatures (JWS's ES256).
-pub static ECDSA_P256_SHA256_FIXED: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P256, HashId::Sha256, EcdsaEncoding::Fixed);
-
-/// ECDSA on P-384 with SHA-384, fixed-length `r || s` signatures (JWS's ES384).
-pub static ECDSA_P384_SHA384_FIXED: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P384, HashId::Sha384, EcdsaEncoding::Fixed);
-
-/// ECDSA on P-521 with SHA-512, fixed-length `r || s` signatures (JWS's ES512).
-pub static ECDSA_P521_SHA512_FIXED: EcdsaVerificationAlgorithm =
-    ecdsa_algorithm(CurveId::P521, HashId::Sha512, EcdsaEncoding::Fixed);
-
-const fn ecdsa_algorithm(
+const fn ecdsa_verification(
     curve: CurveId,
     hash: HashId,
     encoding: EcdsaEncoding,
-) -> EcdsaVerificationAlgorithm {
-    EcdsaVerificationAlgorithm(Ecdsa {
+) -> VerificationAlgorithm {
+    VerificationAlgorithm(Verification::Ecdsa(Ecdsa {
         curve,
         hash,
         encoding,
-    })
+    }))
+}
+
+/// Signs as `verification` verifies, which must be ECDSA: checked when a
+/// static is compiled, never at run time.
+const fn ecdsa_signing(verification: &VerificationAlgorithm) -> EcdsaSigningAlgorithm {
+    match verification.0 {
+        Verification::Ecdsa(ecdsa) => EcdsaSigningAlgorithm(ecdsa),
+        _ => panic!("not an ECDSA algorithm"),
+    }
 }
 
 /// An ECDSA signing algorithm, which an [`EcdsaKeyPair`] is bound to.
 #[derive(Debug)]
 pub struct EcdsaSigningAlgorithm(Ecdsa);
 
-/// Signs as [`ECDSA_P256_SHA256_ASN1`] verifies.
-pub static ECDSA_P256_SHA256_ASN1_SIGNING: EcdsaSigningAlgorithm =
-    EcdsaSigningAlgorithm(ECDSA_P256_SHA256_ASN1.0);
-
-/// Signs as [`ECDSA_P384_SHA384_ASN1`] verifies.
-pub static ECDSA_P384_SHA384_ASN1_SIGNING: EcdsaSigningAlgorithm =
-    EcdsaSigningAlgorithm(ECDSA_P384_SHA384_ASN1.0);
-
-/// Signs as [`ECDSA_P521_SHA512_ASN1`] verifies.
-pub static ECDSA_P521_SHA512_ASN1_SIGNING: EcdsaSigningAlgorithm =
-    EcdsaSigningAlgorithm(ECDSA_P521_SHA512_ASN1.0);
-
-/// Signs as [`ECDSA_P256_SHA256_FIXED`] verifies.
-pub static ECDSA_P256_SHA256_FIXED_SIGNING: EcdsaSigningAlgorithm =
-    EcdsaSigningAlgorithm(ECDSA_P256_SHA256_FIXED.0);
-
-/// Signs as [`ECDSA_P384_SHA384_FIXED`] verifies.
-pub static ECDSA_P384_SHA384_FIXED_SIGNING: EcdsaSigningAlgorithm =
-    EcdsaSigningAlgorithm(ECDSA_P384_SHA384_FIXED.0);
-
-/// Signs as [`ECDSA_P521_SHA512_FIXED`] verifies.
-pub static ECDSA_P521_SHA512_FIXED_SIGNING: EcdsaSigningAlgorithm =
-    EcdsaSigningAlgorithm(ECDSA_P521_SHA512_FIXED.0);
-
 /// An ECDSA private key and its public key, bound to one signing algorithm.
 pub struct EcdsaKeyPair {
     key: EcdsaKey,
     algorithm: Ecdsa,
-    public_key: EcdsaPublicKey,
+    point: Buffer<MAX_UNCOMPRESSED_PUBLIC_KEY_LEN>,
 }
 
 // `repr(u8)` puts `P256` at tag zero, so all-bits-zero is a valid value.
+#[allow(clippy::large_enum_variant)]
 #[repr(u8)]
 enum EcdsaKey {
-    P256(ecdsa::SigningKey<P256>),
-    P384(ecdsa::SigningKey<P384>),
-    P521(ecdsa::SigningKey<P521>),
+    P256(ecdsa::SigningKey<P256>, ecdsa::VerifyingKey<P256>),
+    P384(ecdsa::SigningKey<P384>, ecdsa::VerifyingKey<P384>),
+    P521(ecdsa::SigningKey<P521>, ecdsa::VerifyingKey<P521>),
 }
 
-/// Loads a key on `$curve` with `SigningKey::$load`.
+/// Loads a key on `$algorithm`'s curve with `SigningKey::$load`.
 macro_rules! load_ecdsa {
-    ($curve:expr, $load:ident($($arg:expr),*)) => {
-        match $curve {
-            CurveId::P256 => EcdsaKey::P256(ecdsa::SigningKey::$load($($arg),*)?),
-            CurveId::P384 => EcdsaKey::P384(ecdsa::SigningKey::$load($($arg),*)?),
-            CurveId::P521 => EcdsaKey::P521(ecdsa::SigningKey::$load($($arg),*)?),
+    ($algorithm:expr, $load:ident($($arg:expr),*)) => {
+        match $algorithm.0.curve {
+            CurveId::P256 => {
+                EcdsaKeyPair::new($algorithm, ecdsa::SigningKey::$load($($arg),*)?, EcdsaKey::P256)
+            }
+            CurveId::P384 => {
+                EcdsaKeyPair::new($algorithm, ecdsa::SigningKey::$load($($arg),*)?, EcdsaKey::P384)
+            }
+            CurveId::P521 => {
+                EcdsaKeyPair::new($algorithm, ecdsa::SigningKey::$load($($arg),*)?, EcdsaKey::P521)
+            }
         }
     };
 }
 
-/// Runs `$body` with `$key` bound to whichever curve's key `$pair` holds.
+/// Runs `$body` with `$key` bound to whichever curve's signing key `$pair`
+/// holds.
 macro_rules! on_ecdsa {
     ($pair:expr, |$key:ident| $body:expr) => {
         match &$pair.key {
-            EcdsaKey::P256($key) => $body,
-            EcdsaKey::P384($key) => $body,
-            EcdsaKey::P521($key) => $body,
+            EcdsaKey::P256($key, _) => $body,
+            EcdsaKey::P384($key, _) => $body,
+            EcdsaKey::P521($key, _) => $body,
         }
     };
 }
@@ -365,32 +390,23 @@ macro_rules! on_ecdsa {
 impl EcdsaKeyPair {
     /// Generates a key pair for `algorithm` from the system random source.
     pub fn generate(algorithm: &'static EcdsaSigningAlgorithm) -> Result<Self, Error> {
-        Self::new(algorithm, load_ecdsa!(algorithm.0.curve, generate()))
+        load_ecdsa!(algorithm, generate())
     }
 
     /// Loads a PKCS#8 `ECPrivateKey` on `algorithm`'s curve.
     pub fn from_pkcs8(
         algorithm: &'static EcdsaSigningAlgorithm,
-        pkcs8: &[u8],
+        der: &[u8],
     ) -> Result<Self, Error> {
-        Self::new(
-            algorithm,
-            load_ecdsa!(algorithm.0.curve, from_pkcs8_der(pkcs8)),
-        )
+        load_ecdsa!(algorithm, from_pkcs8_der(der))
     }
 
     /// Loads a SEC1 (RFC 5915) `ECPrivateKey` on `algorithm`'s curve.
     ///
     /// Unlike aws-lc-rs, this refuses PKCS#8, which [`Self::from_pkcs8`] takes:
     /// a caller always knows which of the two it holds.
-    pub fn from_private_key_der(
-        algorithm: &'static EcdsaSigningAlgorithm,
-        private_key: &[u8],
-    ) -> Result<Self, Error> {
-        Self::new(
-            algorithm,
-            load_ecdsa!(algorithm.0.curve, from_sec1_der(private_key)),
-        )
+    pub fn from_sec1(algorithm: &'static EcdsaSigningAlgorithm, der: &[u8]) -> Result<Self, Error> {
+        load_ecdsa!(algorithm, from_sec1_der(der))
     }
 
     /// Loads a fixed-length big-endian private scalar, refused unless
@@ -403,28 +419,37 @@ impl EcdsaKeyPair {
         private_key: &[u8],
         public_key: &[u8],
     ) -> Result<Self, Error> {
-        Self::new(
+        load_ecdsa!(
             algorithm,
-            load_ecdsa!(
-                algorithm.0.curve,
-                from_private_key_and_public_key(private_key, public_key)
-            ),
+            from_private_key_and_public_key(private_key, public_key)
         )
     }
 
-    fn new(algorithm: &'static EcdsaSigningAlgorithm, key: EcdsaKey) -> Result<Self, Error> {
-        let mut pair = Self {
-            key,
+    fn new<C: Curve>(
+        algorithm: &'static EcdsaSigningAlgorithm,
+        key: ecdsa::SigningKey<C>,
+        variant: fn(ecdsa::SigningKey<C>, ecdsa::VerifyingKey<C>) -> EcdsaKey,
+    ) -> Result<Self, Error> {
+        let point = Buffer::write(|output| key.public_key_uncompressed(output))?;
+        let public = ecdsa::VerifyingKey::from_x962_uncompressed(point.as_ref())?;
+        Ok(Self {
+            key: variant(key, public),
             algorithm: algorithm.0,
-            public_key: EcdsaPublicKey {
-                bytes: [0; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN],
-                len: 0,
+            point,
+        })
+    }
+
+    /// Returns the public key, which verifies what this key pair signs.
+    pub fn public_key(&self) -> PublicKey {
+        let algorithm = self.algorithm;
+        PublicKey {
+            key: match &self.key {
+                EcdsaKey::P256(_, key) => Parsed::EcdsaP256(key.clone(), algorithm),
+                EcdsaKey::P384(_, key) => Parsed::EcdsaP384(key.clone(), algorithm),
+                EcdsaKey::P521(_, key) => Parsed::EcdsaP521(key.clone(), algorithm),
             },
-        };
-        pair.public_key.len = on_ecdsa!(pair, |key| key
-            .public_key_uncompressed(&mut pair.public_key.bytes))?
-        .len();
-        Ok(pair)
+            encoding: self.point.widen(),
+        }
     }
 
     /// Signs `message` with a fresh nonce.
@@ -432,49 +457,33 @@ impl EcdsaKeyPair {
     /// Unlike aws-lc-rs, this takes no random source: aws-lc-rs ignores its
     /// own, a leftover of ring's API.
     pub fn sign(&self, message: &[u8]) -> Result<Signature, Error> {
-        let mut signature = Signature::new();
-        let output = &mut signature.bytes;
-        signature.len = on_ecdsa!(self, |key| with_hash!(self.algorithm.hash, |H| {
-            match self.algorithm.encoding {
-                EcdsaEncoding::Asn1 => key.sign_asn1::<H>(message, output),
-                EcdsaEncoding::Fixed => key.sign::<H>(message, output),
-            }
-        }))?
-        .len();
-        Ok(signature)
+        Buffer::write(|output| {
+            on_ecdsa!(self, |key| with_hash!(self.algorithm.hash, |H| {
+                match self.algorithm.encoding {
+                    EcdsaEncoding::Asn1 => key.sign_asn1::<H>(message, output),
+                    EcdsaEncoding::Fixed => key.sign::<H>(message, output),
+                }
+            }))
+        })
+        .map(Signature)
     }
 
-    /// Writes the private key as PKCS#8 to the start of `output`, returning
-    /// the written span.
+    /// Encodes the private key as PKCS#8.
     ///
-    /// Unlike aws-lc-rs, this and the other encodings write into the
-    /// caller's buffer rather than an allocated `Document`, since rind does
+    /// Unlike aws-lc-rs, this and the other encodings return a value of
+    /// fixed capacity rather than an allocated `Document`, since rind does
     /// not allocate.
-    pub fn to_pkcs8_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        on_ecdsa!(self, |key| key.to_pkcs8_der(output))
+    pub fn to_pkcs8(&self) -> Pkcs8 {
+        Pkcs8(Buffer::encode(|output| {
+            on_ecdsa!(self, |key| key.to_pkcs8_der(output))
+        }))
     }
 
-    /// Writes the public key as a `SubjectPublicKeyInfo` to the start of
-    /// `output`, returning the written span.
-    pub fn to_spki_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        on_ecdsa!(self, |key| key.to_spki_der(output))
-    }
-
-    /// Writes the private scalar, big-endian and fixed-length, to the start
-    /// of `output`, returning the written span.
-    ///
-    /// This is what [`Self::from_private_key_and_public_key`] loads, and a
-    /// JWK's `d`. aws-lc-rs spells it `private_key().as_be_bytes()`.
-    pub fn to_private_key_be<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        on_ecdsa!(self, |key| key.to_private_key_be(output))
-    }
-}
-
-impl KeyPair for EcdsaKeyPair {
-    type PublicKey = EcdsaPublicKey;
-
-    fn public_key(&self) -> &EcdsaPublicKey {
-        &self.public_key
+    /// Encodes the public key as a `SubjectPublicKeyInfo`.
+    pub fn to_spki(&self) -> Spki {
+        Spki(Buffer::encode(|output| {
+            on_ecdsa!(self, |key| key.to_spki_der(output))
+        }))
     }
 }
 
@@ -482,7 +491,7 @@ impl fmt::Debug for EcdsaKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EcdsaKeyPair")
             .field("algorithm", &self.algorithm)
-            .field("public_key", &self.public_key)
+            .field("public_key", &self.point.as_ref())
             .finish_non_exhaustive()
     }
 }
@@ -495,27 +504,6 @@ impl Drop for EcdsaKeyPair {
         // The key wipes its own scalar. Wiping the rest, which is not secret,
         // lets `tests/zeroing.rs` check every byte.
         low::zeroise_value(self);
-    }
-}
-
-/// An ECDSA public key, as an X9.62 uncompressed point.
-#[derive(Clone)]
-pub struct EcdsaPublicKey {
-    bytes: [u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN],
-    len: usize,
-}
-
-impl AsRef<[u8]> for EcdsaPublicKey {
-    fn as_ref(&self) -> &[u8] {
-        &self.bytes[..self.len]
-    }
-}
-
-impl fmt::Debug for EcdsaPublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("EcdsaPublicKey")
-            .field(&self.as_ref())
-            .finish()
     }
 }
 
@@ -563,8 +551,8 @@ impl RsaScheme {
     }
 }
 
-/// What an [`RsaParameters`] verifies: a scheme rind also signs with, or
-/// PKCS#1 v1.5 with SHA-1, which it only verifies.
+/// What an RSA verification algorithm verifies: a scheme rind also signs
+/// with, or PKCS#1 v1.5 with SHA-1, which it only verifies.
 #[derive(Clone, Copy, Debug)]
 enum RsaVerification {
     Scheme(RsaScheme),
@@ -585,17 +573,17 @@ impl RsaVerification {
     }
 }
 
-/// An RSA verification algorithm: a padding, a hash, and the modulus sizes
-/// it accepts.
-#[derive(Debug)]
-pub struct RsaParameters {
+/// An RSA verification algorithm: a padding, a hash, and the smallest
+/// modulus it accepts.
+#[derive(Clone, Copy, Debug)]
+struct Rsa {
     verification: RsaVerification,
     min_bits: usize,
 }
 
-impl RsaParameters {
+impl Rsa {
     /// Refuses `key` if its modulus is below this algorithm's floor.
-    fn check(&self, key: rsa::VerifyingKey) -> Result<rsa::VerifyingKey, Error> {
+    fn check(self, key: rsa::VerifyingKey) -> Result<rsa::VerifyingKey, Error> {
         match key.modulus_len_bits() >= self.min_bits {
             true => Ok(key),
             false => Err(Error::OutOfRange),
@@ -603,61 +591,18 @@ impl RsaParameters {
     }
 }
 
-impl sealed::Sealed for RsaParameters {
-    fn parse(&self, public_key: &[u8]) -> Result<sealed::Key, Error> {
-        let key = self.check(rsa::VerifyingKey::from_pkcs1_der(public_key)?)?;
-        Ok(sealed::Key(Parsed::Rsa(key, self.verification)))
-    }
-}
-
-impl VerificationAlgorithm for RsaParameters {}
-
-/// RSASSA-PKCS1-v1_5 with SHA-256.
-pub static RSA_PKCS1_2048_8192_SHA256: RsaParameters = rsa_parameters(PKCS1_SHA256, 2048);
-
-/// RSASSA-PKCS1-v1_5 with SHA-384.
-pub static RSA_PKCS1_2048_8192_SHA384: RsaParameters = rsa_parameters(PKCS1_SHA384, 2048);
-
-/// RSASSA-PKCS1-v1_5 with SHA-512.
-pub static RSA_PKCS1_2048_8192_SHA512: RsaParameters = rsa_parameters(PKCS1_SHA512, 2048);
-
-/// RSASSA-PKCS1-v1_5 with SHA-384, for moduli of 3072 to 8192 bits.
-pub static RSA_PKCS1_3072_8192_SHA384: RsaParameters = rsa_parameters(PKCS1_SHA384, 3072);
-
-/// RSASSA-PKCS1-v1_5 with SHA-256, for old keys with moduli down to 1024 bits.
-pub static RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY: RsaParameters =
-    rsa_parameters(PKCS1_SHA256, 1024);
-
-/// RSASSA-PKCS1-v1_5 with SHA-512, for old keys with moduli down to 1024 bits.
-pub static RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY: RsaParameters =
-    rsa_parameters(PKCS1_SHA512, 1024);
-
-/// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures only: SHA-1 collisions are practical.
-pub static RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY: RsaParameters = RsaParameters {
-    verification: RsaVerification::Pkcs1Sha1,
-    min_bits: 2048,
-};
-
-/// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures by keys with moduli down to 1024 bits.
-pub static RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY: RsaParameters = RsaParameters {
-    verification: RsaVerification::Pkcs1Sha1,
-    min_bits: 1024,
-};
-
-/// RSASSA-PSS with SHA-256, MGF1-SHA-256, and a 32-byte salt.
-pub static RSA_PSS_2048_8192_SHA256: RsaParameters = rsa_parameters(PSS_SHA256, 2048);
-
-/// RSASSA-PSS with SHA-384, MGF1-SHA-384, and a 48-byte salt.
-pub static RSA_PSS_2048_8192_SHA384: RsaParameters = rsa_parameters(PSS_SHA384, 2048);
-
-/// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a 64-byte salt.
-pub static RSA_PSS_2048_8192_SHA512: RsaParameters = rsa_parameters(PSS_SHA512, 2048);
-
-const fn rsa_parameters(scheme: RsaScheme, min_bits: usize) -> RsaParameters {
-    RsaParameters {
+const fn rsa_verification(scheme: RsaScheme, min_bits: usize) -> VerificationAlgorithm {
+    VerificationAlgorithm(Verification::Rsa(Rsa {
         verification: RsaVerification::Scheme(scheme),
         min_bits,
-    }
+    }))
+}
+
+const fn rsa_sha1_verification(min_bits: usize) -> VerificationAlgorithm {
+    VerificationAlgorithm(Verification::Rsa(Rsa {
+        verification: RsaVerification::Pkcs1Sha1,
+        min_bits,
+    }))
 }
 
 /// An RSA public key as its big-endian modulus and exponent, as a JWK
@@ -671,56 +616,22 @@ pub struct RsaPublicKeyComponents<B> {
 }
 
 impl<B: AsRef<[u8]>> RsaPublicKeyComponents<B> {
-    /// Verifies `signature` over `message` under `params`, refusing a
-    /// malformed key or signature.
-    pub fn verify(
+    /// Parses this key for `algorithm`, which must be an RSA algorithm.
+    pub fn to_public_key(
         &self,
-        params: &RsaParameters,
-        message: &[u8],
-        signature: &[u8],
-    ) -> Result<(), Error> {
-        let key = params.check(self.key()?)?;
-        params.verification.verify(&key, message, signature)
-    }
-
-    /// Parses this key for `params` once, so a malformed key is refused
-    /// before any signature arrives.
-    pub fn to_parsed_public_key(
-        &self,
-        params: &'static RsaParameters,
-    ) -> Result<ParsedPublicKey, Error> {
-        Ok(ParsedPublicKey {
-            algorithm: params,
-            key: Parsed::Rsa(params.check(self.key()?)?, params.verification),
-        })
-    }
-
-    fn key(&self) -> Result<rsa::VerifyingKey, Error> {
-        rsa::VerifyingKey::from_components(self.n.as_ref(), self.e.as_ref())
+        algorithm: &'static VerificationAlgorithm,
+    ) -> Result<PublicKey, Error> {
+        let Verification::Rsa(rsa) = algorithm.0 else {
+            return Err(KeyFormatError::MismatchedAlgorithm.into());
+        };
+        let key = rsa::VerifyingKey::from_components(self.n.as_ref(), self.e.as_ref())?;
+        PublicKey::rsa(rsa, key)
     }
 }
 
-/// An RSA signature padding and hash, for [`RsaKeyPair::sign`].
+/// An RSA signing algorithm: a padding and a hash, for [`RsaKeyPair::sign`].
 #[derive(Debug)]
-pub struct RsaSignatureEncoding(RsaScheme);
-
-/// Signs as [`RSA_PKCS1_2048_8192_SHA256`] verifies.
-pub static RSA_PKCS1_SHA256: RsaSignatureEncoding = RsaSignatureEncoding(PKCS1_SHA256);
-
-/// Signs as [`RSA_PKCS1_2048_8192_SHA384`] verifies.
-pub static RSA_PKCS1_SHA384: RsaSignatureEncoding = RsaSignatureEncoding(PKCS1_SHA384);
-
-/// Signs as [`RSA_PKCS1_2048_8192_SHA512`] verifies.
-pub static RSA_PKCS1_SHA512: RsaSignatureEncoding = RsaSignatureEncoding(PKCS1_SHA512);
-
-/// Signs as [`RSA_PSS_2048_8192_SHA256`] verifies.
-pub static RSA_PSS_SHA256: RsaSignatureEncoding = RsaSignatureEncoding(PSS_SHA256);
-
-/// Signs as [`RSA_PSS_2048_8192_SHA384`] verifies.
-pub static RSA_PSS_SHA384: RsaSignatureEncoding = RsaSignatureEncoding(PSS_SHA384);
-
-/// Signs as [`RSA_PSS_2048_8192_SHA512`] verifies.
-pub static RSA_PSS_SHA512: RsaSignatureEncoding = RsaSignatureEncoding(PSS_SHA512);
+pub struct RsaSigningAlgorithm(RsaScheme);
 
 const PKCS1_SHA256: RsaScheme = RsaScheme {
     padding: RsaPadding::Pkcs1,
@@ -747,11 +658,25 @@ const PSS_SHA512: RsaScheme = RsaScheme {
     hash: HashId::Sha512,
 };
 
+/// The smallest modulus a verification algorithm accepts, unless it is
+/// under [`verify::legacy`], and the smallest a key pair loads.
+const RSA_MIN_BITS: usize = 2048;
+
 /// A two-prime RSA private key, with a modulus of 2048 to 8192 bits, and its public key.
 pub struct RsaKeyPair {
     key: rsa::SigningKey,
-    public_key: RsaSubjectPublicKey,
+    public_key: RsaPublicKeyDer,
 }
+
+/// The public key's PKCS#1 DER.
+// Aligned like the private key's words, so on 32-bit targets the key pair's
+// padding falls inside this value, which `RsaKeyPair`'s drop wipes whole,
+// rather than after it, where `tests/zeroing.rs` finds stale bytes.
+#[derive(Clone, Copy)]
+#[repr(align(8))]
+struct RsaPublicKeyDer(Buffer<{ rsa::MAX_PUBLIC_KEY_LEN }>);
+
+impl Zeroable for RsaPublicKeyDer {}
 
 impl RsaKeyPair {
     /// Generates a key pair of `size` from the system random source.
@@ -759,81 +684,85 @@ impl RsaKeyPair {
     /// This is slow: about 30 milliseconds for 2048 bits, and 15 seconds or
     /// more for 8192 bits, with no upper bound. It is also not side-channel
     /// safe, so avoid it in untrusted multi-tenant or physical environments.
-    pub fn generate(size: KeySize) -> Result<Self, Error> {
+    pub fn generate(size: RsaKeySize) -> Result<Self, Error> {
         Self::new(rsa::SigningKey::generate(size)?)
     }
 
     /// Loads a PKCS#8 `rsaEncryption` private key.
-    pub fn from_pkcs8(pkcs8: &[u8]) -> Result<Self, Error> {
-        Self::new(rsa::SigningKey::from_pkcs8_der(pkcs8)?)
+    pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
+        Self::new(rsa::SigningKey::from_pkcs8_der(der)?)
     }
 
     /// Loads a PKCS#1 `RSAPrivateKey`.
-    pub fn from_der(pkcs1: &[u8]) -> Result<Self, Error> {
-        Self::new(rsa::SigningKey::from_pkcs1_der(pkcs1)?)
+    pub fn from_pkcs1(der: &[u8]) -> Result<Self, Error> {
+        Self::new(rsa::SigningKey::from_pkcs1_der(der)?)
     }
 
     fn new(key: rsa::SigningKey) -> Result<Self, Error> {
-        let mut public_key = RsaSubjectPublicKey {
-            bytes: [0; RsaSubjectPublicKey::MAX_LEN],
-            len: 0,
-        };
-        public_key.len = key.public_key().to_pkcs1_der(&mut public_key.bytes)?.len();
-        Ok(Self { key, public_key })
+        let public_key = Buffer::write(|output| key.public_key().to_pkcs1_der(output))?;
+        Ok(Self {
+            key,
+            public_key: RsaPublicKeyDer(public_key),
+        })
     }
 
-    /// Returns the modulus length in bytes, which every signature has.
-    pub fn public_modulus_len(&self) -> usize {
-        self.key.modulus_len_bytes()
+    /// Returns the public key, which verifies what this key pair signs with
+    /// `algorithm`.
+    ///
+    /// Unlike an ECDSA key pair, an RSA key pair signs with any padding and
+    /// hash, so the public key needs the one it verifies.
+    pub fn public_key(&self, algorithm: &'static RsaSigningAlgorithm) -> PublicKey {
+        // A key pair's modulus is at least `RSA_MIN_BITS`, the floor of the
+        // algorithm that verifies `algorithm`'s signatures.
+        PublicKey {
+            key: Parsed::Rsa(
+                self.key.public_key(),
+                RsaVerification::Scheme(algorithm.0),
+            ),
+            encoding: self.public_key.0,
+        }
     }
 
-    /// Signs `message` with `padding` into `signature`, which must be
-    /// [`Self::public_modulus_len`] bytes.
+    /// Signs `message` with `algorithm`, as long as the modulus.
     ///
     /// Unlike aws-lc-rs, this takes no random source, which aws-lc-rs
-    /// ignores, and refuses a `signature` of the wrong length rather than
-    /// panicking.
+    /// ignores.
     pub fn sign(
         &self,
-        padding: &'static RsaSignatureEncoding,
+        algorithm: &'static RsaSigningAlgorithm,
         message: &[u8],
-        signature: &mut [u8],
-    ) -> Result<(), Error> {
-        if signature.len() != self.public_modulus_len() {
-            return Err(Error::WrongLength);
-        }
-        padding.0.sign(&self.key, message, signature)
+    ) -> Result<Signature, Error> {
+        Buffer::write(|output| {
+            let output = output
+                .get_mut(..self.key.modulus_len_bytes())
+                .ok_or(Error::WrongLength)?;
+            algorithm.0.sign(&self.key, message, output)?;
+            Ok(output)
+        })
+        .map(Signature)
     }
 
-    /// Writes the private key as PKCS#8 to the start of `output`, returning
-    /// the written span.
+    /// Encodes the private key as PKCS#8.
     ///
-    /// Unlike aws-lc-rs, this and the other encodings write into the
-    /// caller's buffer rather than an allocated `Document`, since rind does
+    /// Unlike aws-lc-rs, this and the other encodings return a value of
+    /// fixed capacity rather than an allocated `Document`, since rind does
     /// not allocate.
-    pub fn to_pkcs8_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        self.key.to_pkcs8_der(output)
+    pub fn to_pkcs8(&self) -> Pkcs8 {
+        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
     }
 
-    /// Writes the public key as a `SubjectPublicKeyInfo` to the start of
-    /// `output`, returning the written span.
-    pub fn to_spki_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        self.key.public_key().to_spki_der(output)
-    }
-}
-
-impl KeyPair for RsaKeyPair {
-    type PublicKey = RsaSubjectPublicKey;
-
-    fn public_key(&self) -> &RsaSubjectPublicKey {
-        &self.public_key
+    /// Encodes the public key as a `SubjectPublicKeyInfo`.
+    pub fn to_spki(&self) -> Spki {
+        Spki(Buffer::encode(|output| {
+            self.key.public_key().to_spki_der(output)
+        }))
     }
 }
 
 impl fmt::Debug for RsaKeyPair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RsaKeyPair")
-            .field("public_key", &self.public_key)
+            .field("public_key", &self.public_key.0.as_ref())
             .finish_non_exhaustive()
     }
 }
@@ -845,60 +774,10 @@ impl Drop for RsaKeyPair {
     }
 }
 
-/// An RSA public key, as a PKCS#1 `RSAPublicKey`.
-// Aligned like the private key's words, so on 32-bit targets the key pair's
-// padding falls inside this value, which `RsaKeyPair`'s drop wipes whole,
-// rather than after it, where `tests/zeroing.rs` finds stale bytes.
-#[derive(Clone)]
-#[repr(align(8))]
-pub struct RsaSubjectPublicKey {
-    bytes: [u8; Self::MAX_LEN],
-    len: usize,
-}
-
-impl RsaSubjectPublicKey {
-    // The modulus and its DER framing, with room for the exponent.
-    const MAX_LEN: usize = MAX_PUBLIC_MODULUS_BYTES + 64;
-}
-
-impl Zeroable for RsaSubjectPublicKey {}
-
-impl AsRef<[u8]> for RsaSubjectPublicKey {
-    fn as_ref(&self) -> &[u8] {
-        &self.bytes[..self.len]
-    }
-}
-
-impl fmt::Debug for RsaSubjectPublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("RsaSubjectPublicKey")
-            .field(&self.as_ref())
-            .finish()
-    }
-}
-
-/// Ed25519 verification, the only EdDSA variant rind supports.
-#[derive(Debug)]
-pub struct EdDSAParameters;
-
-impl sealed::Sealed for EdDSAParameters {
-    fn parse(&self, public_key: &[u8]) -> Result<sealed::Key, Error> {
-        let key = Ed25519VerifyingKey::from_bytes(public_key)?;
-        Ok(sealed::Key(Parsed::Ed25519(key)))
-    }
-}
-
-impl VerificationAlgorithm for EdDSAParameters {}
-
-/// Ed25519, with 32-byte public keys and 64-byte signatures.
-///
-/// See [RFC8032](https://datatracker.ietf.org/doc/html/rfc8032).
-pub static ED25519: EdDSAParameters = EdDSAParameters;
-
 /// An Ed25519 private key and its public key.
 pub struct Ed25519KeyPair {
     key: Ed25519SigningKey,
-    public_key: Ed25519PublicKey,
+    public_key: [u8; 32],
 }
 
 impl Ed25519KeyPair {
@@ -913,8 +792,8 @@ impl Ed25519KeyPair {
     /// Unlike aws-lc-rs, this also takes PKCS#8 v1, which carries no public
     /// key, as aws-lc-rs's `from_pkcs8_maybe_unchecked` does: common tools
     /// write v1, and such a key is no less valid.
-    pub fn from_pkcs8(pkcs8: &[u8]) -> Result<Self, Error> {
-        Ok(Self::new(Ed25519SigningKey::from_pkcs8_der(pkcs8)?))
+    pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
+        Ok(Self::new(Ed25519SigningKey::from_pkcs8_der(der)?))
     }
 
     /// Loads a 32-byte seed, refused unless `public_key` is its public key.
@@ -922,56 +801,44 @@ impl Ed25519KeyPair {
     /// This suits a JWK's `d` and `x`.
     pub fn from_seed_and_public_key(seed: &[u8], public_key: &[u8]) -> Result<Self, Error> {
         let pair = Self::new(Ed25519SigningKey::from_bytes(seed)?);
-        match pair.public_key.as_ref() == public_key {
+        match pair.public_key.as_slice() == public_key {
             true => Ok(pair),
             false => Err(KeyFormatError::MismatchedPublicKey.into()),
         }
     }
 
     fn new(key: Ed25519SigningKey) -> Self {
-        let public_key = Ed25519PublicKey(key.public_key().as_bytes());
+        let public_key = key.public_key().as_bytes();
         Self { key, public_key }
     }
 
-    /// Returns the 32-byte seed this key pair was derived from.
-    ///
-    /// Unlike aws-lc-rs, this cannot fail, so returns the bytes rather than
-    /// a `Result` of a wrapper.
-    pub fn seed(&self) -> [u8; 32] {
-        self.key.as_seed()
+    /// Returns the public key, which verifies what this key pair signs.
+    pub fn public_key(&self) -> PublicKey {
+        PublicKey {
+            key: Parsed::Ed25519(self.key.public_key()),
+            encoding: Buffer::from(self.public_key).widen(),
+        }
     }
 
     /// Signs `message`.
     pub fn sign(&self, message: &[u8]) -> Signature {
-        let mut signature = Signature::new();
-        let bytes = self.key.sign(message);
-        signature.bytes[..bytes.len()].copy_from_slice(&bytes);
-        signature.len = bytes.len();
-        signature
+        Signature(Buffer::from(self.key.sign(message)).widen())
     }
 
-    /// Writes the key pair as PKCS#8 v2 (RFC 5958) to the start of `output`,
-    /// returning the written span.
+    /// Encodes the key pair as PKCS#8 v2 (RFC 5958).
     ///
-    /// Unlike aws-lc-rs, this and [`Self::to_spki_der`] write into the
-    /// caller's buffer rather than an allocated `Document`, since rind does
-    /// not allocate.
-    pub fn to_pkcs8_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        self.key.to_pkcs8_der(output)
+    /// Unlike aws-lc-rs, this and [`Self::to_spki`] return a value of fixed
+    /// capacity rather than an allocated `Document`, since rind does not
+    /// allocate.
+    pub fn to_pkcs8(&self) -> Pkcs8 {
+        Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
     }
 
-    /// Writes the public key as a `SubjectPublicKeyInfo` to the start of
-    /// `output`, returning the written span.
-    pub fn to_spki_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        self.key.public_key().to_spki_der(output)
-    }
-}
-
-impl KeyPair for Ed25519KeyPair {
-    type PublicKey = Ed25519PublicKey;
-
-    fn public_key(&self) -> &Ed25519PublicKey {
-        &self.public_key
+    /// Encodes the public key as a `SubjectPublicKeyInfo`.
+    pub fn to_spki(&self) -> Spki {
+        Spki(Buffer::encode(|output| {
+            self.key.public_key().to_spki_der(output)
+        }))
     }
 }
 
@@ -986,23 +853,156 @@ impl fmt::Debug for Ed25519KeyPair {
 impl Drop for Ed25519KeyPair {
     fn drop(&mut self) {
         // Not secret, but wiping it lets `tests/zeroing.rs` check every byte.
-        low::zeroise(&mut self.public_key.0);
+        low::zeroise(&mut self.public_key);
     }
 }
 
-/// An Ed25519 public key, as its 32 bytes.
-#[derive(Clone)]
-pub struct Ed25519PublicKey([u8; 32]);
+/// Algorithms a key pair signs with.
+pub(crate) mod sign {
+    use super::*;
 
-impl AsRef<[u8]> for Ed25519PublicKey {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
+    /// ECDSA on P-256 with SHA-256, ASN.1 signatures.
+    pub static ECDSA_P256_SHA256_ASN1: EcdsaSigningAlgorithm =
+        ecdsa_signing(&verify::ECDSA_P256_SHA256_ASN1);
+
+    /// ECDSA on P-384 with SHA-384, ASN.1 signatures.
+    pub static ECDSA_P384_SHA384_ASN1: EcdsaSigningAlgorithm =
+        ecdsa_signing(&verify::ECDSA_P384_SHA384_ASN1);
+
+    /// ECDSA on P-521 with SHA-512, ASN.1 signatures.
+    pub static ECDSA_P521_SHA512_ASN1: EcdsaSigningAlgorithm =
+        ecdsa_signing(&verify::ECDSA_P521_SHA512_ASN1);
+
+    /// ECDSA on P-256 with SHA-256, fixed-length `r || s` signatures (JWS's ES256).
+    pub static ECDSA_P256_SHA256_FIXED: EcdsaSigningAlgorithm =
+        ecdsa_signing(&verify::ECDSA_P256_SHA256_FIXED);
+
+    /// ECDSA on P-384 with SHA-384, fixed-length `r || s` signatures (JWS's ES384).
+    pub static ECDSA_P384_SHA384_FIXED: EcdsaSigningAlgorithm =
+        ecdsa_signing(&verify::ECDSA_P384_SHA384_FIXED);
+
+    /// ECDSA on P-521 with SHA-512, fixed-length `r || s` signatures (JWS's ES512).
+    pub static ECDSA_P521_SHA512_FIXED: EcdsaSigningAlgorithm =
+        ecdsa_signing(&verify::ECDSA_P521_SHA512_FIXED);
+
+    /// RSASSA-PKCS1-v1_5 with SHA-256.
+    pub static RSA_PKCS1_SHA256: RsaSigningAlgorithm = RsaSigningAlgorithm(PKCS1_SHA256);
+
+    /// RSASSA-PKCS1-v1_5 with SHA-384.
+    pub static RSA_PKCS1_SHA384: RsaSigningAlgorithm = RsaSigningAlgorithm(PKCS1_SHA384);
+
+    /// RSASSA-PKCS1-v1_5 with SHA-512.
+    pub static RSA_PKCS1_SHA512: RsaSigningAlgorithm = RsaSigningAlgorithm(PKCS1_SHA512);
+
+    /// RSASSA-PSS with SHA-256, MGF1-SHA-256, and a 32-byte salt.
+    pub static RSA_PSS_SHA256: RsaSigningAlgorithm = RsaSigningAlgorithm(PSS_SHA256);
+
+    /// RSASSA-PSS with SHA-384, MGF1-SHA-384, and a 48-byte salt.
+    pub static RSA_PSS_SHA384: RsaSigningAlgorithm = RsaSigningAlgorithm(PSS_SHA384);
+
+    /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a 64-byte salt.
+    pub static RSA_PSS_SHA512: RsaSigningAlgorithm = RsaSigningAlgorithm(PSS_SHA512);
 }
 
-impl fmt::Debug for Ed25519PublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Ed25519PublicKey").field(&self.0).finish()
+/// Algorithms a public key verifies with.
+pub(crate) mod verify {
+    use super::*;
+
+    /// ECDSA on P-256 with SHA-256, ASN.1 signatures.
+    pub static ECDSA_P256_SHA256_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P256, HashId::Sha256, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-256 with SHA-384, ASN.1 signatures.
+    pub static ECDSA_P256_SHA384_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P256, HashId::Sha384, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-256 with SHA-512, ASN.1 signatures.
+    pub static ECDSA_P256_SHA512_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P256, HashId::Sha512, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-384 with SHA-256, ASN.1 signatures.
+    pub static ECDSA_P384_SHA256_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P384, HashId::Sha256, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-384 with SHA-384, ASN.1 signatures.
+    pub static ECDSA_P384_SHA384_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P384, HashId::Sha384, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-384 with SHA-512, ASN.1 signatures.
+    pub static ECDSA_P384_SHA512_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P384, HashId::Sha512, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-521 with SHA-256, ASN.1 signatures.
+    pub static ECDSA_P521_SHA256_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P521, HashId::Sha256, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-521 with SHA-384, ASN.1 signatures.
+    pub static ECDSA_P521_SHA384_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P521, HashId::Sha384, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-521 with SHA-512, ASN.1 signatures.
+    pub static ECDSA_P521_SHA512_ASN1: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P521, HashId::Sha512, EcdsaEncoding::Asn1);
+
+    /// ECDSA on P-256 with SHA-256, fixed-length `r || s` signatures (JWS's ES256).
+    pub static ECDSA_P256_SHA256_FIXED: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P256, HashId::Sha256, EcdsaEncoding::Fixed);
+
+    /// ECDSA on P-384 with SHA-384, fixed-length `r || s` signatures (JWS's ES384).
+    pub static ECDSA_P384_SHA384_FIXED: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P384, HashId::Sha384, EcdsaEncoding::Fixed);
+
+    /// ECDSA on P-521 with SHA-512, fixed-length `r || s` signatures (JWS's ES512).
+    pub static ECDSA_P521_SHA512_FIXED: VerificationAlgorithm =
+        ecdsa_verification(CurveId::P521, HashId::Sha512, EcdsaEncoding::Fixed);
+
+    /// RSASSA-PKCS1-v1_5 with SHA-256, for moduli of 2048 to 8192 bits.
+    pub static RSA_PKCS1_SHA256: VerificationAlgorithm =
+        rsa_verification(PKCS1_SHA256, RSA_MIN_BITS);
+
+    /// RSASSA-PKCS1-v1_5 with SHA-384, for moduli of 2048 to 8192 bits.
+    pub static RSA_PKCS1_SHA384: VerificationAlgorithm =
+        rsa_verification(PKCS1_SHA384, RSA_MIN_BITS);
+
+    /// RSASSA-PKCS1-v1_5 with SHA-512, for moduli of 2048 to 8192 bits.
+    pub static RSA_PKCS1_SHA512: VerificationAlgorithm =
+        rsa_verification(PKCS1_SHA512, RSA_MIN_BITS);
+
+    /// RSASSA-PSS with SHA-256, MGF1-SHA-256, and a 32-byte salt, for moduli of 2048 to 8192 bits.
+    pub static RSA_PSS_SHA256: VerificationAlgorithm = rsa_verification(PSS_SHA256, RSA_MIN_BITS);
+
+    /// RSASSA-PSS with SHA-384, MGF1-SHA-384, and a 48-byte salt, for moduli of 2048 to 8192 bits.
+    pub static RSA_PSS_SHA384: VerificationAlgorithm = rsa_verification(PSS_SHA384, RSA_MIN_BITS);
+
+    /// RSASSA-PSS with SHA-512, MGF1-SHA-512, and a 64-byte salt, for moduli of 2048 to 8192 bits.
+    pub static RSA_PSS_SHA512: VerificationAlgorithm = rsa_verification(PSS_SHA512, RSA_MIN_BITS);
+
+    /// Ed25519, with 32-byte public keys and 64-byte signatures.
+    ///
+    /// See [RFC8032](https://datatracker.ietf.org/doc/html/rfc8032).
+    pub static ED25519: VerificationAlgorithm = VerificationAlgorithm(Verification::Ed25519);
+
+    /// Verification algorithms with a modulus floor other than 2048 bits, or SHA-1.
+    pub(crate) mod legacy {
+        use super::super::*;
+
+        /// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures only: SHA-1 collisions are practical.
+        pub static RSA_PKCS1_SHA1: VerificationAlgorithm = rsa_sha1_verification(RSA_MIN_BITS);
+
+        /// RSASSA-PKCS1-v1_5 with SHA-1, for old signatures by keys with moduli down to 1024 bits.
+        pub static RSA_PKCS1_1024_SHA1: VerificationAlgorithm = rsa_sha1_verification(1024);
+
+        /// RSASSA-PKCS1-v1_5 with SHA-256, for old keys with moduli down to 1024 bits.
+        pub static RSA_PKCS1_1024_SHA256: VerificationAlgorithm =
+            rsa_verification(PKCS1_SHA256, 1024);
+
+        /// RSASSA-PKCS1-v1_5 with SHA-512, for old keys with moduli down to 1024 bits.
+        pub static RSA_PKCS1_1024_SHA512: VerificationAlgorithm =
+            rsa_verification(PKCS1_SHA512, 1024);
+
+        /// RSASSA-PKCS1-v1_5 with SHA-384, for moduli of 3072 to 8192 bits.
+        pub static RSA_PKCS1_3072_SHA384: VerificationAlgorithm =
+            rsa_verification(PKCS1_SHA384, 3072);
     }
 }
 
@@ -1010,42 +1010,62 @@ impl fmt::Debug for Ed25519PublicKey {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::high::asn1::{Type, pkix};
+    use crate::high::asn1::{self, Type, pkix};
+    use crate::high::pkcs8;
 
     const ECDSA_SIGNING: [&EcdsaSigningAlgorithm; 6] = [
-        &ECDSA_P256_SHA256_ASN1_SIGNING,
-        &ECDSA_P256_SHA256_FIXED_SIGNING,
-        &ECDSA_P384_SHA384_ASN1_SIGNING,
-        &ECDSA_P384_SHA384_FIXED_SIGNING,
-        &ECDSA_P521_SHA512_ASN1_SIGNING,
-        &ECDSA_P521_SHA512_FIXED_SIGNING,
+        &sign::ECDSA_P256_SHA256_ASN1,
+        &sign::ECDSA_P256_SHA256_FIXED,
+        &sign::ECDSA_P384_SHA384_ASN1,
+        &sign::ECDSA_P384_SHA384_FIXED,
+        &sign::ECDSA_P521_SHA512_ASN1,
+        &sign::ECDSA_P521_SHA512_FIXED,
     ];
 
     fn rejected(result: Result<impl fmt::Debug, Error>) -> Error {
         result.expect_err("accepted")
     }
 
+    /// The fixed-length scalar of `pair`, read back from its PKCS#8.
+    fn ecdsa_scalar(pair: &EcdsaKeyPair) -> Vec<u8> {
+        let pkcs8 = pair.to_pkcs8();
+        let oid = match pair.algorithm.curve {
+            CurveId::P256 => P256::oid(),
+            CurveId::P384 => P384::oid(),
+            CurveId::P521 => P521::oid(),
+        };
+        let key = pkcs8::Key::decode(
+            pkcs8.as_ref(),
+            &asn1::oid::id_ecPublicKey,
+            Some(asn1::Any::ObjectId(oid)),
+        )
+        .unwrap();
+        let sec1 = pkix::EcPrivateKey::from_bytes(key.private_key()).unwrap();
+        sec1.privateKey.as_octets().to_vec()
+    }
+
     #[test]
     fn ecdsa_verifies_only_under_its_algorithm() {
         let verification = [
-            &ECDSA_P256_SHA256_ASN1,
-            &ECDSA_P256_SHA256_FIXED,
-            &ECDSA_P384_SHA384_ASN1,
-            &ECDSA_P384_SHA384_FIXED,
-            &ECDSA_P521_SHA512_ASN1,
-            &ECDSA_P521_SHA512_FIXED,
+            &verify::ECDSA_P256_SHA256_ASN1,
+            &verify::ECDSA_P256_SHA256_FIXED,
+            &verify::ECDSA_P384_SHA384_ASN1,
+            &verify::ECDSA_P384_SHA384_FIXED,
+            &verify::ECDSA_P521_SHA512_ASN1,
+            &verify::ECDSA_P521_SHA512_FIXED,
         ];
         for (i, signing) in ECDSA_SIGNING.into_iter().enumerate() {
             let pair = EcdsaKeyPair::generate(signing).unwrap();
             let signature = pair.sign(b"message").unwrap();
+            let encoded = pair.public_key();
             for (j, algorithm) in verification.into_iter().enumerate() {
-                let result = UnparsedPublicKey::new(algorithm, pair.public_key())
-                    .verify(b"message", signature.as_ref());
+                let result = PublicKey::new(algorithm, encoded.as_ref())
+                    .and_then(|key| key.verify(b"message", signature.as_ref()));
                 assert_eq!(result.is_ok(), i == j, "{signing:?} {algorithm:?}");
             }
+            encoded.verify(b"message", signature.as_ref()).unwrap();
             assert_eq!(
-                UnparsedPublicKey::new(verification[i], pair.public_key())
-                    .verify(b"other", signature.as_ref()),
+                encoded.verify(b"other", signature.as_ref()),
                 Err(Error::BadSignature)
             );
         }
@@ -1060,28 +1080,29 @@ mod tests {
         use aws_lc_rs::signature as theirs;
 
         let algorithms: [(_, &'static theirs::EcdsaVerificationAlgorithm); 12] = [
-            (&ECDSA_P256_SHA256_ASN1, &theirs::ECDSA_P256_SHA256_ASN1),
-            (&ECDSA_P256_SHA384_ASN1, &theirs::ECDSA_P256_SHA384_ASN1),
-            (&ECDSA_P256_SHA512_ASN1, &theirs::ECDSA_P256_SHA512_ASN1),
-            (&ECDSA_P384_SHA256_ASN1, &theirs::ECDSA_P384_SHA256_ASN1),
-            (&ECDSA_P384_SHA384_ASN1, &theirs::ECDSA_P384_SHA384_ASN1),
-            (&ECDSA_P384_SHA512_ASN1, &theirs::ECDSA_P384_SHA512_ASN1),
-            (&ECDSA_P521_SHA256_ASN1, &theirs::ECDSA_P521_SHA256_ASN1),
-            (&ECDSA_P521_SHA384_ASN1, &theirs::ECDSA_P521_SHA384_ASN1),
-            (&ECDSA_P521_SHA512_ASN1, &theirs::ECDSA_P521_SHA512_ASN1),
-            (&ECDSA_P256_SHA256_FIXED, &theirs::ECDSA_P256_SHA256_FIXED),
-            (&ECDSA_P384_SHA384_FIXED, &theirs::ECDSA_P384_SHA384_FIXED),
-            (&ECDSA_P521_SHA512_FIXED, &theirs::ECDSA_P521_SHA512_FIXED),
+            (&verify::ECDSA_P256_SHA256_ASN1, &theirs::ECDSA_P256_SHA256_ASN1),
+            (&verify::ECDSA_P256_SHA384_ASN1, &theirs::ECDSA_P256_SHA384_ASN1),
+            (&verify::ECDSA_P256_SHA512_ASN1, &theirs::ECDSA_P256_SHA512_ASN1),
+            (&verify::ECDSA_P384_SHA256_ASN1, &theirs::ECDSA_P384_SHA256_ASN1),
+            (&verify::ECDSA_P384_SHA384_ASN1, &theirs::ECDSA_P384_SHA384_ASN1),
+            (&verify::ECDSA_P384_SHA512_ASN1, &theirs::ECDSA_P384_SHA512_ASN1),
+            (&verify::ECDSA_P521_SHA256_ASN1, &theirs::ECDSA_P521_SHA256_ASN1),
+            (&verify::ECDSA_P521_SHA384_ASN1, &theirs::ECDSA_P521_SHA384_ASN1),
+            (&verify::ECDSA_P521_SHA512_ASN1, &theirs::ECDSA_P521_SHA512_ASN1),
+            (&verify::ECDSA_P256_SHA256_FIXED, &theirs::ECDSA_P256_SHA256_FIXED),
+            (&verify::ECDSA_P384_SHA384_FIXED, &theirs::ECDSA_P384_SHA384_FIXED),
+            (&verify::ECDSA_P521_SHA512_FIXED, &theirs::ECDSA_P521_SHA512_FIXED),
         ];
         for (ours, theirs) in algorithms {
-            let signing = Box::leak(Box::new(EcdsaSigningAlgorithm(ours.0)));
+            let signing = Box::leak(Box::new(ecdsa_signing(ours)));
             let pair = EcdsaKeyPair::generate(signing).unwrap();
             let signature = pair.sign(b"message").unwrap();
-            theirs::UnparsedPublicKey::new(theirs, pair.public_key())
+            let encoded = pair.public_key();
+            theirs::UnparsedPublicKey::new(theirs, encoded.as_ref())
                 .verify(b"message", signature.as_ref())
                 .unwrap_or_else(|_| panic!("aws-lc-rs refused {ours:?}"));
 
-            let verifier = UnparsedPublicKey::new(ours, pair.public_key());
+            let verifier = PublicKey::new(ours, encoded.as_ref()).unwrap();
             verifier.verify(b"message", signature.as_ref()).unwrap();
             assert_eq!(
                 verifier.verify(b"other", signature.as_ref()),
@@ -1091,32 +1112,23 @@ mod tests {
     }
 
     #[test]
-    fn parsed_public_key_refuses_malformed_keys() {
-        let pair = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING).unwrap();
-        let point = pair.public_key().as_ref();
-        let signature = pair.sign(b"message").unwrap();
-        let key = ParsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, point).unwrap();
-        key.verify(b"message", signature.as_ref()).unwrap();
-        assert_eq!(
-            key.verify(b"other", signature.as_ref()),
-            Err(Error::BadSignature)
-        );
+    fn public_key_refuses_malformed_keys() {
+        let pair = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1).unwrap();
+        let encoded = pair.public_key();
+        let point = encoded.as_ref();
 
-        let malformed: [(&'static dyn VerificationAlgorithm, &[u8]); 4] = [
-            (&ECDSA_P256_SHA256_ASN1, &point[1..]),
-            (&ECDSA_P384_SHA384_ASN1, point),
-            (&ED25519, &point[..31]),
-            (&RSA_PKCS1_2048_8192_SHA256, point),
+        let malformed: [(&'static VerificationAlgorithm, &[u8]); 4] = [
+            (&verify::ECDSA_P256_SHA256_ASN1, &point[1..]),
+            (&verify::ECDSA_P384_SHA384_ASN1, point),
+            (&verify::ED25519, &point[..31]),
+            (&verify::RSA_PKCS1_SHA256, point),
         ];
         for (algorithm, bytes) in malformed {
-            assert!(
-                ParsedPublicKey::new(algorithm, bytes).is_err(),
-                "{algorithm:?}"
-            );
+            assert!(PublicKey::new(algorithm, bytes).is_err(), "{algorithm:?}");
         }
 
         // An Ed25519 encoding of the right length but off the curve.
-        let off_curve = ParsedPublicKey::new(&ED25519, [0xff; 32]);
+        let off_curve = PublicKey::new(&verify::ED25519, &[0xff; 32]);
         assert_eq!(off_curve.err(), Some(Error::NotOnCurve));
     }
 
@@ -1129,22 +1141,18 @@ mod tests {
                 CurveId::P384 => 48,
                 CurveId::P521 => 66,
             };
-            let mut buffer = [0u8; MAX_SCALAR_LEN];
-            assert_eq!(
-                pair.to_private_key_be(&mut buffer[..len - 1]),
-                Err(Error::WrongLength)
-            );
-            let scalar = pair.to_private_key_be(&mut buffer).unwrap();
+            let scalar = ecdsa_scalar(&pair);
             assert_eq!(scalar.len(), len);
 
-            let public = pair.public_key().as_ref();
+            let encoded = pair.public_key();
+            let public = encoded.as_ref();
             let reloaded =
-                EcdsaKeyPair::from_private_key_and_public_key(signing, scalar, public).unwrap();
+                EcdsaKeyPair::from_private_key_and_public_key(signing, &scalar, public).unwrap();
             assert_eq!(reloaded.public_key().as_ref(), public);
 
             // The scalar must be exactly the curve's length, even with a zero
             // byte added or removed.
-            let padded = [&[0][..], scalar].concat();
+            let padded = [&[0][..], &scalar].concat();
             assert_eq!(
                 rejected(EcdsaKeyPair::from_private_key_and_public_key(
                     signing, &padded, public
@@ -1181,11 +1189,11 @@ mod tests {
             );
 
             // Another key's point, or the point truncated, is refused.
-            let other = EcdsaKeyPair::generate(signing).unwrap();
-            for public in [other.public_key().as_ref(), &public[..public.len() - 1]] {
+            let other = EcdsaKeyPair::generate(signing).unwrap().public_key();
+            for public in [other.as_ref(), &public[..public.len() - 1]] {
                 assert_eq!(
                     rejected(EcdsaKeyPair::from_private_key_and_public_key(
-                        signing, scalar, public
+                        signing, &scalar, public
                     )),
                     KeyFormatError::MismatchedPublicKey.into()
                 );
@@ -1198,100 +1206,111 @@ mod tests {
         let p256 = include_bytes!("ecdsa/secp256r1.pkcs8.der");
         let p384 = include_bytes!("ecdsa/secp384r1.pkcs8.der");
         let p521 = include_bytes!("ecdsa/secp521r1.pkcs8.der");
-        EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, p256).unwrap();
-        EcdsaKeyPair::from_pkcs8(&ECDSA_P384_SHA384_ASN1_SIGNING, p384).unwrap();
-        EcdsaKeyPair::from_pkcs8(&ECDSA_P521_SHA512_ASN1_SIGNING, p521).unwrap();
-        assert!(EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, p384).is_err());
-        assert!(EcdsaKeyPair::from_pkcs8(&ECDSA_P384_SHA384_ASN1_SIGNING, p256).is_err());
-        assert!(EcdsaKeyPair::from_pkcs8(&ECDSA_P384_SHA384_ASN1_SIGNING, p521).is_err());
-        assert!(EcdsaKeyPair::from_pkcs8(&ECDSA_P521_SHA512_ASN1_SIGNING, p384).is_err());
+        EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P256_SHA256_ASN1, p256).unwrap();
+        EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P384_SHA384_ASN1, p384).unwrap();
+        EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P521_SHA512_ASN1, p521).unwrap();
+        assert!(EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P256_SHA256_ASN1, p384).is_err());
+        assert!(EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P384_SHA384_ASN1, p256).is_err());
+        assert!(EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P384_SHA384_ASN1, p521).is_err());
+        assert!(EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P521_SHA512_ASN1, p384).is_err());
 
         let p256 = include_bytes!("ecdsa/secp256r1.der");
         let p384 = include_bytes!("ecdsa/secp384r1.der");
-        EcdsaKeyPair::from_private_key_der(&ECDSA_P256_SHA256_ASN1_SIGNING, p256).unwrap();
-        assert!(EcdsaKeyPair::from_private_key_der(&ECDSA_P256_SHA256_ASN1_SIGNING, p384).is_err());
+        EcdsaKeyPair::from_sec1(&sign::ECDSA_P256_SHA256_ASN1, p256).unwrap();
+        assert!(EcdsaKeyPair::from_sec1(&sign::ECDSA_P256_SHA256_ASN1, p384).is_err());
 
         // A P-384 point is the wrong length for a P-256 key.
         let pair = EcdsaKeyPair::from_pkcs8(
-            &ECDSA_P384_SHA384_ASN1_SIGNING,
+            &sign::ECDSA_P384_SHA384_ASN1,
             include_bytes!("ecdsa/secp384r1.pkcs8.der"),
         )
         .unwrap();
-        let signature = pair.sign(b"message").unwrap();
         assert_eq!(
-            UnparsedPublicKey::new(&ECDSA_P256_SHA384_ASN1, pair.public_key())
-                .verify(b"message", signature.as_ref()),
-            Err(Error::WrongLength)
+            rejected(PublicKey::new(
+                &verify::ECDSA_P256_SHA384_ASN1,
+                pair.public_key().as_ref()
+            )),
+            Error::WrongLength
         );
     }
 
     #[test]
-    fn rsa_sign_needs_modulus_length() {
-        let pair = RsaKeyPair::from_der(include_bytes!("rsa/rsa2048.der")).unwrap();
-        let len = pair.public_modulus_len();
-        assert_eq!(len, 256);
-        for wrong in [len - 1, len + 1] {
-            let mut signature = vec![0u8; wrong];
-            assert_eq!(
-                pair.sign(&RSA_PSS_SHA256, b"message", &mut signature),
-                Err(Error::WrongLength)
-            );
-        }
+    fn rsa_signs_as_long_as_the_modulus() {
+        let pair = RsaKeyPair::from_pkcs1(include_bytes!("rsa/rsa2048.der")).unwrap();
+        let signature = pair.sign(&sign::RSA_PSS_SHA256, b"message").unwrap();
+        assert_eq!(signature.as_ref().len(), 256);
 
-        let mut signature = vec![0u8; len];
-        pair.sign(&RSA_PSS_SHA256, b"message", &mut signature)
-            .unwrap();
-        let public_key = UnparsedPublicKey::new(&RSA_PSS_2048_8192_SHA256, pair.public_key());
-        public_key.verify(b"message", &signature).unwrap();
+        let public_key = pair.public_key(&sign::RSA_PSS_SHA256);
+        public_key.verify(b"message", signature.as_ref()).unwrap();
         assert_eq!(
-            UnparsedPublicKey::new(&RSA_PKCS1_2048_8192_SHA256, pair.public_key())
-                .verify(b"message", &signature),
+            public_key.verify(b"other", signature.as_ref()),
             Err(Error::BadSignature)
         );
+        assert_eq!(
+            pair.public_key(&sign::RSA_PKCS1_SHA256)
+                .verify(b"message", signature.as_ref()),
+            Err(Error::BadSignature)
+        );
+
+        // The encoding parses for the verification algorithm of the same name.
+        PublicKey::new(&verify::RSA_PSS_SHA256, public_key.as_ref())
+            .unwrap()
+            .verify(b"message", signature.as_ref())
+            .unwrap();
     }
 
     #[test]
     fn rsa_public_key_components() {
-        let pair = RsaKeyPair::from_der(include_bytes!("rsa/rsa2048.der")).unwrap();
-        let mut signature = vec![0u8; pair.public_modulus_len()];
-        pair.sign(&RSA_PKCS1_SHA256, b"message", &mut signature)
-            .unwrap();
+        let pair = RsaKeyPair::from_pkcs1(include_bytes!("rsa/rsa2048.der")).unwrap();
+        let signature = pair.sign(&sign::RSA_PKCS1_SHA256, b"message").unwrap();
+        let signature = signature.as_ref();
 
-        let der = pkix::RSAPublicKey::from_bytes(pair.public_key().as_ref()).unwrap();
-        let n = der.modulus.as_ref().strip_prefix(&[0]).unwrap();
-        let e = der.publicExponent.as_ref();
+        let der = pair.public_key(&sign::RSA_PKCS1_SHA256);
+        let parsed = pkix::RSAPublicKey::from_bytes(der.as_ref()).unwrap();
+        let n = parsed.modulus.as_ref().strip_prefix(&[0]).unwrap();
+        let e = parsed.publicExponent.as_ref();
         let key = RsaPublicKeyComponents { n, e };
         for algorithm in [
-            &RSA_PKCS1_2048_8192_SHA256,
-            &RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+            &verify::RSA_PKCS1_SHA256,
+            &verify::legacy::RSA_PKCS1_1024_SHA256,
         ] {
-            key.verify(algorithm, b"message", &signature).unwrap();
-            let parsed = key.to_parsed_public_key(algorithm).unwrap();
-            parsed.verify(b"message", &signature).unwrap();
+            let public_key = key.to_public_key(algorithm).unwrap();
+            assert_eq!(public_key.as_ref(), der.as_ref());
+            public_key.verify(b"message", signature).unwrap();
             assert_eq!(
-                parsed.verify(b"other", &signature),
+                public_key.verify(b"other", signature),
                 Err(Error::BadSignature)
             );
         }
         for algorithm in [
-            &RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
-            &RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+            &verify::legacy::RSA_PKCS1_SHA1,
+            &verify::legacy::RSA_PKCS1_1024_SHA512,
         ] {
             assert_eq!(
-                key.verify(algorithm, b"message", &signature),
+                key.to_public_key(algorithm)
+                    .unwrap()
+                    .verify(b"message", signature),
                 Err(Error::BadSignature)
             );
         }
 
         // A 2048-bit key is below this algorithm's floor, in either form.
         assert_eq!(
-            key.verify(&RSA_PKCS1_3072_8192_SHA384, b"message", &signature),
-            Err(Error::OutOfRange)
+            rejected(key.to_public_key(&verify::legacy::RSA_PKCS1_3072_SHA384)),
+            Error::OutOfRange
         );
         assert_eq!(
-            UnparsedPublicKey::new(&RSA_PKCS1_3072_8192_SHA384, pair.public_key())
-                .verify(b"message", &signature),
-            Err(Error::OutOfRange)
+            rejected(PublicKey::new(
+                &verify::legacy::RSA_PKCS1_3072_SHA384,
+                der.as_ref()
+            )),
+            Error::OutOfRange
+        );
+
+        // Components only make an RSA key.
+        assert_eq!(
+            rejected(key.to_public_key(&verify::ECDSA_P256_SHA256_ASN1)),
+            KeyFormatError::MismatchedAlgorithm.into()
         );
 
         let n0 = [&[0], n].concat();
@@ -1306,11 +1325,7 @@ mod tests {
         for (n, e, expected) in malformed {
             let key = RsaPublicKeyComponents { n, e };
             assert_eq!(
-                key.verify(&RSA_PKCS1_2048_8192_SHA256, b"message", &signature),
-                Err(expected)
-            );
-            assert_eq!(
-                rejected(key.to_parsed_public_key(&RSA_PKCS1_2048_8192_SHA256)),
+                rejected(key.to_public_key(&verify::RSA_PKCS1_SHA256)),
                 expected
             );
         }
@@ -1318,18 +1333,20 @@ mod tests {
 
     #[test]
     fn ed25519_seed_and_public_key() {
-        let pair = Ed25519KeyPair::generate().unwrap();
-        let seed = pair.seed();
-        let public = pair.public_key().as_ref();
-        let reloaded = Ed25519KeyPair::from_seed_and_public_key(&seed, public).unwrap();
-        assert_eq!(reloaded.public_key().as_ref(), public);
-        assert_eq!(
-            reloaded.sign(b"message").as_ref(),
-            pair.sign(b"message").as_ref()
-        );
+        let seed = [7u8; 32];
+        let public = Ed25519SigningKey::from_bytes(&seed)
+            .unwrap()
+            .public_key()
+            .as_bytes();
+        let pair = Ed25519KeyPair::from_seed_and_public_key(&seed, &public).unwrap();
+        let encoded = pair.public_key();
+        assert_eq!(encoded.as_ref(), public);
+        let signature = pair.sign(b"message");
+        assert_eq!(signature.as_ref().len(), 64);
+        encoded.verify(b"message", signature.as_ref()).unwrap();
 
-        let other = Ed25519KeyPair::generate().unwrap();
-        for public in [other.public_key().as_ref(), &public[..31]] {
+        let other = Ed25519KeyPair::generate().unwrap().public_key();
+        for public in [other.as_ref(), &public[..31]] {
             assert_eq!(
                 rejected(Ed25519KeyPair::from_seed_and_public_key(&seed, public)),
                 KeyFormatError::MismatchedPublicKey.into()
@@ -1337,9 +1354,48 @@ mod tests {
         }
         for seed in [&seed[..31], &[seed.as_slice(), &[0]].concat()] {
             assert_eq!(
-                rejected(Ed25519KeyPair::from_seed_and_public_key(seed, public)),
+                rejected(Ed25519KeyPair::from_seed_and_public_key(seed, &public)),
                 Error::WrongLength
             );
         }
+    }
+
+    // The owned encodings are sized for the largest key each loader takes,
+    // so encoding one must not run out of room.
+    #[test]
+    fn encodings_fit_the_largest_keys() {
+        let rsa = RsaKeyPair::from_pkcs1(include_bytes!("rsa/rsa8192.der")).unwrap();
+        let pkcs8 = rsa.to_pkcs8();
+        assert_eq!(pkcs8.as_ref(), include_bytes!("rsa/rsa8192.pkcs8.der"));
+        let spki = rsa.to_spki();
+        let parsed = pkix::SubjectPublicKeyInfo::from_bytes(spki.as_ref()).unwrap();
+        let encoded = rsa.public_key(&sign::RSA_PSS_SHA512);
+        assert_eq!(parsed.subjectPublicKey.as_octets(), encoded.as_ref());
+        let signature = rsa.sign(&sign::RSA_PSS_SHA512, b"message").unwrap();
+        assert_eq!(signature.as_ref().len(), 1024);
+        encoded.verify(b"message", signature.as_ref()).unwrap();
+
+        let p521 = include_bytes!("ecdsa/secp521r1.pkcs8.der");
+        let ecdsa = EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P521_SHA512_ASN1, p521).unwrap();
+        let reloaded =
+            EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P521_SHA512_ASN1, ecdsa.to_pkcs8().as_ref())
+                .unwrap();
+        assert_eq!(reloaded.public_key().as_ref(), ecdsa.public_key().as_ref());
+        let spki = ecdsa.to_spki();
+        let parsed = pkix::SubjectPublicKeyInfo::from_bytes(spki.as_ref()).unwrap();
+        assert_eq!(
+            parsed.subjectPublicKey.as_octets(),
+            ecdsa.public_key().as_ref()
+        );
+
+        let ed25519 = Ed25519KeyPair::generate().unwrap();
+        let reloaded = Ed25519KeyPair::from_pkcs8(ed25519.to_pkcs8().as_ref()).unwrap();
+        assert_eq!(reloaded.public_key().as_ref(), ed25519.public_key().as_ref());
+        let spki = ed25519.to_spki();
+        let parsed = pkix::SubjectPublicKeyInfo::from_bytes(spki.as_ref()).unwrap();
+        assert_eq!(
+            parsed.subjectPublicKey.as_octets(),
+            ed25519.public_key().as_ref()
+        );
     }
 }

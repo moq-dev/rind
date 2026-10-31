@@ -44,6 +44,7 @@ pub struct KeyRejected(KeyFormatError);
 pub(crate) enum KeyFormatError {
     Asn1(crate::high::asn1::Error),
     LeadingZero,
+    MismatchedAlgorithm,
     UnsupportedPkcs8Version,
     MismatchedPkcs8Algorithm,
     MismatchedPkcs8Parameters,
@@ -64,6 +65,7 @@ impl core::fmt::Display for KeyRejected {
         match self.0 {
             KeyFormatError::Asn1(e) => write!(f, "an ASN.1 decoding error: {e}"),
             KeyFormatError::LeadingZero => write!(f, "an integer with a leading zero byte"),
+            KeyFormatError::MismatchedAlgorithm => write!(f, "a key for another algorithm"),
             KeyFormatError::UnsupportedPkcs8Version => write!(f, "unsupported PKCS#8 version"),
             KeyFormatError::MismatchedPkcs8Algorithm => write!(f, "mismatched PKCS#8 algorithm"),
             KeyFormatError::MismatchedPkcs8Parameters => {
