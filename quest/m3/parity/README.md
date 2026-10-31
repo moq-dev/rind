@@ -28,7 +28,6 @@ Decided by the maintainer on 2026-10-30:
 
 ## Required
 
-- [HKDF over every HMAC hash](/quest/m3/parity/hkdf.md) - HKDF-SHA384, HKDF-SHA512, and legacy HKDF-SHA1, as ring has
 - [P-521 in rind-rcgen](/quest/m3/parity/rcgen-p521.md) - waiting on rcgen to export its P-521 algorithms without aws-lc-rs
 - [rustls provider parity](/quest/m3/parity/rustls.md) - rind-rustls offers what aws-lc-rs's provider does
 - [rind-ring](/quest/m3/parity/rind-ring.md) - ring's API on rind, for a drop-in swap
