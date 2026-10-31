@@ -32,6 +32,9 @@ Repo:
 - Adapters are separate crates named `rind-<consumer>`, so a third-party major
   bump never forces a rind major bump. The prefix keeps them grouped under
   rind's own name rather than borrowing the consumer's.
+- MoQ vendors str0m and dimpl and ports rind's str0m provider into that copy,
+  so rind has no str0m adapter. `rind-dimpl` stays published for other dimpl
+  users (maintainer, 2026-10-31).
 
 Targets, refused rather than falling back:
 
@@ -66,8 +69,6 @@ RustCrypto dependency.
 
 ## Required
 
-- [str0m releases its dimpl 0.9 provider interface](/quest/m1/moq/str0m-release.md) - waiting on the release `rind-str0m` targets
-- [rind-str0m on a str0m release](/quest/m1/moq/str0m.md) - publishable once it depends on that release
 - [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
 - [libcrux releases its bignum constant-time fix](/quest/m1/moq/libcrux-ct-fixes.md) - waiting on libcrux's fix, then dropping its armv7 ctgrind suppression
 - [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish

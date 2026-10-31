@@ -19,7 +19,7 @@ if [[ -n "$unfetched" ]]; then
 fi
 
 # The bench and fuzz crates need C libraries built for the target.
-packages=(-p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-dimpl -p rind-str0m -p rind-instant-acme)
+packages=(-p rind -p rind-rustls -p rind-jsonwebtoken -p rind-object-store -p rind-rcgen -p rind-dimpl -p rind-instant-acme)
 
 # Android has no C toolchain here, so its build shows rind needs none. Only
 # the tested target lints the tests, whose aws-lc-rs dev-dependency builds C.

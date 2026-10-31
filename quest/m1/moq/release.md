@@ -3,10 +3,9 @@
 ## Goal
 
 rind and every publishable `rind-*` adapter are on crates.io through
-release-plz. `rind-str0m` and `rind-instant-acme` publish later, through
-[rind-str0m on a str0m release](/quest/m1/moq/str0m.md) and
+release-plz. `rind-instant-acme` publishes later, through
 [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md), once
-their upstream releases exist.
+instant-acme 0.9 is released.
 
 ## Plan
 
