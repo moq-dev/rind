@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use super::util;
+use crate::error::{Error, KeyFormatError};
+use crate::low;
 use crate::mid::rng::{RandomSource, SystemRandom};
-use crate::{Error, low};
 
 /// An X25519 ephemeral private key.
 pub(crate) struct PrivateKey([u64; 4]);
@@ -36,7 +37,7 @@ impl PrivateKey {
     ///
     /// Returns a shared secret.
     ///
-    /// Fails if the shared secret is zero with [`Error::NotOnCurve`]; see
+    /// Fails if the shared secret is zero, from a small-order `peer`; see
     /// <https://datatracker.ietf.org/doc/html/rfc7748#section-6.1>
     /// for rationale behind this check.
     pub(crate) fn diffie_hellman(&self, peer: &PublicKey) -> Result<SharedSecret, Error> {
@@ -46,7 +47,7 @@ impl PrivateKey {
 
         // output is zero (infinity) for small order input points
         if low::ct::into_public(low::bignum_eq(&res, &ZERO)) {
-            Err(Error::NotOnCurve)
+            Err(KeyFormatError::SmallOrder.into())
         } else {
             Ok(SharedSecret(util::u64x4_to_little_endian(&res)))
         }
@@ -121,7 +122,7 @@ impl StaticPrivateKey {
     ///
     /// Returns a shared secret.
     ///
-    /// Fails if the shared secret is zero with [`Error::NotOnCurve`]; see
+    /// Fails if the shared secret is zero, from a small-order `peer`; see
     /// <https://datatracker.ietf.org/doc/html/rfc7748#section-6.1>
     /// for rationale behind this check.
     pub(crate) fn diffie_hellman(&self, peer: &PublicKey) -> Result<SharedSecret, Error> {
@@ -143,7 +144,7 @@ impl PublicKey {
         let _entry = low::Entry::new_public();
         util::little_endian_slice_to_u64x4(b)
             .map(Self)
-            .ok_or(Error::WrongLength)
+            .ok_or(KeyFormatError::WrongLength.into())
     }
 
     /// Create an X25519 [`PublicKey`] from a byte array.

@@ -4,7 +4,7 @@ use core::fmt;
 use core::ops::Range;
 
 use super::util;
-use crate::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
@@ -124,7 +124,7 @@ impl PrivateKey {
         low::zeroise(&mut shared_point.xyz);
         match low::ct::into_public(result.on_curve()) {
             true => Ok(SharedSecret(result.x().as_bytes())),
-            false => Err(Error::NotOnCurve),
+            false => Err(KeyFormatError::NotOnCurve.into()),
         }
     }
 
@@ -272,12 +272,12 @@ impl AffinePoint {
     fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
         match bytes.first() {
             Some(0x04) => (),
-            Some(_) => return Err(Error::NotUncompressed),
-            None => return Err(Error::WrongLength),
+            Some(_) => return Err(KeyFormatError::Compressed.into()),
+            None => return Err(KeyFormatError::WrongLength.into()),
         }
 
         if bytes.len() != PublicKey::BYTES {
-            return Err(Error::WrongLength);
+            return Err(KeyFormatError::WrongLength.into());
         }
 
         let (_, xy) = bytes.split_at(1);
@@ -290,13 +290,13 @@ impl AffinePoint {
         // second encoding.  Public, so this need not be constant time.
         let below_p = |v: &[u64; 9]| v.iter().rev().lt(CURVE_PRIME.iter().rev());
         if !below_p(&x) || !below_p(&y) {
-            return Err(Error::NotOnCurve);
+            return Err(KeyFormatError::NotOnCurve.into());
         }
 
         let point = Self::from_xy(FieldElement(x), FieldElement(y));
 
         if !point.on_curve() {
-            return Err(Error::NotOnCurve);
+            return Err(KeyFormatError::NotOnCurve.into());
         }
 
         Ok(point)
@@ -783,7 +783,10 @@ impl Scalar {
     /// This returns an error if the scalar is zero or larger than
     /// the curve order.
     pub(crate) fn from_bytes_checked(bytes: &[u8]) -> Result<Self, Error> {
-        let full = Self(util::big_endian_slice_any_size_to_u64x9(bytes).ok_or(Error::WrongLength)?);
+        let full = Self(
+            util::big_endian_slice_any_size_to_u64x9(bytes)
+                .ok_or(KeyFormatError::ScalarOutOfRange)?,
+        );
 
         full.into_range_check()
     }
@@ -802,7 +805,7 @@ impl Scalar {
         // on it, and a rejected nonce candidate says nothing of the one accepted.
         match low::ct::into_public(reduced.private_eq(&self) & !self.is_zero()) {
             true => Ok(self),
-            false => Err(Error::OutOfRange),
+            false => Err(KeyFormatError::ScalarOutOfRange.into()),
         }
     }
 
@@ -1187,19 +1190,19 @@ mod tests {
     fn private_key_in_range() {
         assert_eq!(
             PrivateKey::from_bytes(&[0u8; 66]).unwrap_err(),
-            Error::OutOfRange
+            Error::from(KeyFormatError::ScalarOutOfRange)
         );
 
         let order = Scalar(CURVE_ORDER).as_bytes();
         assert_eq!(
             PrivateKey::from_bytes(&order).unwrap_err(),
-            Error::OutOfRange
+            Error::from(KeyFormatError::ScalarOutOfRange)
         );
         let mut order_plus_1 = order;
         order_plus_1[65] += 1;
         assert_eq!(
             PrivateKey::from_bytes(&order_plus_1).unwrap_err(),
-            Error::OutOfRange
+            Error::from(KeyFormatError::ScalarOutOfRange)
         );
         PrivateKey::from_bytes(&n_minus(1).as_bytes()).unwrap();
     }

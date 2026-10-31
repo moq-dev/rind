@@ -360,10 +360,7 @@ fn test_verify_ecdsa() {
                 let result = public_key.verify(&test.msg, &test.sig);
                 match (test.result, result) {
                     (ExpectedResult::Valid, Ok(())) => {}
-                    (
-                        ExpectedResult::Invalid,
-                        Err(Error::BadSignature) | Err(Error::WrongLength),
-                    ) => {}
+                    (ExpectedResult::Invalid, Err(Error::BadSignature)) => {}
                     _ => panic!("expected {:?} got {:?}", test.result, result),
                 }
             }
@@ -546,11 +543,11 @@ fn test_rsa_pkcs1_verify() {
             for &(algorithm, min_bits) in algorithms {
                 let key = signature::PublicKey::new(algorithm, &group.public_key_asn);
                 if group.key_size < min_bits {
-                    assert_eq!(key.err(), Some(Error::OutOfRange));
-                    assert_eq!(
-                        components.to_public_key(algorithm).err(),
-                        Some(Error::OutOfRange)
-                    );
+                    assert!(matches!(key, Err(Error::KeyRejected(_))));
+                    assert!(matches!(
+                        components.to_public_key(algorithm),
+                        Err(Error::KeyRejected(_))
+                    ));
                     continue;
                 }
                 let key = key.unwrap();
@@ -632,7 +629,7 @@ fn test_rsa_pkcs1_legacy_verify() {
             for &(algorithm, min_bits) in algorithms {
                 let key = signature::PublicKey::new(algorithm, &group.key_asn);
                 if group.key_size < min_bits {
-                    assert_eq!(key.err(), Some(Error::OutOfRange));
+                    assert!(matches!(key, Err(Error::KeyRejected(_))));
                     continue;
                 }
                 let key = key.unwrap();

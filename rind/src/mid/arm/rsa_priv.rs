@@ -49,12 +49,14 @@ impl RsaPrivateKey {
         e: u32,
     ) -> Result<Self, Error> {
         let p_len = p.len_bytes();
+        if n.len_bits() < MIN_MODULUS_BITS {
+            return Err(KeyFormatError::RsaModulus.into());
+        }
         if p.is_even()
             || q.is_even()
             || !(MIN_PRIVATE_MODULUS_BYTES..=MAX_PRIVATE_MODULUS_BYTES).contains(&p_len)
-            || n.len_bits() < MIN_MODULUS_BITS
         {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::RsaPrimes.into());
         }
 
         let public = RsaPublicKey::new(n, e)?;
@@ -112,6 +114,12 @@ impl RsaPrivateKey {
         witness_source: &mut dyn RandomSource,
     ) -> Result<Self, Error> {
         generate::generate_key(size, candidate_source, witness_source)
+    }
+
+    /// Swaps `dp` and `dq`, as a fault in the CRT would corrupt them.
+    #[cfg(test)]
+    pub(crate) fn swap_crt_exponents(&mut self) {
+        core::mem::swap(&mut self.dp, &mut self.dq);
     }
 
     pub(crate) fn public_key(&self) -> RsaPublicKey {
@@ -177,7 +185,7 @@ impl RsaPrivateKey {
         let n = self.public.n.as_words();
         let c_n = c.words_at_width(n.len())?;
         if bignum64::lt_mask(n.len() as u32, c_n, n) != u64::MAX {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
 
         // Widths were checked in `new`.
@@ -207,13 +215,15 @@ impl RsaPrivateKey {
         drop(scratch);
         let m = low::ct::into_public(m?);
 
-        // validate the result as a fault attack countermeasure,
-        // at the same time it validates our working above, and
-        // the key halves against each other
-        let c2 = self.public.public_op(m.clone())?;
-        match c2.words_at_width(n.len()) {
-            Ok(c2) if bignum64::eq_mask(n.len() as u32, c2, c_n) == u64::MAX => Ok(m),
-            _ => Err(Error::DecryptFailed),
+        // Check the result as a fault attack countermeasure: `new` checked
+        // the key's components, so only a fault fails this.
+        let agrees = self.public.public_op(m.clone()).is_ok_and(|c2| {
+            c2.words_at_width(n.len())
+                .is_ok_and(|c2| bignum64::eq_mask(n.len() as u32, c2, c_n) == u64::MAX)
+        });
+        match agrees {
+            true => Ok(m),
+            false => Err(Error::BadSignature),
         }
     }
 }

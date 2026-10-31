@@ -27,7 +27,7 @@ impl<const N: usize> PosInt<N> {
         };
         r.words
             .get_mut(..words.len())
-            .ok_or(Error::OutOfRange)?
+            .ok_or(Error::WrongLength)?
             .copy_from_slice(words);
         Ok(r)
     }
@@ -37,7 +37,7 @@ impl<const N: usize> PosInt<N> {
         let start = bytes.iter().position(|b| *b != 0).unwrap_or(bytes.len());
         let bytes = &bytes[start..];
         if bytes.len() > N * 8 {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
 
         let mut r = Self {
@@ -54,7 +54,7 @@ impl<const N: usize> PosInt<N> {
 
     /// Encodes as big-endian, `8 * used` bytes long.
     pub(crate) fn to_bytes<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        let out = out.get_mut(..self.used * 8).ok_or(Error::OutOfRange)?;
+        let out = out.get_mut(..self.used * 8).ok_or(Error::WrongLength)?;
         for (chunk, word) in out.rchunks_exact_mut(8).zip(self.as_words()) {
             chunk.copy_from_slice(&word.to_be_bytes());
         }
@@ -64,7 +64,7 @@ impl<const N: usize> PosInt<N> {
     /// Like `to_bytes`, but with a zero byte prefix, so it encodes as a
     /// positive ASN.1 integer.
     pub(crate) fn to_bytes_asn1<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        let out = out.get_mut(..self.used * 8 + 1).ok_or(Error::OutOfRange)?;
+        let out = out.get_mut(..self.used * 8 + 1).ok_or(Error::WrongLength)?;
         out[0] = 0x00;
         self.to_bytes(&mut out[1..])?;
         Ok(out)
@@ -96,7 +96,7 @@ impl<const N: usize> PosInt<N> {
     pub(crate) fn words_at_width(&self, len: usize) -> Result<&[u64], Error> {
         match self.words.get(len..self.used.max(len)) {
             Some(above) if above.iter().all(|w| *w == 0) => Ok(&self.words[..len]),
-            _ => Err(Error::OutOfRange),
+            _ => Err(Error::WrongLength),
         }
     }
 }
@@ -155,7 +155,7 @@ mod tests {
             b"\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09"
         );
         assert_eq!(x.to_bytes_asn1(&mut out).unwrap()[..2], [0, 0]);
-        assert_eq!(x.to_bytes(&mut [0u8; 15]), Err(Error::OutOfRange));
+        assert_eq!(x.to_bytes(&mut [0u8; 15]), Err(Error::WrongLength));
     }
 
     #[test]
@@ -170,7 +170,7 @@ mod tests {
     fn too_long() {
         assert_eq!(
             PosInt::<1>::from_bytes(&[1; 9]).unwrap_err(),
-            Error::OutOfRange
+            Error::WrongLength
         );
         assert!(PosInt::<1>::from_bytes(b"\x00\x01\x02\x03\x04\x05\x06\x07\x08").is_ok());
     }
@@ -180,6 +180,6 @@ mod tests {
         let x = PosInt::<4>::from_words(&[1, 2, 0]).unwrap();
         assert_eq!(x.words_at_width(4).unwrap(), &[1, 2, 0, 0]);
         assert_eq!(x.words_at_width(2).unwrap(), &[1, 2]);
-        assert_eq!(x.words_at_width(1), Err(Error::OutOfRange));
+        assert_eq!(x.words_at_width(1), Err(Error::WrongLength));
     }
 }

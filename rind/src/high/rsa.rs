@@ -41,9 +41,9 @@ impl VerifyingKey {
             return Err(KeyFormatError::LeadingZero.into());
         }
 
-        let n = PosInt::from_bytes(n)?;
+        let n = PosInt::from_bytes(n).map_err(|_| KeyFormatError::RsaModulus)?;
         if e.len() > 4 {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::RsaExponent.into());
         }
         let e = e.iter().fold(0, |e, byte| e << 8 | u32::from(*byte));
 
@@ -60,15 +60,16 @@ impl VerifyingKey {
         let decoded = pkix::RSAPublicKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
 
         if decoded.modulus.is_negative() {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::RsaModulus.into());
         }
 
-        let n = PosInt::from_bytes(decoded.modulus.as_ref())?;
+        let n =
+            PosInt::from_bytes(decoded.modulus.as_ref()).map_err(|_| KeyFormatError::RsaModulus)?;
         let e = decoded
             .publicExponent
             .as_usize()
             .map_err(KeyFormatError::Asn1)?;
-        let e = e.try_into().map_err(|_| Error::OutOfRange)?;
+        let e = e.try_into().map_err(|_| KeyFormatError::RsaExponent)?;
 
         let pub_key = rsa_pub::RsaPublicKey::new(n, e)?;
 
@@ -324,26 +325,32 @@ impl SigningKey {
         let decoded = pkix::RSAPrivateKey::from_bytes(bytes).map_err(KeyFormatError::Asn1)?;
 
         if !matches!(decoded.version, pkix::Version::two_prime) {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::MultiPrimeRsa.into());
         }
 
         if decoded.modulus.is_negative() {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::RsaModulus.into());
         }
 
-        let n = PosInt::from_bytes(decoded.modulus.as_ref())?;
+        let n =
+            PosInt::from_bytes(decoded.modulus.as_ref()).map_err(|_| KeyFormatError::RsaModulus)?;
         let e = decoded
             .publicExponent
             .as_usize()
             .map_err(KeyFormatError::Asn1)?;
-        let e = e.try_into().map_err(|_| Error::OutOfRange)?;
+        let e = e.try_into().map_err(|_| KeyFormatError::RsaExponent)?;
 
-        let p = PosInt::from_bytes(decoded.prime1.as_ref())?;
-        let q = PosInt::from_bytes(decoded.prime2.as_ref())?;
-        let d = PosInt::from_bytes(decoded.privateExponent.as_ref())?;
-        let dp = PosInt::from_bytes(decoded.exponent1.as_ref())?;
-        let dq = PosInt::from_bytes(decoded.exponent2.as_ref())?;
-        let iqmp = PosInt::from_bytes(decoded.coefficient.as_ref())?;
+        let prime = |x: &asn1::Integer<'_>| {
+            PosInt::from_bytes(x.as_ref()).map_err(|_| KeyFormatError::RsaPrimes)
+        };
+        let p = prime(&decoded.prime1)?;
+        let q = prime(&decoded.prime2)?;
+        // A component too wide for its slot cannot agree with the others.
+        let mismatched = |_| KeyFormatError::MismatchedRsaComponents;
+        let d = PosInt::from_bytes(decoded.privateExponent.as_ref()).map_err(mismatched)?;
+        let dp = PosInt::from_bytes(decoded.exponent1.as_ref()).map_err(mismatched)?;
+        let dq = PosInt::from_bytes(decoded.exponent2.as_ref()).map_err(mismatched)?;
+        let iqmp = PosInt::from_bytes(decoded.coefficient.as_ref()).map_err(mismatched)?;
 
         let priv_key = rsa_priv::RsaPrivateKey::new(p, q, d, dp, dq, iqmp, n, e)?;
         Ok(Self(priv_key))
@@ -557,7 +564,7 @@ impl SigningKey {
         hash: &[u8],
     ) -> Result<&'a [u8], Error> {
         if signature.len() < self.0.modulus_len_bytes() {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
 
         let mut m = [0u8; rsa_pub::MAX_PUBLIC_MODULUS_BYTES];
@@ -575,7 +582,7 @@ impl SigningKey {
         message: &[u8],
     ) -> Result<&'a [u8], Error> {
         if signature.len() < self.0.modulus_len_bytes() {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
 
         let hash = H::hash(message);
@@ -601,7 +608,7 @@ impl SigningKey {
     ) -> Result<&'a [u8], Error> {
         let signature = signature
             .get_mut(..self.0.modulus_len_bytes())
-            .ok_or(Error::OutOfRange)?;
+            .ok_or(Error::WrongLength)?;
         Ok(i2osp(c, signature)?)
     }
 }
@@ -613,7 +620,7 @@ fn i2osp<'a, const N: usize>(x: &PosInt<N>, out: &'a mut [u8]) -> Result<&'a mut
     let bytes = x.to_bytes(&mut bytes)?;
     let (excess, bytes) = bytes.split_at(bytes.len().saturating_sub(out.len()));
     if excess.iter().any(|b| *b != 0) {
-        return Err(Error::OutOfRange);
+        return Err(Error::WrongLength);
     }
 
     let (zeroes, value) = out.split_at_mut(out.len() - bytes.len());
@@ -1075,6 +1082,18 @@ mod tests {
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
     }
 
+    /// A signature from a faulted CRT would reveal a prime, so it is
+    /// refused rather than returned.
+    #[test]
+    fn refuses_a_faulty_signature() {
+        let mut key = SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa2048.der")).unwrap();
+        key.0.swap_crt_exponents();
+        assert_eq!(
+            key.sign_pkcs1_sha256(&mut [0u8; 256], b"message").err(),
+            Some(Error::BadSignature)
+        );
+    }
+
     /// PKCS#1 does not order the primes, and aws-lc-rs loads either order.
     #[test]
     fn loads_q_above_p() {
@@ -1107,7 +1126,10 @@ mod tests {
             }
             .encode(&mut asn1::Encoder::new(&mut der))
             .unwrap();
-            let want = if ok { Ok(()) } else { Err(Error::OutOfRange) };
+            let want = match ok {
+                true => Ok(()),
+                false => Err(KeyFormatError::RsaExponent.into()),
+            };
             assert_eq!(
                 VerifyingKey::from_pkcs1_der(&der[..len]).map(|_| ()),
                 want,
@@ -1132,8 +1154,8 @@ mod tests {
             );
             match e {
                 [1, 0, 1] => assert_eq!(ours, None),
-                _ if ok => assert!(matches!(ours, Some(Error::KeyRejected(_)))),
-                _ => assert_eq!(ours, Some(Error::OutOfRange), "{e:?}"),
+                _ if ok => assert_eq!(ours, Some(KeyFormatError::MismatchedRsaComponents.into())),
+                _ => assert_eq!(ours, Some(KeyFormatError::RsaExponent.into()), "{e:?}"),
             }
         }
 

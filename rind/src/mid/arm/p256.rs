@@ -8,7 +8,7 @@ use core::fmt;
 use libcrux_hacl_rs::bignum::bignum256;
 
 use super::util;
-use crate::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::rng::{RandomSource, SystemRandom};
 
@@ -31,14 +31,16 @@ impl PublicKey {
         let _entry = low::Entry::new_public();
         match bytes.first() {
             Some(&0x04) => (),
-            Some(_) => return Err(Error::NotUncompressed),
-            None => return Err(Error::WrongLength),
+            Some(_) => return Err(KeyFormatError::Compressed.into()),
+            None => return Err(KeyFormatError::WrongLength.into()),
         }
 
-        let xy: [u8; 64] = bytes[1..].try_into().map_err(|_| Error::WrongLength)?;
+        let xy: [u8; 64] = bytes[1..]
+            .try_into()
+            .map_err(|_| KeyFormatError::WrongLength)?;
         match libcrux_p256::validate_public_key(&xy) {
             true => Ok(Self { xy }),
-            false => Err(Error::NotOnCurve),
+            false => Err(KeyFormatError::NotOnCurve.into()),
         }
     }
 
@@ -98,7 +100,7 @@ impl PrivateKey {
         low::zeroise(&mut point);
         match low::ct::into_public(ok) {
             true => Ok(secret),
-            false => Err(Error::NotOnCurve),
+            false => Err(KeyFormatError::NotOnCurve.into()),
         }
     }
 
@@ -245,13 +247,16 @@ impl Scalar {
     /// This returns an error if the scalar is zero or larger than
     /// the curve order.
     pub(crate) fn from_bytes_checked(bytes: &[u8]) -> Result<Self, Error> {
-        let full = Self(util::big_endian_slice_any_size_to_u64x4(bytes).ok_or(Error::WrongLength)?);
+        let full = Self(
+            util::big_endian_slice_any_size_to_u64x4(bytes)
+                .ok_or(KeyFormatError::ScalarOutOfRange)?,
+        );
         let in_range = bignum256::lt_mask(&full.0, &CURVE_ORDER) == u64::MAX;
         // Whether a scalar is in range is public: a key or signature is refused
         // on it, and a rejected nonce candidate says nothing of the one accepted.
         match low::ct::into_public(in_range & !full.is_zero()) {
             true => Ok(full),
-            false => Err(Error::OutOfRange),
+            false => Err(KeyFormatError::ScalarOutOfRange.into()),
         }
     }
 
@@ -307,11 +312,11 @@ mod tests {
         let n = util::u64x4_to_big_endian(&CURVE_ORDER);
         assert_eq!(
             Scalar::from_bytes_checked(&n).err(),
-            Some(Error::OutOfRange)
+            Some(KeyFormatError::ScalarOutOfRange.into())
         );
         assert_eq!(
             Scalar::from_bytes_checked(&[0; 32]).err(),
-            Some(Error::OutOfRange)
+            Some(KeyFormatError::ScalarOutOfRange.into())
         );
         let mut n_minus_1 = n;
         n_minus_1[31] -= 1;
@@ -342,20 +347,20 @@ mod tests {
         let mut bad = [0u8; 65];
         assert_eq!(
             PublicKey::from_x962_uncompressed(&bad).err(),
-            Some(Error::NotUncompressed)
+            Some(KeyFormatError::Compressed.into())
         );
         bad[0] = 0x04;
         assert_eq!(
             PublicKey::from_x962_uncompressed(&bad).err(),
-            Some(Error::NotOnCurve)
+            Some(KeyFormatError::NotOnCurve.into())
         );
         assert_eq!(
             PublicKey::from_x962_uncompressed(&bad[..64]).err(),
-            Some(Error::WrongLength)
+            Some(KeyFormatError::WrongLength.into())
         );
         assert_eq!(
             PublicKey::from_x962_uncompressed(&[]).err(),
-            Some(Error::WrongLength)
+            Some(KeyFormatError::WrongLength.into())
         );
 
         let key = StaticPrivateKey::new_random().unwrap();

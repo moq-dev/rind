@@ -5,7 +5,7 @@
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::{Scalar, clamp_integer};
 
-use crate::error::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 use crate::mid::sha2::Sha512Context;
 
@@ -114,7 +114,7 @@ impl VerifyingKey {
     /// canonical, as s2n-bignum's `edwards25519_decode` does on the other
     /// backends.
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let bytes: [u8; 32] = bytes.try_into().map_err(|_| Error::WrongLength)?;
+        let bytes: [u8; 32] = bytes.try_into().map_err(|_| KeyFormatError::WrongLength)?;
 
         // dalek reduces `y` modulo `p`, and takes a set sign bit on `x = 0`
         // (where `y = ±1`) as `x = 0`, so each point would have a second
@@ -123,12 +123,12 @@ impl VerifyingKey {
         y[31] &= 0x7f;
         let negative_zero = bytes[31] >> 7 == 1 && (y == ONE || y == P_MINUS_ONE);
         if !is_below_p(&y) || negative_zero {
-            return Err(Error::NotOnCurve);
+            return Err(KeyFormatError::NotOnCurve.into());
         }
 
         let point = CompressedEdwardsY(bytes)
             .decompress()
-            .ok_or(Error::NotOnCurve)?;
+            .ok_or(KeyFormatError::NotOnCurve)?;
         Ok(Self { bytes, point })
     }
 

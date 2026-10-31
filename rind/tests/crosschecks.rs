@@ -954,15 +954,15 @@ mod rsa {
     fn refuses_modulus_below_2048_bits() {
         let private = include_bytes!("../src/high/rsa/rsa2047.pkcs8.der");
         assert!(KeyPair::from_pkcs8(private).is_err());
-        assert_eq!(
-            RsaKeyPair::from_pkcs8(private).err(),
-            Some(Error::OutOfRange)
-        );
+        assert!(matches!(
+            RsaKeyPair::from_pkcs8(private),
+            Err(Error::KeyRejected(_))
+        ));
         let public = include_bytes!("../src/high/rsa/rsa2047.pub.der");
-        assert_eq!(
-            rind::signature::PublicKey::new(&verify::RSA_PKCS1_SHA256, public).err(),
-            Some(Error::OutOfRange)
-        );
+        assert!(matches!(
+            rind::signature::PublicKey::new(&verify::RSA_PKCS1_SHA256, public),
+            Err(Error::KeyRejected(_))
+        ));
     }
 }
 

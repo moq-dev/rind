@@ -146,7 +146,7 @@ impl PrivateKey<P256> for p256::StaticPrivateKey {
             out.copy_from_slice(&self.secret_bytes());
             Ok(out)
         } else {
-            Err(Error::OutOfRange)
+            Err(Error::WrongLength)
         }
     }
 
@@ -159,7 +159,7 @@ impl PrivateKey<P256> for p256::StaticPrivateKey {
             out.copy_from_slice(&self.public_key_uncompressed());
             Ok(out)
         } else {
-            Err(Error::OutOfRange)
+            Err(Error::WrongLength)
         }
     }
 
@@ -234,7 +234,7 @@ impl PrivateKey<P384> for p384::StaticPrivateKey {
             out.copy_from_slice(&self.secret_bytes());
             Ok(out)
         } else {
-            Err(Error::OutOfRange)
+            Err(Error::WrongLength)
         }
     }
 
@@ -247,7 +247,7 @@ impl PrivateKey<P384> for p384::StaticPrivateKey {
             out.copy_from_slice(&self.public_key_uncompressed());
             Ok(out)
         } else {
-            Err(Error::OutOfRange)
+            Err(Error::WrongLength)
         }
     }
 
@@ -322,7 +322,7 @@ impl PrivateKey<P521> for p521::StaticPrivateKey {
             out.copy_from_slice(&self.secret_bytes());
             Ok(out)
         } else {
-            Err(Error::OutOfRange)
+            Err(Error::WrongLength)
         }
     }
 
@@ -335,7 +335,7 @@ impl PrivateKey<P521> for p521::StaticPrivateKey {
             out.copy_from_slice(&self.public_key_uncompressed());
             Ok(out)
         } else {
-            Err(Error::OutOfRange)
+            Err(Error::WrongLength)
         }
     }
 
@@ -383,6 +383,7 @@ impl Scalar<P521> for p521::Scalar {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::error::KeyFormatError;
     use crate::test::*;
 
     #[test]
@@ -520,13 +521,19 @@ mod tests {
             for (x, y) in small_x {
                 let (x, y) = (coordinate(x), coordinate(y));
                 decode(&x, &y).unwrap();
-                assert_eq!(decode(&plus_p(&x), &y), Err(Error::NotOnCurve));
+                assert_eq!(
+                    decode(&plus_p(&x), &y),
+                    Err(KeyFormatError::NotOnCurve.into())
+                );
             }
 
             let (x, y) = (coordinate(small_y.0), coordinate(small_y.1));
             decode(&x, &y).unwrap();
-            assert_eq!(decode(&x, &plus_p(&y)), Err(Error::NotOnCurve));
-            assert_eq!(decode(&x, &p), Err(Error::NotOnCurve));
+            assert_eq!(
+                decode(&x, &plus_p(&y)),
+                Err(KeyFormatError::NotOnCurve.into())
+            );
+            assert_eq!(decode(&x, &p), Err(KeyFormatError::NotOnCurve.into()));
         }
 
         check::<P256>(

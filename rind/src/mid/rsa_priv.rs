@@ -38,13 +38,15 @@ impl RsaPrivateKey {
         e: u32,
     ) -> Result<Self, Error> {
         let (p_len, q_len) = (p.len_bytes(), q.len_bytes());
+        if n.len_bits() < MIN_MODULUS_BITS {
+            return Err(KeyFormatError::RsaModulus.into());
+        }
         if p.is_even()
             || q.is_even()
             || q.len_bits() < 2
             || !(MIN_PRIVATE_MODULUS_BYTES..=MAX_PRIVATE_MODULUS_BYTES).contains(&p_len)
-            || n.len_bits() < MIN_MODULUS_BITS
         {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::RsaPrimes.into());
         }
 
         let public = RsaPublicKey::new(n, e)?;
@@ -112,6 +114,12 @@ impl RsaPrivateKey {
         generate::generate_key(size, candidate_source, witness_source)
     }
 
+    /// Swaps `dp` and `dq`, as a fault in the CRT would corrupt them.
+    #[cfg(test)]
+    pub(crate) fn swap_crt_exponents(&mut self) {
+        core::mem::swap(&mut self.dp, &mut self.dq);
+    }
+
     pub(crate) fn public_key(&self) -> RsaPublicKey {
         self.public.clone()
     }
@@ -173,7 +181,7 @@ impl RsaPrivateKey {
     /// (albeit via CRT)
     pub(crate) fn private_op(&self, c: &RsaPosIntModN) -> Result<RsaPosIntModN, Error> {
         if !c.less_than(&self.public.n) {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
 
         // A note about blinding:
@@ -205,14 +213,11 @@ impl RsaPrivateKey {
         let m = m_2.widen().add(&low::PosInt::mul(&self.q, &h));
         let m = low::ct::into_public(m);
 
-        // validate the result as a fault attack countermeasure,
-        // at the same time it validates our working above, and
-        // the key halves against each other
-        let c2 = self.public.public_op(m.clone())?;
-        if c2.equals(c) {
-            Ok(m)
-        } else {
-            Err(Error::DecryptFailed)
+        // Check the result as a fault attack countermeasure: `new` checked
+        // the key's components, so only a fault fails this.
+        match self.public.public_op(m.clone()) {
+            Ok(c2) if c2.equals(c) => Ok(m),
+            _ => Err(Error::BadSignature),
         }
     }
 }

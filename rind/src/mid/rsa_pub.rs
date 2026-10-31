@@ -1,7 +1,7 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use crate::error::Error;
+use crate::error::{Error, KeyFormatError};
 use crate::low;
 
 #[derive(Clone, Debug)]
@@ -21,12 +21,13 @@ impl RsaPublicKey {
     pub(crate) fn new(n: RsaPosInt, e: u32) -> Result<Self, Error> {
         if n.is_even()
             || !(MIN_PUBLIC_MODULUS_BITS..=MAX_PUBLIC_MODULUS_BITS).contains(&n.len_bits())
-            // As aws-lc requires: an even e has no inverse mod the even
-            // (p - 1)(q - 1), and e = 1 makes every message its own signature.
-            || e.is_multiple_of(2)
-            || e == 1
         {
-            return Err(Error::OutOfRange);
+            return Err(KeyFormatError::RsaModulus.into());
+        }
+        // As aws-lc requires: an even e has no inverse mod the even
+        // (p - 1)(q - 1), and e = 1 makes every message its own signature.
+        if e.is_multiple_of(2) || e == 1 {
+            return Err(KeyFormatError::RsaExponent.into());
         }
 
         // determine M^2 mod n
@@ -58,7 +59,7 @@ impl RsaPublicKey {
     /// m = c ** e mod n
     pub(crate) fn public_op(&self, mut c: RsaPosInt) -> Result<RsaPosInt, Error> {
         if !c.less_than(&self.n) {
-            return Err(Error::OutOfRange);
+            return Err(Error::WrongLength);
         }
         c.expand(&self.n);
 

@@ -579,7 +579,7 @@ impl Rsa {
     fn check(self, key: rsa::VerifyingKey) -> Result<rsa::VerifyingKey, Error> {
         match key.modulus_len_bits() >= self.min_bits {
             true => Ok(key),
-            false => Err(Error::OutOfRange),
+            false => Err(KeyFormatError::RsaModulus.into()),
         }
     }
 }
@@ -1143,7 +1143,7 @@ mod tests {
 
         // An Ed25519 encoding of the right length but off the curve.
         let off_curve = PublicKey::new(&verify::ED25519, &[0xff; 32]);
-        assert_eq!(off_curve.err(), Some(Error::NotOnCurve));
+        assert_eq!(off_curve.err(), Some(KeyFormatError::NotOnCurve.into()));
     }
 
     #[test]
@@ -1171,7 +1171,7 @@ mod tests {
                 rejected(EcdsaKeyPair::from_private_key_and_public_key(
                     signing, &padded, public
                 )),
-                Error::WrongLength
+                KeyFormatError::WrongLength.into()
             );
             assert_eq!(
                 rejected(EcdsaKeyPair::from_private_key_and_public_key(
@@ -1179,7 +1179,7 @@ mod tests {
                     &scalar[1..],
                     public
                 )),
-                Error::WrongLength
+                KeyFormatError::WrongLength.into()
             );
 
             // Zero and anything at or above the order are refused.
@@ -1190,7 +1190,7 @@ mod tests {
                     &zero[..len],
                     public
                 )),
-                Error::OutOfRange
+                KeyFormatError::ScalarOutOfRange.into()
             );
             let ones = [0xffu8; MAX_SCALAR_LEN];
             assert_eq!(
@@ -1199,7 +1199,7 @@ mod tests {
                     &ones[..len],
                     public
                 )),
-                Error::OutOfRange
+                KeyFormatError::ScalarOutOfRange.into()
             );
 
             // Another key's point, or the point truncated, is refused.
@@ -1244,7 +1244,7 @@ mod tests {
                 &verify::ECDSA_P256_SHA384_ASN1,
                 pair.public_key().as_ref()
             )),
-            Error::WrongLength
+            KeyFormatError::WrongLength.into()
         );
     }
 
@@ -1311,14 +1311,14 @@ mod tests {
         // A 2048-bit key is below this algorithm's floor, in either form.
         assert_eq!(
             rejected(key.to_public_key(&verify::legacy::RSA_PKCS1_3072_SHA384)),
-            Error::OutOfRange
+            KeyFormatError::RsaModulus.into()
         );
         assert_eq!(
             rejected(PublicKey::new(
                 &verify::legacy::RSA_PKCS1_3072_SHA384,
                 der.as_ref()
             )),
-            Error::OutOfRange
+            KeyFormatError::RsaModulus.into()
         );
 
         // Components only make an RSA key.
@@ -1332,9 +1332,9 @@ mod tests {
         let malformed: [(&[u8], &[u8], Error); 5] = [
             (&n0, e, KeyFormatError::LeadingZero.into()),
             (n, &e0, KeyFormatError::LeadingZero.into()),
-            (n, &[1, 0, 0, 0, 1], Error::OutOfRange),
-            (&[], e, Error::OutOfRange),
-            (n, &[], Error::OutOfRange),
+            (n, &[1, 0, 0, 0, 1], KeyFormatError::RsaExponent.into()),
+            (&[], e, KeyFormatError::RsaModulus.into()),
+            (n, &[], KeyFormatError::RsaExponent.into()),
         ];
         for (n, e, expected) in malformed {
             let key = RsaPublicKeyComponents { n, e };
@@ -1369,7 +1369,7 @@ mod tests {
         for seed in [&seed[..31], &[seed.as_slice(), &[0]].concat()] {
             assert_eq!(
                 rejected(Ed25519KeyPair::from_seed_and_public_key(seed, &public)),
-                Error::WrongLength
+                KeyFormatError::WrongLength.into()
             );
         }
     }

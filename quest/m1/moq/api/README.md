@@ -89,5 +89,4 @@ may adjust details as it learns, and records any change in its PR.
 
 ## Required
 
-- [Errors by role](/quest/m1/moq/api/errors.md) - about six variants, each from a distinct kind of call
 - [Adapter API](/quest/m1/moq/api/adapters.md) - rind-rustls mirrors rustls, rind-rcgen broadens, setup-time CPU checks
