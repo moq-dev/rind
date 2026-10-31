@@ -3,8 +3,8 @@
 This guide maps each ring 0.17 and aws-lc-rs 1.x item to rind's name, to the
 [quest](quest/README.md) that adds it, or to why rind refuses it, and
 surveys the crates that pick a crypto backend for you. ring's names match
-aws-lc-rs's except where noted. A crate that cannot change its code waits on
-[rind-ring](quest/m3/parity/rind-ring.md), ring's API on rind.
+aws-lc-rs's except where noted. A crate on ring that cannot change its code
+renames [rind-ring](#rind-ring), ring's API on rind, to `ring`.
 
 ## Across the API
 
@@ -267,7 +267,18 @@ Each `rind-*` crate stands in for a crate's aws-lc-rs or ring backend. rind
 panics on a CPU missing a feature it requires, so every adapter entry point
 that is a function refuses one with `rind::cpu::MissingFeature` instead. A
 static that the upstream crate requires, such as `DEFAULT_PROVIDER`, cannot,
-so call `rind::cpu::check()` before using it.
+and neither can rind-ring, whose signatures are ring's, so call
+`rind::cpu::check()` before using them.
+
+### rind-ring
+
+rind-ring offers ring 0.17's API name for name, so a crate on ring swaps it
+in with `ring = { package = "rind-ring", version = "0.1" }` and no code
+changes. The rename reaches only that crate: a dependency that names ring,
+such as rustls with its `ring` feature, still builds ring, since Cargo cannot
+patch it with a crate of another name. Its
+[README](rind-ring/README.md) lists the items it leaves out and the inputs
+it refuses where ring takes them.
 
 ### rind-rustls
 
