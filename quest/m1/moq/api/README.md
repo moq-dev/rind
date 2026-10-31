@@ -99,4 +99,4 @@ may adjust details as it learns, and records any change in its PR.
 
 ## Required
 
-- [Adapter API](/quest/m1/moq/api/adapters.md) - rind-rustls mirrors rustls, rind-rcgen broadens, setup-time CPU checks
+- [P-521 in rind-rcgen](/quest/m1/moq/api/adapters.md) - waiting on rcgen to export its P-521 algorithms without aws-lc-rs

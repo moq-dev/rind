@@ -9,9 +9,13 @@ This crate provides an integration between [rustls](https://github.com/rustls/ru
 Use it like:
 
 ```rust
-rind_rustls::default_provider().install_default().unwrap();
+rind_rustls::default_provider()?.install_default().unwrap();
 ```
 
 And then use rustls as normal.
+
+rind panics on a CPU missing a feature it requires, so `default_provider()`
+and `Ticketer::new()` check first and return an error instead. To build a
+provider from this crate's statics, call `rind::cpu::check()` first.
 
 License: Apache-2.0 OR ISC OR MIT-0

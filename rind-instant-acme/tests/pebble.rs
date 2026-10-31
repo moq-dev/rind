@@ -18,7 +18,7 @@ use instant_acme::{
     Account, ChallengeType, DefaultClient, ExternalAccountKey, Identifier, NewAccount, NewOrder,
     OrderStatus, RetryPolicy,
 };
-use rcgen::{CertificateParams, PublicKeyData, SerialNumber};
+use rcgen::{CertificateParams, PKCS_ECDSA_P256_SHA256, PublicKeyData, SerialNumber};
 use rind_instant_acme::DEFAULT_PROVIDER;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::pem::PemObject;
@@ -44,7 +44,7 @@ async fn issue_certificate() {
         start_pebble(&pebble, &dir, challenges.local_addr().unwrap().port()).await;
     let root = dir.join("cert.pem");
     let http = || {
-        let provider = Arc::new(rind_rustls::default_provider());
+        let provider = Arc::new(rind_rustls::default_provider().unwrap());
         Box::new(DefaultClient::with_pem_root(&root, provider).unwrap())
     };
 
@@ -92,7 +92,7 @@ async fn issue_certificate() {
         OrderStatus::Ready
     );
 
-    let key = rind_rcgen::KeyPair::generate().unwrap();
+    let key = rind_rcgen::KeyPair::generate(&PKCS_ECDSA_P256_SHA256).unwrap();
     let csr = CertificateParams::new([LOCALHOST.to_string()])
         .unwrap()
         .serialize_request(&key)
@@ -132,11 +132,11 @@ fn find_pebble() -> Option<PathBuf> {
 async fn start_pebble(pebble: &Path, dir: &Path, http_port: u16) -> (String, Child) {
     std::fs::create_dir_all(dir).unwrap();
 
-    let key = rind_rcgen::KeyPair::generate().unwrap();
+    let key = rind_rcgen::KeyPair::generate(&PKCS_ECDSA_P256_SHA256).unwrap();
     let mut params = CertificateParams::new([LOCALHOST.to_string()]).unwrap();
     params.serial_number = Some(SerialNumber::from_slice(&[1]));
     let cert = params.self_signed(&key).unwrap();
-    let key = STANDARD.encode(key.to_pkcs8_der().unwrap().secret_pkcs8_der());
+    let key = STANDARD.encode(key.to_pkcs8().secret_pkcs8_der());
     std::fs::write(dir.join("cert.pem"), cert.pem()).unwrap();
     std::fs::write(
         dir.join("key.pem"),

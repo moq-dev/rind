@@ -6,9 +6,14 @@
 //! Use it like:
 //!
 //! ```rust
+//! # fn main() -> Result<(), rind::cpu::MissingFeature> {
+//! // rind panics on a CPU missing a feature it requires, so refuse it first.
+//! rind::cpu::check()?;
 //! rind_jsonwebtoken::DEFAULT_PROVIDER
 //!     .install_default()
 //!     .unwrap();
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! And then use jsonwebtoken as normal.
@@ -27,6 +32,9 @@ use rind::signature::{
 use rind::{digest, hmac};
 
 /// A jsonwebtoken [`CryptoProvider`] that signs and verifies every algorithm with rind.
+///
+/// rind panics on a CPU missing a feature it requires, so call
+/// [`rind::cpu::check`] first.
 pub static DEFAULT_PROVIDER: CryptoProvider = CryptoProvider {
     signer_factory: new_signer,
     verifier_factory: new_verifier,

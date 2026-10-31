@@ -5,33 +5,39 @@ use dimpl::{CryptoError, CryptoOperation};
 use rind::agreement::{self, PrivateKey};
 
 #[derive(Debug)]
-struct Group(NamedGroup);
+struct Group {
+    name: NamedGroup,
+    algorithm: &'static agreement::Algorithm,
+}
 
 /// Key exchange groups, in order of preference.
 pub(crate) static ALL: &[&dyn SupportedKxGroup] = &[
-    &Group(NamedGroup::X25519),
-    &Group(NamedGroup::Secp256r1),
-    &Group(NamedGroup::Secp384r1),
+    &Group {
+        name: NamedGroup::X25519,
+        algorithm: &agreement::X25519,
+    },
+    &Group {
+        name: NamedGroup::Secp256r1,
+        algorithm: &agreement::ECDH_P256,
+    },
+    &Group {
+        name: NamedGroup::Secp384r1,
+        algorithm: &agreement::ECDH_P384,
+    },
 ];
 
 impl SupportedKxGroup for Group {
     fn name(&self) -> NamedGroup {
-        self.0
+        self.name
     }
 
     fn start_exchange(&self, mut pub_key: Buf) -> Result<Box<dyn ActiveKeyExchange>, CryptoError> {
-        let algorithm = match self.0 {
-            NamedGroup::X25519 => &agreement::X25519,
-            NamedGroup::Secp256r1 => &agreement::ECDH_P256,
-            NamedGroup::Secp384r1 => &agreement::ECDH_P384,
-            group => return Err(CryptoError::UnsupportedKeyExchangeGroup(group)),
-        };
-        let key = PrivateKey::generate(algorithm)
+        let key = PrivateKey::generate(self.algorithm)
             .map_err(|_| CryptoError::OperationFailed(CryptoOperation::GenerateEphemeralKey))?;
         pub_key.clear();
         pub_key.extend_from_slice(key.public_key().as_ref());
         Ok(Box::new(Exchange {
-            group: self.0,
+            group: self.name,
             key,
             pub_key,
         }))

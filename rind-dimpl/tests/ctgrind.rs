@@ -29,7 +29,7 @@ fn mark<T: ?Sized>(value: &T, state: MemState) {
 }
 
 fn rind() -> CryptoProvider {
-    rind_dimpl::default_provider()
+    rind_dimpl::default_provider().unwrap()
 }
 
 #[test]

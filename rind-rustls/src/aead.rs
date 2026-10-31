@@ -185,34 +185,34 @@ impl MessageDecrypter for ChaChaTls12Cipher {
     }
 }
 
-pub struct TlsAesGcm(&'static aead::Algorithm);
+pub struct TlsAesGcm {
+    algorithm: &'static aead::Algorithm,
+    traffic_secrets: fn(AeadKey, Iv) -> ConnectionTrafficSecrets,
+}
 
 /// TLS record protection with AES-128-GCM.
-pub static AES_128_GCM: TlsAesGcm = TlsAesGcm(&aead::AES_128_GCM);
+pub static AES_128_GCM: TlsAesGcm = TlsAesGcm {
+    algorithm: &aead::AES_128_GCM,
+    traffic_secrets: |key, iv| ConnectionTrafficSecrets::Aes128Gcm { key, iv },
+};
 
 /// TLS record protection with AES-256-GCM.
-pub static AES_256_GCM: TlsAesGcm = TlsAesGcm(&aead::AES_256_GCM);
-
-impl TlsAesGcm {
-    fn traffic_secrets(&self, key: AeadKey, iv: Iv) -> ConnectionTrafficSecrets {
-        match self.0.key_len() {
-            16 => ConnectionTrafficSecrets::Aes128Gcm { key, iv },
-            _ => ConnectionTrafficSecrets::Aes256Gcm { key, iv },
-        }
-    }
-}
+pub static AES_256_GCM: TlsAesGcm = TlsAesGcm {
+    algorithm: &aead::AES_256_GCM,
+    traffic_secrets: |key, iv| ConnectionTrafficSecrets::Aes256Gcm { key, iv },
+};
 
 impl Tls13AeadAlgorithm for TlsAesGcm {
     fn encrypter(&self, key: AeadKey, iv: Iv) -> Box<dyn MessageEncrypter> {
-        Box::new(Tls13Cipher(aead_key(self.0, &key), iv))
+        Box::new(Tls13Cipher(aead_key(self.algorithm, &key), iv))
     }
 
     fn decrypter(&self, key: AeadKey, iv: Iv) -> Box<dyn MessageDecrypter> {
-        Box::new(Tls13Cipher(aead_key(self.0, &key), iv))
+        Box::new(Tls13Cipher(aead_key(self.algorithm, &key), iv))
     }
 
     fn key_len(&self) -> usize {
-        self.0.key_len()
+        self.algorithm.key_len()
     }
 
     fn extract_keys(
@@ -220,7 +220,7 @@ impl Tls13AeadAlgorithm for TlsAesGcm {
         key: AeadKey,
         iv: Iv,
     ) -> Result<ConnectionTrafficSecrets, UnsupportedOperationError> {
-        Ok(self.traffic_secrets(key, iv))
+        Ok((self.traffic_secrets)(key, iv))
     }
 }
 
@@ -232,19 +232,19 @@ impl Tls12AeadAlgorithm for TlsAesGcm {
         explicit: &[u8],
     ) -> Box<dyn MessageEncrypter> {
         let iv = gcm_iv(write_iv, explicit);
-        Box::new(GcmTls12MessageEncrypter(aead_key(self.0, &key), iv))
+        Box::new(GcmTls12MessageEncrypter(aead_key(self.algorithm, &key), iv))
     }
 
     fn decrypter(&self, key: AeadKey, iv: &[u8]) -> Box<dyn MessageDecrypter> {
         Box::new(GcmTls12MessageDecrypter(
-            aead_key(self.0, &key),
+            aead_key(self.algorithm, &key),
             iv.try_into().unwrap(),
         ))
     }
 
     fn key_block_shape(&self) -> KeyBlockShape {
         KeyBlockShape {
-            enc_key_len: self.0.key_len(),
+            enc_key_len: self.algorithm.key_len(),
             fixed_iv_len: 4,
             explicit_nonce_len: 8,
         }
@@ -256,7 +256,7 @@ impl Tls12AeadAlgorithm for TlsAesGcm {
         iv: &[u8],
         explicit: &[u8],
     ) -> Result<ConnectionTrafficSecrets, UnsupportedOperationError> {
-        Ok(self.traffic_secrets(key, gcm_iv(iv, explicit)))
+        Ok((self.traffic_secrets)(key, gcm_iv(iv, explicit)))
     }
 }
 

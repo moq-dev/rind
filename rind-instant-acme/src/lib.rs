@@ -12,8 +12,12 @@
 //!
 //! use instant_acme::{Account, DefaultClient};
 //!
-//! let http = DefaultClient::new(Arc::new(rind_rustls::default_provider())).unwrap();
-//! let builder = Account::builder(Box::new(http), &rind_instant_acme::DEFAULT_PROVIDER).unwrap();
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Refuses a CPU missing a feature rind requires, which DEFAULT_PROVIDER cannot.
+//! let http = DefaultClient::new(Arc::new(rind_rustls::default_provider()?))?;
+//! let builder = Account::builder(Box::new(http), &rind_instant_acme::DEFAULT_PROVIDER)?;
+//! # Ok(())
+//! # }
 //! ```
 
 use instant_acme::{
@@ -28,6 +32,9 @@ use rustls_pki_types::PrivatePkcs8KeyDer;
 ///
 /// It loads and generates the same PKCS#8 account keys as instant-acme's
 /// aws-lc-rs and ring providers, so stored credentials move between them.
+///
+/// rind panics on a CPU missing a feature it requires, so call
+/// [`rind::cpu::check`] first, as `rind_rustls::default_provider()` does.
 pub static DEFAULT_PROVIDER: CryptoProvider = CryptoProvider {
     key_provider: &P256KeyProvider,
     sha256: &RindSha256,

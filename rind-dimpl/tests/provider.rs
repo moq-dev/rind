@@ -8,7 +8,7 @@ use dimpl::crypto::{
 use dimpl::{CryptoError, CryptoOperation};
 
 fn rind() -> CryptoProvider {
-    rind_dimpl::default_provider()
+    rind_dimpl::default_provider().unwrap()
 }
 
 fn certificate(algorithm: &'static rcgen::SignatureAlgorithm) -> (Vec<u8>, Vec<u8>) {

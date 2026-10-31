@@ -9,6 +9,8 @@ This crate provides an integration between [jsonwebtoken](https://github.com/Kea
 Use it like:
 
 ```rust
+// rind panics on a CPU missing a feature it requires, so refuse it first.
+rind::cpu::check()?;
 rind_jsonwebtoken::DEFAULT_PROVIDER.install_default().unwrap();
 ```
 
