@@ -70,7 +70,7 @@ pub static TLS13_CHACHA20_POLY1305_SHA256: SupportedCipherSuite =
         },
         hkdf_provider: &HkdfUsingHmac(&hmac::SHA256),
         aead_alg: &aead::Chacha20Poly1305,
-        quic: Some(&quic::ChaCha20Poly1305),
+        quic: Some(&quic::CHACHA20_POLY1305),
     });
 
 /// The TLS1.2 `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256` cipher suite.

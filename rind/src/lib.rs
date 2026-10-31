@@ -242,7 +242,7 @@ pub mod aead;
 /// Prefer [`aead`] unless a protocol requires one of these.
 ///
 /// Unlike aws-lc-rs's `EncryptingKey` and `DecryptingKey` contexts, these are
-/// bare keys: QUIC and DTLS header protection and SRTP need nothing more.
+/// bare keys: DTLS record number protection and SRTP need nothing more.
 pub mod cipher;
 
 /// CPU support.

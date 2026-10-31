@@ -7,6 +7,25 @@ use crate::mid::chacha20poly1305::ChaCha20Poly1305;
 use crate::mid::rng::{RandomSource, SystemRandom};
 use crate::mid::xchacha20poly1305::XChaCha20Poly1305;
 
+/// QUIC header protection (RFC 9001 section 5.4): the mask a key derives from
+/// a sample of each packet's ciphertext.
+///
+/// ```
+/// use rind::aead::quic::*;
+///
+/// // RFC 9001 appendix A.2
+/// let hp = [
+///     0x9f, 0x50, 0x44, 0x9e, 0x04, 0xa0, 0xe8, 0x10, 0x28, 0x3a, 0x1e, 0x99, 0x33, 0xad, 0xed, 0xd2,
+/// ];
+/// let key = HeaderProtectionKey::new(&AES_128, &hp).unwrap();
+///
+/// let sample = [
+///     0xd1, 0xb1, 0xc9, 0x8d, 0xd7, 0x68, 0x9f, 0xb8, 0xec, 0x11, 0xd2, 0x42, 0xb1, 0x23, 0xdc, 0x9b,
+/// ];
+/// assert_eq!(key.new_mask(&sample), [0x43, 0x7b, 0x9a, 0xec, 0x36]);
+/// ```
+pub mod quic;
+
 const NONCE_LEN: usize = 12;
 const TAG_LEN: usize = 16;
 

@@ -279,16 +279,18 @@ takes an algorithm constant, such as `aead::AES_128_GCM` or
 `signature::ECDSA_P256_SHA256_ASN1`, and has one key type per role. Where
 rind deviates, the item's docs say why.
 
-- `aead`: AES-GCM and ChaCha20-Poly1305 keys with caller nonces, and an
-  XChaCha20-Poly1305 key that picks random nonces.
-- `cipher`: bare AES, AES-CTR, and ChaCha20, for header protection and SRTP.
+- `aead`: AES-GCM and ChaCha20-Poly1305 keys with caller nonces, an
+  XChaCha20-Poly1305 key that picks random nonces, and QUIC header-protection
+  keys.
+- `cipher`: bare AES, AES-CTR, and ChaCha20, for DTLS record number
+  protection and SRTP.
 - `agreement`: ephemeral X25519 and ECDH on P-256 and P-384.
 - `kem`: ML-KEM-768.
 - `signature`: ECDSA on P-256 and P-384, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, and SHA-512.
 - `hmac`: HMAC over those digests, keyed once and reused.
-- `hkdf`: HKDF-SHA256, whose output becomes an `aead` or `hmac` key.
+- `hkdf`: HKDF-SHA256, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
 - `rand`: random bytes from the system.
 - `cpu`: the startup check for required CPU features, and whether AES runs
   in hardware.
