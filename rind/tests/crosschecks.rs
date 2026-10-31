@@ -224,22 +224,25 @@ mod cipher {
         }
 
         #[test]
-        fn chacha20_header_protection_mask(key in any::<[u8; 32]>(), sample in any::<[u8; 16]>()) {
-            let (counter, nonce) = sample.split_at(4);
-            let mut ours = [0u8; 5];
-            ChaCha20::new(key)
-                .apply_keystream(
-                    nonce.try_into().unwrap(),
-                    u32::from_le_bytes(counter.try_into().unwrap()),
-                    &mut ours,
-                )
-                .unwrap();
+        fn quic_header_protection_mask(
+            algorithm in 0..3usize,
+            key in any::<[u8; 32]>(),
+            sample in any::<[u8; 16]>(),
+        ) {
+            use rind::aead::quic as ours;
+            let (algorithm, theirs) = [
+                (&ours::AES_128, &quic::AES_128),
+                (&ours::AES_256, &quic::AES_256),
+                (&ours::CHACHA20, &quic::CHACHA20),
+            ][algorithm];
+            let key = &key[..algorithm.key_len()];
 
-            let theirs = quic::HeaderProtectionKey::new(&quic::CHACHA20, &key)
+            let mask = ours::HeaderProtectionKey::new(algorithm, key).unwrap().new_mask(&sample);
+            let wanted = quic::HeaderProtectionKey::new(theirs, key)
                 .unwrap()
                 .new_mask(&sample)
                 .unwrap();
-            prop_assert_eq!(ours, theirs);
+            prop_assert_eq!(mask, wanted);
         }
 
         // ChaCha20-Poly1305's ciphertext is the plaintext XORed with the

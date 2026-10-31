@@ -17,4 +17,3 @@ Decided by the maintainer on 2026-10-30, planning ring and aws-lc-rs parity.
 
 - [PBKDF2](/quest/m3/parity/pbkdf2.md) - ring's `pbkdf2`
 - [Legacy RSA verification](/quest/m3/parity/rsa-legacy.md) - ring's legacy RSA
-- [QUIC header protection](/quest/m3/parity/quic-hp.md) - ring's `aead::quic`
