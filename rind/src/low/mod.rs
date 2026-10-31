@@ -30,9 +30,9 @@ mod generic {
     pub(crate) mod p384;
     #[cfg(any(target_arch = "arm", test))]
     pub(crate) mod p521;
-    // Copied unmodified, so its generated casts are allowed rather than edited.
+    // Generated, so its casts and unused items are allowed rather than edited.
     #[cfg(any(target_arch = "arm", test))]
-    #[allow(trivial_numeric_casts, unreachable_pub)]
+    #[allow(dead_code, trivial_numeric_casts, unreachable_pub)]
     mod p521_scalar;
     #[cfg(not(target_arch = "arm"))]
     pub(crate) mod poly1305;
