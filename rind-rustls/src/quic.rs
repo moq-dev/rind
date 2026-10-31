@@ -1,41 +1,54 @@
-use rind::aead::{self, Aad, LessSafeKey, UnboundKey};
-use rind::cipher::{self, Aes, ChaCha20};
+use rind::aead::{self, quic::SAMPLE_LEN};
 use rustls::Error;
 use rustls::crypto::cipher::{AeadKey, Iv, Nonce};
 use rustls::quic;
 
-/// QUIC packet and header protection with AES-GCM.
-pub(crate) struct AesGcm {
+/// QUIC packet and header protection for one cipher suite.
+pub(crate) struct Algorithm {
     packet: &'static aead::Algorithm,
-    header: &'static cipher::Algorithm,
+    header: &'static aead::quic::Algorithm,
+    // RFC 9001 section 6.6
+    confidentiality_limit: u64,
+    integrity_limit: u64,
 }
 
 /// QUIC protection with AES-128-GCM.
-pub(crate) static AES_128_GCM: AesGcm = AesGcm {
+pub(crate) static AES_128_GCM: Algorithm = Algorithm {
     packet: &aead::AES_128_GCM,
-    header: &cipher::AES_128,
+    header: &aead::quic::AES_128,
+    confidentiality_limit: 1 << 23,
+    integrity_limit: 1 << 52,
 };
 
 /// QUIC protection with AES-256-GCM.
-pub(crate) static AES_256_GCM: AesGcm = AesGcm {
+pub(crate) static AES_256_GCM: Algorithm = Algorithm {
     packet: &aead::AES_256_GCM,
-    header: &cipher::AES_256,
+    header: &aead::quic::AES_256,
+    confidentiality_limit: 1 << 23,
+    integrity_limit: 1 << 52,
 };
 
-impl quic::Algorithm for AesGcm {
+/// QUIC protection with ChaCha20-Poly1305.
+pub(crate) static CHACHA20_POLY1305: Algorithm = Algorithm {
+    packet: &aead::CHACHA20_POLY1305,
+    header: &aead::quic::CHACHA20,
+    confidentiality_limit: u64::MAX,
+    integrity_limit: 1 << 36,
+};
+
+impl quic::Algorithm for Algorithm {
     fn packet_key(&self, key: AeadKey, iv: Iv) -> Box<dyn quic::PacketKey> {
         Box::new(PacketKey {
-            key: LessSafeKey::new(UnboundKey::new(self.packet, key.as_ref()).unwrap()),
+            key: aead::Key::new(self.packet, key.as_ref()).unwrap(),
             iv,
-            // RFC 9001 section 6.6
-            confidentiality_limit: 1 << 23,
-            integrity_limit: 1 << 52,
+            confidentiality_limit: self.confidentiality_limit,
+            integrity_limit: self.integrity_limit,
         })
     }
 
     fn header_protection_key(&self, key: AeadKey) -> Box<dyn quic::HeaderProtectionKey> {
         Box::new(HeaderProtectionKey(
-            Aes::new(self.header, key.as_ref()).unwrap(),
+            aead::quic::HeaderProtectionKey::new(self.header, key.as_ref()).unwrap(),
         ))
     }
 
@@ -44,33 +57,8 @@ impl quic::Algorithm for AesGcm {
     }
 }
 
-/// QUIC packet and header protection with ChaCha20-Poly1305.
-pub(crate) struct ChaCha20Poly1305;
-
-impl quic::Algorithm for ChaCha20Poly1305 {
-    fn packet_key(&self, key: AeadKey, iv: Iv) -> Box<dyn quic::PacketKey> {
-        Box::new(PacketKey {
-            key: LessSafeKey::new(UnboundKey::new(&aead::CHACHA20_POLY1305, key.as_ref()).unwrap()),
-            iv,
-            // RFC 9001 section 6.6
-            confidentiality_limit: u64::MAX,
-            integrity_limit: 1 << 36,
-        })
-    }
-
-    fn header_protection_key(&self, key: AeadKey) -> Box<dyn quic::HeaderProtectionKey> {
-        Box::new(HeaderProtectionKey(ChaCha20::new(
-            key.as_ref().try_into().unwrap(),
-        )))
-    }
-
-    fn aead_key_len(&self) -> usize {
-        aead::CHACHA20_POLY1305.key_len()
-    }
-}
-
 struct PacketKey {
-    key: LessSafeKey,
+    key: aead::Key,
     iv: Iv,
     confidentiality_limit: u64,
     integrity_limit: u64,
@@ -86,7 +74,7 @@ impl quic::PacketKey for PacketKey {
         let nonce = aead::Nonce::assume_unique_for_key(Nonce::new(&self.iv, packet_number).0);
         let tag = self
             .key
-            .seal_in_place_separate_tag(nonce, Aad::from(header), payload)
+            .seal_in_place_separate_tag(nonce, header, payload)
             .map_err(|_| Error::EncryptError)?;
         Ok(quic::Tag::from(tag.as_ref()))
     }
@@ -100,7 +88,7 @@ impl quic::PacketKey for PacketKey {
         let nonce = aead::Nonce::assume_unique_for_key(Nonce::new(&self.iv, packet_number).0);
         let plain = self
             .key
-            .open_in_place(nonce, Aad::from(header), payload)
+            .open_in_place(nonce, header, payload)
             .map_err(|_| Error::DecryptError)?;
         Ok(plain)
     }
@@ -118,35 +106,9 @@ impl quic::PacketKey for PacketKey {
     }
 }
 
-/// A cipher that derives the QUIC header protection mask from a sample.
-trait Mask: Send + Sync {
-    fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> Result<[u8; MASK_LEN], Error>;
-}
+struct HeaderProtectionKey(aead::quic::HeaderProtectionKey);
 
-/// RFC 9001 section 5.4.3
-impl Mask for Aes {
-    fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> Result<[u8; MASK_LEN], Error> {
-        let mut block = *sample;
-        self.encrypt_block(&mut block);
-        Ok(core::array::from_fn(|i| block[i]))
-    }
-}
-
-/// RFC 9001 section 5.4.4
-impl Mask for ChaCha20 {
-    fn mask(&self, sample: &[u8; SAMPLE_LEN]) -> Result<[u8; MASK_LEN], Error> {
-        let counter = u32::from_le_bytes([sample[0], sample[1], sample[2], sample[3]]);
-        let nonce: [u8; 12] = core::array::from_fn(|i| sample[4 + i]);
-        let mut mask = [0u8; MASK_LEN];
-        self.apply_keystream(&nonce, counter, &mut mask)
-            .map_err(|_| Error::EncryptError)?;
-        Ok(mask)
-    }
-}
-
-struct HeaderProtectionKey<M>(M);
-
-impl<M: Mask> HeaderProtectionKey<M> {
+impl HeaderProtectionKey {
     /// RFC 9001 section 5.4.1, leaving `first` and `packet_number` unchanged on error.
     fn xor_in_place(
         &self,
@@ -158,7 +120,7 @@ impl<M: Mask> HeaderProtectionKey<M> {
         let sample: &[u8; SAMPLE_LEN] = sample
             .try_into()
             .map_err(|_| Error::General("sample of invalid length".into()))?;
-        let [first_mask, pn_mask @ ..] = self.0.mask(sample)?;
+        let [first_mask, pn_mask @ ..] = self.0.mask(sample);
         if packet_number.len() > pn_mask.len() {
             return Err(Error::General("packet number too long".into()));
         }
@@ -183,7 +145,7 @@ impl<M: Mask> HeaderProtectionKey<M> {
     }
 }
 
-impl<M: Mask> quic::HeaderProtectionKey for HeaderProtectionKey<M> {
+impl quic::HeaderProtectionKey for HeaderProtectionKey {
     fn encrypt_in_place(
         &self,
         sample: &[u8],
@@ -208,8 +170,6 @@ impl<M: Mask> quic::HeaderProtectionKey for HeaderProtectionKey<M> {
 }
 
 const TAG_LEN: usize = 16;
-const SAMPLE_LEN: usize = 16;
-const MASK_LEN: usize = 5;
 
 #[cfg(test)]
 mod tests {
@@ -323,8 +283,8 @@ mod tests {
             let iv: [u8; 12] = hex::decode(iv).unwrap().try_into().unwrap();
             let hp: [u8; 32] = hex::decode(hp).unwrap().try_into().unwrap();
             DirectionalKeys {
-                packet: ChaCha20Poly1305.packet_key(AeadKey::from(key), Iv::new(iv)),
-                header: ChaCha20Poly1305.header_protection_key(AeadKey::from(hp)),
+                packet: CHACHA20_POLY1305.packet_key(AeadKey::from(key), Iv::new(iv)),
+                header: CHACHA20_POLY1305.header_protection_key(AeadKey::from(hp)),
             }
         };
         check_packet(

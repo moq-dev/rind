@@ -61,28 +61,29 @@ pub mod doc {
     pub use super::low::inline_assembly_safety;
 }
 
-/// Ephemeral key agreement: X25519, and ECDH on P-256 and P-384.
+/// Ephemeral key agreement: X25519, and ECDH on P-256, P-384, and P-521.
 ///
 /// ```
 /// use rind::agreement::*;
 ///
-/// let alice = EphemeralPrivateKey::generate(&X25519).unwrap();
-/// let bob = EphemeralPrivateKey::generate(&X25519).unwrap();
+/// let alice = PrivateKey::generate(&X25519).unwrap();
+/// let bob = PrivateKey::generate(&X25519).unwrap();
 ///
-/// let alice_pub = alice.compute_public_key();
-/// let bob_pub = bob.compute_public_key();
+/// let alice_pub = alice.public_key();
+/// let bob_pub = bob.public_key();
 ///
-/// let alice_secret = agree_ephemeral(alice, &UnparsedPublicKey::new(&X25519, bob_pub))
+/// let alice_secret = alice
+///     .agree(bob_pub.as_ref())
 ///     .expect("bob gave an invalid public key");
-/// let bob_secret = agree_ephemeral(bob, &UnparsedPublicKey::new(&X25519, alice_pub))
+/// let bob_secret = bob
+///     .agree(alice_pub.as_ref())
 ///     .expect("alice gave an invalid public key");
 ///
 /// assert_eq!(alice_secret.as_ref(), bob_secret.as_ref());
 /// ```
 pub mod agreement {
     pub use crate::high::agreement::{
-        Algorithm, ECDH_P256, ECDH_P384, EphemeralPrivateKey, PublicKey, SharedSecret,
-        UnparsedPublicKey, X25519, agree_ephemeral,
+        Algorithm, ECDH_P256, ECDH_P384, ECDH_P521, PrivateKey, PublicKey, SharedSecret, X25519,
     };
 }
 
@@ -95,15 +96,15 @@ pub mod agreement {
 /// // The recipient generates a key pair, and sends the encapsulation key to
 /// // the sender.
 /// let decapsulation_key = DecapsulationKey::generate(&ML_KEM_768)?;
-/// let encapsulation_key = decapsulation_key.encapsulation_key();
+/// let encapsulation_key = decapsulation_key.public_key();
 ///
 /// // The sender parses the encapsulation key, encapsulates a fresh secret,
 /// // and sends the ciphertext back to the recipient.
-/// let peer_key = EncapsulationKey::new(&ML_KEM_768, encapsulation_key.key_bytes())?;
+/// let peer_key = EncapsulationKey::new(&ML_KEM_768, encapsulation_key.as_ref())?;
 /// let (ciphertext, sender_secret) = peer_key.encapsulate()?;
 ///
 /// // The recipient decapsulates the ciphertext, recovering the same secret.
-/// let recipient_secret = decapsulation_key.decapsulate(Ciphertext::from(ciphertext.as_ref()))?;
+/// let recipient_secret = decapsulation_key.decapsulate(ciphertext.as_ref())?;
 ///
 /// assert_eq!(sender_secret.as_ref(), recipient_secret.as_ref());
 /// # Ok(())
@@ -115,7 +116,7 @@ pub mod kem {
     };
 }
 
-/// Public key signatures: ECDSA on P-256 and P-384, RSA, and Ed25519.
+/// Public key signatures: ECDSA on P-256, P-384, and P-521, RSA, and Ed25519.
 ///
 /// A key pair is bound to its signing algorithm when loaded, and a peer's
 /// public key is verified against a verification algorithm constant:
@@ -137,14 +138,20 @@ pub mod signature {
         ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA256_FIXED,
         ECDSA_P256_SHA256_FIXED_SIGNING, ECDSA_P256_SHA384_ASN1, ECDSA_P256_SHA512_ASN1,
         ECDSA_P384_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_ASN1_SIGNING,
-        ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA384_FIXED_SIGNING, ECDSA_P384_SHA512_ASN1, ED25519,
-        EcdsaKeyPair, EcdsaPublicKey, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm,
+        ECDSA_P384_SHA384_FIXED, ECDSA_P384_SHA384_FIXED_SIGNING, ECDSA_P384_SHA512_ASN1,
+        ECDSA_P521_SHA256_ASN1, ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1,
+        ECDSA_P521_SHA512_ASN1_SIGNING, ECDSA_P521_SHA512_FIXED, ECDSA_P521_SHA512_FIXED_SIGNING,
+        ED25519, EcdsaKeyPair, EcdsaPublicKey, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm,
         Ed25519KeyPair, Ed25519PublicKey, EdDSAParameters, KeyPair, KeySize, ParsedPublicKey,
-        RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_2048_8192_SHA512,
+        RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+        RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY, RSA_PKCS1_2048_8192_SHA256,
+        RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_2048_8192_SHA512, RSA_PKCS1_3072_8192_SHA384,
         RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_2048_8192_SHA256,
         RSA_PSS_2048_8192_SHA384, RSA_PSS_2048_8192_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384,
-        RSA_PSS_SHA512, RsaKeyPair, RsaParameters, RsaSignatureEncoding, RsaSubjectPublicKey,
-        Signature, UnparsedPublicKey, VerificationAlgorithm,
+        RSA_PSS_SHA512, RsaKeyPair, RsaParameters, RsaPublicKeyComponents, RsaSignatureEncoding,
+        RsaSubjectPublicKey, Signature, UnparsedPublicKey, VerificationAlgorithm,
     };
 }
 
@@ -163,8 +170,13 @@ pub mod signature {
 /// ```
 pub mod digest {
     pub use super::high::digest::{
-        Algorithm, Context, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, digest,
+        Algorithm, Context, Digest, SHA256, SHA384, SHA512, SHA512_256, digest,
     };
+
+    /// Hash functions only legacy protocols should use.
+    pub mod legacy {
+        pub use crate::high::digest::SHA1;
+    }
 }
 
 /// Message authentication with HMAC.
@@ -176,7 +188,7 @@ pub mod digest {
 /// ```
 /// use rind::hmac;
 ///
-/// let key = hmac::Key::new(hmac::HMAC_SHA256, b"secret");
+/// let key = hmac::Key::new(&hmac::HMAC_SHA256, b"secret");
 ///
 /// let mut ctx = hmac::Context::with_key(&key);
 /// ctx.update(b"hello, ");
@@ -187,9 +199,26 @@ pub mod digest {
 /// ```
 pub mod hmac {
     pub use super::high::hmac::{
-        Algorithm, Context, HMAC_SHA1_FOR_LEGACY_USE_ONLY, HMAC_SHA256, HMAC_SHA384, HMAC_SHA512,
-        Key, Tag, sign, verify,
+        Algorithm, Context, HMAC_SHA256, HMAC_SHA384, HMAC_SHA512, Key, Tag, sign, verify,
     };
+
+    /// HMAC algorithms only legacy protocols should use.
+    pub mod legacy {
+        pub use crate::high::hmac::HMAC_SHA1;
+    }
+}
+
+/// Constant-time comparison, for checking a secret such as a MAC or token.
+///
+/// ```
+/// use rind::constant_time;
+///
+/// constant_time::verify(b"expected", b"expected").unwrap();
+/// assert_eq!(constant_time::verify(b"expected", b"presented"), Err(rind::Error::WrongLength));
+/// assert_eq!(constant_time::verify(b"expected", b"Expected"), Err(rind::Error::NotEqual));
+/// ```
+pub mod constant_time {
+    pub use crate::high::constant_time::verify;
 }
 
 /// Key derivation with HKDF.
@@ -200,39 +229,66 @@ pub mod hmac {
 /// ```
 /// use rind::{aead, hkdf, hmac};
 ///
-/// let prk = hkdf::Salt::new(hkdf::HKDF_SHA256, b"salt").extract(b"input key material");
+/// let prk = hkdf::Salt::new(&hkdf::HKDF_SHA256, b"salt").extract(b"input key material");
 ///
-/// let aead_key = aead::UnboundKey::from(prk.expand(&[b"aead".as_slice()], &aead::AES_256_GCM).unwrap());
-/// let hmac_key = hmac::Key::from(prk.expand(&[b"hmac".as_slice()], hmac::HMAC_SHA256).unwrap());
+/// let aead_key = aead::Key::from(prk.expand(&[b"aead"], &aead::AES_256_GCM));
+/// let hmac_key = hmac::Key::from(prk.expand(&[b"hmac"], &hmac::HMAC_SHA256));
 ///
 /// let info: [&[u8]; 2] = [b"label", b"context"];
 /// let mut bytes = [0u8; 16];
-/// prk.expand(&info, bytes.len()).unwrap().fill(&mut bytes).unwrap();
+/// prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
 /// ```
 pub mod hkdf {
     pub use super::high::hkdf::{Algorithm, HKDF_SHA256, KeyType, Okm, Prk, Salt};
 }
 
+/// Password-based key derivation with PBKDF2.
+///
+/// A [`pbkdf2::Secret`] keys HMAC with a password once, then derives a key
+/// for a salt and iteration count, or checks one derived before. This
+/// example takes the iteration count OWASP suggests for SHA-256, so it is
+/// not run as a test.
+///
+/// ```no_run
+/// use std::num::NonZeroU32;
+/// use rind::pbkdf2;
+///
+/// let iterations = NonZeroU32::new(600_000).unwrap();
+/// let secret = pbkdf2::Secret::new(&pbkdf2::PBKDF2_HMAC_SHA256, b"password");
+///
+/// let mut stored = [0u8; 32];
+/// secret.derive(iterations, b"per-user salt", &mut stored).unwrap();
+///
+/// secret.verify(iterations, b"per-user salt", &stored).unwrap();
+/// ```
+pub mod pbkdf2 {
+    pub use super::high::pbkdf2::{
+        Algorithm, PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512, Secret,
+    };
+
+    /// PBKDF2 algorithms only legacy formats should use.
+    pub mod legacy {
+        pub use crate::high::pbkdf2::PBKDF2_HMAC_SHA1;
+    }
+}
+
 /// Authenticated encryption.
 ///
-/// A key is built from an algorithm constant and key bytes, then bound to a
-/// nonce policy: [`aead::LessSafeKey`] seals with the caller's nonces, which
-/// must never repeat under one key, and [`aead::RandomizedNonceKey`] picks its
-/// own.
+/// An [`aead::Key`] is built from an algorithm constant and key bytes, and
+/// seals with the caller's nonces, which must never repeat under one key. An
+/// [`aead::RandomizedNonceKey`] picks its own.
 ///
 /// ```
 /// use rind::aead::*;
 ///
-/// let key = LessSafeKey::new(UnboundKey::new(&AES_128_GCM, &[0x42; 16]).unwrap());
+/// let key = Key::new(&AES_128_GCM, &[0x42; 16]).unwrap();
 ///
 /// let mut in_out = b"hello".to_vec();
 /// let nonce = || Nonce::assume_unique_for_key([0; 12]);
-/// key.seal_in_place_append_tag(nonce(), Aad::from(b"header"), &mut in_out)
+/// key.seal_in_place_append_tag(nonce(), b"header", &mut in_out)
 ///     .unwrap();
 ///
-/// let plaintext = key
-///     .open_in_place(nonce(), Aad::from(b"header"), &mut in_out)
-///     .unwrap();
+/// let plaintext = key.open_in_place(nonce(), b"header", &mut in_out).unwrap();
 /// assert_eq!(plaintext, b"hello");
 /// ```
 pub mod aead;
@@ -240,9 +296,6 @@ pub mod aead;
 /// Unauthenticated ciphers, for protocols that specify one alongside their own integrity protection.
 ///
 /// Prefer [`aead`] unless a protocol requires one of these.
-///
-/// Unlike aws-lc-rs's `EncryptingKey` and `DecryptingKey` contexts, these are
-/// bare keys: QUIC and DTLS header protection and SRTP need nothing more.
 pub mod cipher;
 
 /// CPU support.

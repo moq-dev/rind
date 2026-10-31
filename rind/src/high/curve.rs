@@ -5,6 +5,7 @@ use crate::Error;
 use crate::high::asn1;
 use crate::mid::p256;
 use crate::mid::p384;
+use crate::mid::p521;
 use crate::mid::rng::RandomSource;
 
 /// A generalisation of elliptic curves for use with ECDSA.
@@ -110,9 +111,9 @@ pub(crate) trait Scalar<C: Curve + ?Sized> {
     fn write_bytes(&self, target: &mut [u8]);
 }
 
-// enough for p384
-pub(crate) const MAX_SCALAR_LEN: usize = 48;
-pub(crate) const MAX_UNCOMPRESSED_PUBLIC_KEY_LEN: usize = 97;
+// enough for p521
+pub(crate) const MAX_SCALAR_LEN: usize = p521::Scalar::BYTES;
+pub(crate) const MAX_UNCOMPRESSED_PUBLIC_KEY_LEN: usize = p521::PublicKey::BYTES;
 
 /// This is the elliptic curve "P-256".
 ///
@@ -290,6 +291,94 @@ impl Scalar<P384> for p384::Scalar {
     }
 }
 
+/// This is the elliptic curve "P-521".
+///
+/// P-521 is also known as "NISTP521", or "secp521r1".
+///
+/// See [SEC1](https://www.secg.org/sec1-v2.pdf) for one definition.
+pub(crate) struct P521;
+
+impl Curve for P521 {
+    type PrivateKey = p521::StaticPrivateKey;
+    type PublicKey = p521::VerifyingKey;
+    type Scalar = p521::Scalar;
+
+    fn oid() -> asn1::ObjectId {
+        asn1::oid::secp521r1.clone()
+    }
+
+    fn generate_random_key(rng: &mut dyn RandomSource) -> Result<p521::StaticPrivateKey, Error> {
+        p521::StaticPrivateKey::generate(rng)
+    }
+}
+
+impl PrivateKey<P521> for p521::StaticPrivateKey {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        Self::from_bytes(bytes)
+    }
+
+    fn encode<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        if let Some(out) = out.get_mut(0..p521::Scalar::BYTES) {
+            out.copy_from_slice(&self.secret_bytes());
+            Ok(out)
+        } else {
+            Err(Error::OutOfRange)
+        }
+    }
+
+    fn public_key_x_scalar(&self) -> p521::Scalar {
+        self.public_key_x_scalar()
+    }
+
+    fn public_key_encode_uncompressed<'a>(&self, out: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        if let Some(out) = out.get_mut(0..p521::PublicKey::BYTES) {
+            out.copy_from_slice(&self.public_key_uncompressed());
+            Ok(out)
+        } else {
+            Err(Error::OutOfRange)
+        }
+    }
+
+    fn raw_ecdsa_sign(&self, k: &Self, e: &p521::Scalar, r: &p521::Scalar) -> p521::Scalar {
+        self.raw_ecdsa_sign(k, e, r)
+    }
+}
+
+impl PublicKey<P521> for p521::VerifyingKey {
+    fn from_x962_uncompressed(bytes: &[u8]) -> Result<Self, Error> {
+        Self::from_x962_uncompressed(bytes)
+    }
+
+    fn raw_ecdsa_verify(
+        &self,
+        r: &p521::Scalar,
+        s: &p521::Scalar,
+        e: &p521::Scalar,
+    ) -> Result<(), Error> {
+        self.raw_ecdsa_verify(r, s, e)
+    }
+}
+
+impl Scalar<P521> for p521::Scalar {
+    const LEN_BYTES: usize = Self::BYTES;
+
+    fn from_bytes_checked(bytes: &[u8]) -> Result<Self, Error> {
+        Self::from_bytes_checked(bytes)
+    }
+
+    fn from_bytes_reduced(bytes: &[u8]) -> Self {
+        Self::from_bytes_reduced(bytes).unwrap()
+    }
+
+    fn is_zero(&self) -> bool {
+        self.is_zero()
+    }
+
+    fn write_bytes(&self, target: &mut [u8]) {
+        target.copy_from_slice(&self.as_bytes());
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -308,6 +397,12 @@ mod tests {
         let mut out = [0; 47];
         assert!(key.encode(&mut out).is_err());
         let mut out = [0; 96];
+        assert!(key.public_key_encode_uncompressed(&mut out).is_err());
+
+        let key = p521::StaticPrivateKey::new_random().unwrap();
+        let mut out = [0; 65];
+        assert!(key.encode(&mut out).is_err());
+        let mut out = [0; 132];
         assert!(key.public_key_encode_uncompressed(&mut out).is_err());
     }
 
@@ -355,6 +450,24 @@ mod tests {
                             point.extend_from_slice(&self.px);
                             point.extend_from_slice(&self.py);
                             let res = <P384 as Curve>::PublicKey::from_x962_uncompressed(&point);
+
+                            match value.str().chars().next() {
+                                Some('F') => {
+                                    res.unwrap_err();
+                                }
+                                Some('P') => {
+                                    res.unwrap();
+                                }
+                                _ => {}
+                            };
+                        }
+                        "P-521" => {
+                            pad(&mut self.px, 66);
+                            pad(&mut self.py, 66);
+                            let mut point = vec![0x04];
+                            point.extend_from_slice(&self.px);
+                            point.extend_from_slice(&self.py);
+                            let res = <P521 as Curve>::PublicKey::from_x962_uncompressed(&point);
 
                             match value.str().chars().next() {
                                 Some('F') => {
@@ -451,6 +564,18 @@ mod tests {
                 "01",
             ),
         );
+
+        // p is 2^521 - 1, so any coordinate plus p fits 66 bytes: the
+        // generator serves.
+        let g = (
+            "00c6858e06b70404e9cd9e3ecb662395b4429c648139053fb521f828af606b4d3dbaa14b5e77efe75928fe1dc127a2ffa8de3348b3c1856a429bf97e7e31c2e5bd66",
+            "011839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650",
+        );
+        check::<P521>(
+            "01ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            &[g],
+            g,
+        );
     }
 
     #[test]
@@ -465,7 +590,9 @@ mod tests {
 
         impl CavpSink for State {
             fn on_meta(&mut self, meta: &str) {
-                if meta.starts_with("P-") {
+                // Curve sections, such as "P-521" or "K-163", not their
+                // subsections.
+                if meta.as_bytes().get(1) == Some(&b'-') {
                     self.curve = meta.to_string();
                 }
             }
@@ -499,6 +626,18 @@ mod tests {
 
                                 let res = <P384 as Curve>::PrivateKey::from_bytes(&self.d).unwrap();
                                 let mut buffer = [0u8; 97];
+                                let got = res.public_key_encode_uncompressed(&mut buffer).unwrap();
+                                assert_eq!(point, got);
+                            }
+                            "P-521" => {
+                                pad(&mut self.px, 66);
+                                pad(&mut self.py, 66);
+                                let mut point = vec![0x04];
+                                point.extend_from_slice(&self.px);
+                                point.extend_from_slice(&self.py);
+
+                                let res = <P521 as Curve>::PrivateKey::from_bytes(&self.d).unwrap();
+                                let mut buffer = [0u8; 133];
                                 let got = res.public_key_encode_uncompressed(&mut buffer).unwrap();
                                 assert_eq!(point, got);
                             }

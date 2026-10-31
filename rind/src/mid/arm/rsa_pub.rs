@@ -102,7 +102,8 @@ const MAX_PUBLIC_MODULUS_BITS: usize = 8192;
 pub(crate) const MAX_PUBLIC_MODULUS_WORDS: usize = MAX_PUBLIC_MODULUS_BITS / 64;
 pub(crate) const MAX_PUBLIC_MODULUS_BYTES: usize = MAX_PUBLIC_MODULUS_BITS / 8;
 
-const MIN_PUBLIC_MODULUS_BITS: usize = 2048;
+// Legacy verification's floor; anything smaller is refused outright.
+const MIN_PUBLIC_MODULUS_BITS: usize = 1024;
 
 type RsaPosInt = low::PosInt<MAX_PUBLIC_MODULUS_WORDS>;
 
@@ -115,7 +116,7 @@ mod tests {
     /// top word of one.
     #[test]
     fn montgomery_r2_matches_hacl() {
-        for bits in [2048usize, 2049, 3072, 4095, 8192] {
+        for bits in [1024usize, 1025, 2048, 2049, 3072, 4095, 8192] {
             let len = bits.div_ceil(64);
             let mut low = [0u64; MAX_PUBLIC_MODULUS_WORDS];
             low[0] = 1;

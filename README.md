@@ -55,9 +55,10 @@ but there is also a public API for general-purpose use.
   AES, GHASH, SHA1, and SHA256 run [aws-lc]'s assembly for it instead.
   Without it, `rind::cpu::has_aes_hardware()` is false, and rind-rustls and
   rind-dimpl prefer ChaCha20-Poly1305, which is faster there: ChaCha20 runs
-  aws-lc's assembly, and so does Poly1305 where the CPU has NEON. SHA-384 and
-  SHA-512 always run aws-lc's assembly, with NEON where the CPU has it, and
-  with NEON, X25519's shared secret runs [BoringSSL]'s assembly.
+  aws-lc's assembly, and so does Poly1305 where the CPU has NEON. SHA-384,
+  SHA-512, and SHA-512/256 always run aws-lc's assembly, with NEON where the
+  CPU has it, and with NEON, X25519's shared secret runs [BoringSSL]'s
+  assembly.
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.
@@ -105,13 +106,16 @@ or a [quest](quest/README.md) covers it. The table describes
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | Graviola ⚡ | Graviola ⚡ | [aws-lc] ChaCha20 (copied) ⚡; NEON: [aws-lc] Poly1305 (copied) ⚡; otherwise: [HACL\*] Poly1305 ✓; Graviola AEAD; rind HChaCha20 over [HACL\*] rounds ✓ (copied) |
 | SHA-1 (legacy only) | rind | rind | crypto extension: [aws-lc] (copied); otherwise: rind |
 | SHA-256 | Graviola ⚡ | Graviola ⚡ | crypto extension: [aws-lc] (copied) ⚡; otherwise: Graviola ⚡ |
-| SHA-384, SHA-512 | Intel: [aws-lc] AVX (copied) ✓; otherwise: [aws-lc] scalar (copied) ⚡ | SHA-512 instructions: [aws-lc] (copied) ✓; otherwise: [aws-lc] scalar (copied) ✓ | NEON: [aws-lc] (copied) ⚡; otherwise: [aws-lc] scalar (copied) ⚡ |
+| SHA-384, SHA-512, SHA-512/256 | Intel: [aws-lc] AVX (copied) ✓; otherwise: [aws-lc] scalar (copied) ⚡ | SHA-512 instructions: [aws-lc] (copied) ✓; otherwise: [aws-lc] scalar (copied) ✓ | NEON: [aws-lc] (copied) ⚡; otherwise: [aws-lc] scalar (copied) ⚡ |
 | HMAC | Graviola ⚡ | Graviola ⚡ | Graviola ⚡ |
 | HKDF | rind ⚡ | rind ⚡ | rind ⚡ |
+| PBKDF2 | rind; SHA as in its rows | rind; SHA as in its rows | rind; SHA as in its rows |
+| Constant-time comparison | Graviola | Graviola | rind |
 | X25519 | [s2n-bignum] ✓ | [s2n-bignum] ✓ | NEON: [BoringSSL] shared secret (copied) ⚡, [curve25519-dalek] public key ⚡; otherwise: [curve25519-dalek] ⚡ |
 | Ed25519 | [s2n-bignum] point and scalar arithmetic ✓; Graviola EdDSA ⚡; SHA-512 as in its row | [s2n-bignum] point and scalar arithmetic ✓; Graviola EdDSA ⚡; [aws-lc] SHA-512 ✓ | [curve25519-dalek] point and scalar arithmetic ⚡; rind EdDSA ⚡; SHA-512 as in its row |
 | P-256 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and secret scalar multiplication ✓; Graviola verification's scalar multiplication ⚡ and ECDSA ⚡ | [s2n-bignum] field and point arithmetic, and secret scalar multiplication ✓; Graviola verification's scalar multiplication ⚡ and ECDSA ⚡ | [HACL\*] ✓; Graviola ECDSA nonce |
 | P-384 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [fiat-crypto] field and scalar arithmetic ✓; scalar multiplication over it ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator, and Graviola other scalar multiplication; Graviola ECDSA |
+| P-521 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡, and verification's other scalar multiplication ⚡; Graviola ECDSA | [fiat-crypto] field arithmetic ✓; rind arithmetic mod the group order ⚡; scalar multiplication over them ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator; Graviola ECDSA |
 | ML-KEM-768 | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 and AVX-512 sampling ⚡ | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 ⚡ | [libcrux-ml-kem] ✓, except its SHA-3 |
 | RSA PKCS#1 v1.5 and PSS signatures, key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
 
@@ -176,7 +180,9 @@ the exponent bits from the table of base powers in a side-channel-free way.
 The private operation is always followed by the public operation to verify the result
 (and the result compared in a side-channel-free way).
 
-Only RSA signing and verification are provided.  Our policy on RSA encryption is:
+Only RSA signing and verification are provided.  Signing keys have 2048- to
+8192-bit moduli; verification also takes 1024-bit moduli and SHA-1, but only
+under the `_FOR_LEGACY_USE_ONLY` algorithms.  Our policy on RSA encryption is:
 "These are not made. They should never be made. We will not make them. We will not help make them."
 
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
@@ -195,6 +201,16 @@ Variable point multiplication uses a 5-bit exponent window with Booth encoding.
 P384 base and variable point multiplication both use a 5-bit exponent window with Booth encoding.
 (This means we're leaving a some P384 base point performance on the table, in exchange for code space.
 P384 performance seems to be less important than P256.)
+
+P521's prime is a Mersenne prime, so its field arithmetic is direct rather
+than Montgomery's. Base point multiplication uses a comb of 27 tables of 16
+affine points (a 62KB constant table) over 5-bit Booth windows, as aws-lc
+does. Variable point multiplication is s2n-bignum's `p521_jscalarmul`, for
+ECDSA verification's public scalar too, except on aarch64, where a 5-bit Booth
+window over the point's cached multiples measured faster for that one.
+s2n-bignum's P521 point addition requires points that are not at infinity,
+equal, or opposite, so the comb and the window keep to that, and select or
+branch around the cases they reach.
 
 Both use the same exponent representations for "public" and "secret" exponents --
 however the table selection for "public" exponents is specialized at compile-time.
@@ -236,12 +252,12 @@ where the CPU has the crypto extension, and the pure Rust SHA1 and SHA256
 otherwise: libcrux has no SHA1, and the pure Rust SHA256 is faster than
 libcrux's.
 
-SHA384/SHA512 run aws-lc's assembly everywhere. On x86_64, its AVX routine on
-Intel and its scalar routine on other CPUs, as aws-lc picks: the AVX routine is
-1.1x faster than the scalar one on Intel, and 1.5x slower on AMD's Zen. On
-aarch64, its routine for the SHA-512 instructions where the CPU has them, and
-its scalar routine otherwise; on 32-bit `arm`, its NEON routine where the CPU
-has NEON, and its scalar routine otherwise.
+SHA384, SHA512, and SHA512/256 run aws-lc's assembly everywhere. On x86_64,
+its AVX routine on Intel and its scalar routine on other CPUs, as aws-lc picks:
+the AVX routine is 1.1x faster than the scalar one on Intel, and 1.5x slower on
+AMD's Zen. On aarch64, its routine for the SHA-512 instructions where the CPU
+has them, and its scalar routine otherwise; on 32-bit `arm`, its NEON routine
+where the CPU has NEON, and its scalar routine otherwise.
 
 On x86_64 and aarch64, AES and GHASH always use the CPU's AES and carry-less multiply
 instructions (there are no fallbacks).
@@ -279,16 +295,21 @@ takes an algorithm constant, such as `aead::AES_128_GCM` or
 `signature::ECDSA_P256_SHA256_ASN1`, and has one key type per role. Where
 rind deviates, the item's docs say why.
 
-- `aead`: AES-GCM and ChaCha20-Poly1305 keys with caller nonces, and an
-  XChaCha20-Poly1305 key that picks random nonces.
-- `cipher`: bare AES, AES-CTR, and ChaCha20, for header protection and SRTP.
-- `agreement`: ephemeral X25519 and ECDH on P-256 and P-384.
+- `aead`: AES-GCM and ChaCha20-Poly1305 keys with caller nonces, an
+  XChaCha20-Poly1305 key that picks random nonces, and QUIC header-protection
+  keys.
+- `cipher`: bare AES, AES-CTR, and ChaCha20, for DTLS record number
+  protection and SRTP.
+- `agreement`: ephemeral X25519 and ECDH on P-256, P-384, and P-521.
 - `kem`: ML-KEM-768.
-- `signature`: ECDSA on P-256 and P-384, RSA PKCS#1 v1.5 and PSS, and
-  Ed25519 key pairs and verification.
-- `digest`: SHA-1 (legacy only), SHA-256, SHA-384, and SHA-512.
+- `signature`: ECDSA on P-256, P-384, and P-521, RSA PKCS#1 v1.5 and PSS, and
+  Ed25519 key pairs and verification, plus RSA keys given as their
+  components, and SHA-1 and 1024-bit RSA for verifying old signatures.
+- `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, and SHA-512/256.
 - `hmac`: HMAC over those digests, keyed once and reused.
-- `hkdf`: HKDF-SHA256, whose output becomes an `aead` or `hmac` key.
+- `hkdf`: HKDF-SHA256, whose output becomes an `aead`, QUIC header-protection, or `hmac` key.
+- `pbkdf2`: PBKDF2 over those HMACs, deriving or verifying a key from a password.
+- `constant_time`: comparing secrets such as MACs without a timing leak.
 - `rand`: random bytes from the system.
 - `cpu`: the startup check for required CPU features, and whether AES runs
   in hardware.

@@ -11,18 +11,18 @@ use crate::low::zeroise;
 use crate::{Error, aead};
 
 /// An HKDF algorithm, chosen by one of this module's constants.
-#[derive(Clone, Copy, Debug)]
-pub struct Algorithm(hmac::Algorithm);
+#[derive(Debug)]
+pub struct Algorithm(&'static hmac::Algorithm);
 
 /// HKDF-SHA256.
-pub static HKDF_SHA256: Algorithm = Algorithm(hmac::HMAC_SHA256);
+pub static HKDF_SHA256: Algorithm = Algorithm(&hmac::HMAC_SHA256);
 
 /// A salt, keyed once and reused for every secret it extracts from.
 pub struct Salt(hmac::Key);
 
 impl Salt {
     /// Keys `algorithm` with `value`; an empty `value` is RFC 5869's absent salt.
-    pub fn new(algorithm: Algorithm, value: &[u8]) -> Self {
+    pub fn new(algorithm: &'static Algorithm, value: &[u8]) -> Self {
         Self(hmac::Key::new(algorithm.0, value))
     }
 
@@ -39,30 +39,17 @@ impl Salt {
 pub struct Prk(hmac::Key);
 
 impl Prk {
-    /// Derives `len` bytes of key material for the concatenation of `info` (HKDF-Expand).
-    ///
-    /// Fails with [`Error::WrongLength`] if `len` is longer than 255 hash outputs.
-    pub fn expand<'a, L: KeyType>(
-        &'a self,
-        info: &'a [&'a [u8]],
-        len: L,
-    ) -> Result<Okm<'a, L>, Error> {
-        if len.len() > self.max_len() {
-            return Err(Error::WrongLength);
-        }
-        Ok(Okm {
+    /// Derives key material for the concatenation of `info` (HKDF-Expand), as long as `len` says.
+    pub fn expand<'a, L: KeyType>(&'a self, info: &'a [&'a [u8]], len: L) -> Okm<'a, L> {
+        Okm {
             prk: self,
             info,
             len,
-        })
+        }
     }
 
-    // HKDF-Expand's one-byte block counter limits it to 255 blocks.
-    fn max_len(&self) -> usize {
-        255 * self.0.algorithm().tag_len()
-    }
-
-    // Fills `out`, which the caller has checked is at most `max_len` bytes.
+    // Fills `out`, which must be at most 255 hash outputs: HKDF-Expand's
+    // one-byte block counter limits it to 255 blocks.
     fn expand_into(&self, info: &[&[u8]], out: &mut [u8]) {
         fn expand<H: Hash>(hmac: &Hmac<H>, info: &[&[u8]], out: &mut [u8]) {
             let mut block = H::zeroed_output();
@@ -93,60 +80,79 @@ impl Prk {
     }
 }
 
-/// A length of HKDF output: a plain `usize`, or the algorithm of the key it becomes.
-#[allow(clippy::len_without_is_empty)]
-pub trait KeyType {
-    /// The length, in bytes.
-    fn len(&self) -> usize;
+mod sealed {
+    // Only rind's own lengths, so a key's always fits `Okm::into_key`'s buffer.
+    #[allow(clippy::len_without_is_empty)]
+    pub trait Len {
+        fn len(&self) -> usize;
+    }
 }
 
+/// A length of HKDF output: a plain `usize`, or the algorithm of the key it becomes.
+pub trait KeyType: sealed::Len {}
+
 /// Raw key material of this many bytes, for [`Okm::fill`].
-///
-/// This is rind's addition: aws-lc-rs callers write a newtype for it.
-impl KeyType for usize {
+impl KeyType for usize {}
+
+impl sealed::Len for usize {
     fn len(&self) -> usize {
         *self
     }
 }
 
 /// A key of the algorithm's [`aead::Algorithm::key_len`].
-impl KeyType for &'static aead::Algorithm {
+impl KeyType for &'static aead::Algorithm {}
+
+impl sealed::Len for &'static aead::Algorithm {
+    fn len(&self) -> usize {
+        self.key_len()
+    }
+}
+
+/// A key of the algorithm's [`aead::quic::Algorithm::key_len`].
+impl KeyType for &'static aead::quic::Algorithm {}
+
+impl sealed::Len for &'static aead::quic::Algorithm {
     fn len(&self) -> usize {
         self.key_len()
     }
 }
 
 /// A key of the algorithm's [`hmac::Algorithm::tag_len`].
-impl KeyType for hmac::Algorithm {
+impl KeyType for &'static hmac::Algorithm {}
+
+impl sealed::Len for &'static hmac::Algorithm {
     fn len(&self) -> usize {
         self.tag_len()
     }
 }
 
-/// Key material from [`Prk::expand`], sized by `L`: fill a buffer with it, or convert it into a key.
+/// Key material from [`Prk::expand`], sized by `L`: fill a buffer for a `usize` length, or convert it into the key an algorithm names.
 pub struct Okm<'a, L: KeyType> {
     prk: &'a Prk,
     info: &'a [&'a [u8]],
     len: L,
 }
 
-impl<L: KeyType> Okm<'_, L> {
+impl Okm<'_, usize> {
     /// Writes the key material into `out`.
     ///
     /// Fails with [`Error::WrongLength`], leaving `out` unchanged, unless
-    /// `out` is the length [`Prk::expand`] was given.
+    /// `out` is the length [`Prk::expand`] was given and at most 255 hash
+    /// outputs.
     pub fn fill(self, out: &mut [u8]) -> Result<(), Error> {
-        // Bounded again: a `KeyType` may answer differently than it did in `expand`.
-        if out.len() != self.len.len() || out.len() > self.prk.max_len() {
+        if out.len() != self.len || out.len() > 255 * self.prk.0.algorithm().tag_len() {
             return Err(Error::WrongLength);
         }
         self.prk.expand_into(self.info, out);
         Ok(())
     }
+}
 
+impl<L: KeyType> Okm<'_, L> {
     // Expands into a stack buffer for `key` to copy, then wipes it, since the
-    // key it becomes owns the secret. Only rind's own `KeyType`s reach here,
-    // whose lengths fit the buffer and the 255-block limit.
+    // key it becomes owns the secret. Every key length fits the buffer and
+    // the 255-block limit.
     fn into_key<K>(self, key: impl FnOnce(&L, &[u8]) -> K) -> K {
         let mut buf = [0u8; MAX_OUTPUT_LEN];
         let bytes = &mut buf[..self.len.len()];
@@ -157,16 +163,23 @@ impl<L: KeyType> Okm<'_, L> {
     }
 }
 
-impl From<Okm<'_, &'static aead::Algorithm>> for aead::UnboundKey {
+impl From<Okm<'_, &'static aead::Algorithm>> for aead::Key {
     fn from(okm: Okm<'_, &'static aead::Algorithm>) -> Self {
         okm.into_key(|algorithm, bytes| Self::new(algorithm, bytes))
             .expect("HKDF output is the algorithm's key length")
     }
 }
 
-impl From<Okm<'_, hmac::Algorithm>> for hmac::Key {
-    fn from(okm: Okm<'_, hmac::Algorithm>) -> Self {
-        okm.into_key(|algorithm, bytes| Self::new(*algorithm, bytes))
+impl From<Okm<'_, &'static aead::quic::Algorithm>> for aead::quic::HeaderProtectionKey {
+    fn from(okm: Okm<'_, &'static aead::quic::Algorithm>) -> Self {
+        okm.into_key(|algorithm, bytes| Self::new(algorithm, bytes))
+            .expect("HKDF output is the algorithm's key length")
+    }
+}
+
+impl From<Okm<'_, &'static hmac::Algorithm>> for hmac::Key {
+    fn from(okm: Okm<'_, &'static hmac::Algorithm>) -> Self {
+        okm.into_key(|algorithm, bytes| Self::new(algorithm, bytes))
     }
 }
 
@@ -174,7 +187,7 @@ impl From<Okm<'_, hmac::Algorithm>> for hmac::Key {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::aead::{AES_128_GCM, AES_256_GCM, Aad, CHACHA20_POLY1305, LessSafeKey, Nonce};
+    use crate::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Nonce, quic};
 
     #[test]
     fn rfc5869() {
@@ -214,10 +227,10 @@ mod tests {
         ];
 
         for (ikm, salt, info, prk, okm) in cases {
-            let got = Salt::new(HKDF_SHA256, &hex::decode(salt).unwrap())
+            let got = Salt::new(&HKDF_SHA256, &hex::decode(salt).unwrap())
                 .extract(&hex::decode(ikm).unwrap());
             // HMAC of the empty message under the stored key identifies the PRK.
-            let wanted = hmac::Key::new(hmac::HMAC_SHA256, &hex::decode(prk).unwrap());
+            let wanted = hmac::Key::new(&hmac::HMAC_SHA256, &hex::decode(prk).unwrap());
             assert_eq!(
                 hmac::sign(&got.0, b"").as_ref(),
                 hmac::sign(&wanted, b"").as_ref()
@@ -225,87 +238,77 @@ mod tests {
 
             let info = hex::decode(info).unwrap();
             let mut out = vec![0u8; okm.len() / 2];
-            got.expand(&[&info], out.len())
-                .unwrap()
-                .fill(&mut out)
-                .unwrap();
+            got.expand(&[&info], out.len()).fill(&mut out).unwrap();
             assert_eq!(hex::encode(out), okm);
         }
     }
 
     #[test]
     fn lengths() {
-        let prk = Salt::new(HKDF_SHA256, b"salt").extract(b"secret");
+        let prk = Salt::new(&HKDF_SHA256, b"salt").extract(b"secret");
         let max = 255 * 32;
-        assert_eq!(prk.expand(&[], max + 1).err(), Some(Error::WrongLength));
 
         let mut out = vec![0u8; max];
-        prk.expand(&[], max).unwrap().fill(&mut out).unwrap();
+        prk.expand(&[], max).fill(&mut out).unwrap();
+        let mut long = vec![0u8; max + 1];
+        assert_eq!(
+            prk.expand(&[], max + 1).fill(&mut long),
+            Err(Error::WrongLength)
+        );
+        assert!(long.iter().all(|b| *b == 0));
         for len in [0, max - 1, max + 1] {
             let mut wrong = vec![0u8; len];
-            let okm = prk.expand(&[], max).unwrap();
-            assert_eq!(okm.fill(&mut wrong), Err(Error::WrongLength));
+            assert_eq!(
+                prk.expand(&[], max).fill(&mut wrong),
+                Err(Error::WrongLength)
+            );
             assert!(wrong.iter().all(|b| *b == 0));
         }
-
-        // A `KeyType` that grows after `expand` checked it is refused by
-        // `fill`, rather than reaching past the 255-block limit.
-        struct Growing(core::cell::Cell<usize>);
-
-        impl KeyType for Growing {
-            fn len(&self) -> usize {
-                self.0.replace(10_000)
-            }
-        }
-
-        let prk = Salt::new(HKDF_SHA256, b"salt").extract(b"secret");
-        let okm = prk.expand(&[], Growing(core::cell::Cell::new(32))).unwrap();
-        let mut out = vec![0u8; 10_000];
-        assert_eq!(okm.fill(&mut out), Err(Error::WrongLength));
     }
 
     #[test]
     fn keys_match_filled_bytes() {
-        let prk = Salt::new(HKDF_SHA256, b"salt").extract(b"secret");
+        let prk = Salt::new(&HKDF_SHA256, b"salt").extract(b"secret");
         let info: [&[u8]; 2] = [b"label", b"context"];
 
         for algorithm in [&AES_128_GCM, &AES_256_GCM, &CHACHA20_POLY1305] {
             let mut bytes = vec![0u8; algorithm.key_len()];
-            prk.expand(&info, bytes.len())
+            prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
+            let seal = |key: aead::Key| {
+                key.seal_in_place_separate_tag(
+                    Nonce::assume_unique_for_key([0; 12]),
+                    &[],
+                    &mut [0u8; 16],
+                )
                 .unwrap()
-                .fill(&mut bytes)
-                .unwrap();
-            let seal = |key: aead::UnboundKey| {
-                LessSafeKey::new(key)
-                    .seal_in_place_separate_tag(
-                        Nonce::assume_unique_for_key([0; 12]),
-                        Aad::empty(),
-                        &mut [0u8; 16],
-                    )
-                    .unwrap()
-                    .as_ref()
-                    .to_vec()
             };
             assert_eq!(
-                seal(aead::UnboundKey::from(
-                    prk.expand(&info, algorithm).unwrap()
-                )),
-                seal(aead::UnboundKey::new(algorithm, &bytes).unwrap()),
+                seal(aead::Key::from(prk.expand(&info, algorithm))).as_ref(),
+                seal(aead::Key::new(algorithm, &bytes).unwrap()).as_ref(),
+            );
+        }
+
+        for algorithm in [&quic::AES_128, &quic::AES_256, &quic::CHACHA20] {
+            let mut bytes = vec![0u8; algorithm.key_len()];
+            prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
+            let key = quic::HeaderProtectionKey::from(prk.expand(&info, algorithm));
+            assert_eq!(
+                key.mask(&[7; 16]),
+                quic::HeaderProtectionKey::new(algorithm, &bytes)
+                    .unwrap()
+                    .mask(&[7; 16]),
             );
         }
 
         for algorithm in [
-            hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-            hmac::HMAC_SHA256,
-            hmac::HMAC_SHA384,
-            hmac::HMAC_SHA512,
+            &hmac::HMAC_SHA1,
+            &hmac::HMAC_SHA256,
+            &hmac::HMAC_SHA384,
+            &hmac::HMAC_SHA512,
         ] {
             let mut bytes = vec![0u8; algorithm.tag_len()];
-            prk.expand(&info, bytes.len())
-                .unwrap()
-                .fill(&mut bytes)
-                .unwrap();
-            let key = hmac::Key::from(prk.expand(&info, algorithm).unwrap());
+            prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
+            let key = hmac::Key::from(prk.expand(&info, algorithm));
             assert_eq!(key.algorithm().tag_len(), algorithm.tag_len());
             assert_eq!(
                 hmac::sign(&key, b"message").as_ref(),
@@ -321,23 +324,14 @@ mod tests {
         // `Okm` becomes.
         let info: [&[u8]; 1] = [b"info"];
         let derive = |ikm: &[u8]| {
-            let prk = Salt::new(HKDF_SHA256, b"salt").extract(ikm);
+            let prk = Salt::new(&HKDF_SHA256, b"salt").extract(ikm);
             let mut bytes = [0u8; 100];
-            prk.expand(&info, bytes.len())
-                .unwrap()
-                .fill(&mut bytes)
-                .unwrap();
-            let aead_key = LessSafeKey::new(aead::UnboundKey::from(
-                prk.expand(&info, &AES_256_GCM).unwrap(),
-            ));
+            prk.expand(&info, bytes.len()).fill(&mut bytes).unwrap();
+            let aead_key = aead::Key::from(prk.expand(&info, &AES_256_GCM));
             let aead_tag = aead_key
-                .seal_in_place_separate_tag(
-                    Nonce::assume_unique_for_key([0; 12]),
-                    Aad::empty(),
-                    &mut [],
-                )
+                .seal_in_place_separate_tag(Nonce::assume_unique_for_key([0; 12]), &[], &mut [])
                 .unwrap();
-            let hmac_key = hmac::Key::from(prk.expand(&info, hmac::HMAC_SHA256).unwrap());
+            let hmac_key = hmac::Key::from(prk.expand(&info, &hmac::HMAC_SHA256));
             let hmac_tag = hmac::sign(&hmac_key, b"message");
             (
                 bytes,

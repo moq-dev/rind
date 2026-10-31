@@ -18,15 +18,15 @@ use jsonwebtoken::errors::{Error, ErrorKind, Result};
 use jsonwebtoken::jwk::{EllipticCurve, ThumbprintHash};
 use jsonwebtoken::signature::{self, Signer, Verifier};
 use jsonwebtoken::{Algorithm, DecodingKey, DecodingKeyKind, EncodingKey};
-use pkcs1::der::asn1::UintRef;
-use pkcs1::der::{Decode, Encode};
+use pkcs1::der::Decode;
 use rind::signature::{
     ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA256_FIXED_SIGNING, ECDSA_P384_SHA384_FIXED,
     ECDSA_P384_SHA384_FIXED_SIGNING, ED25519, EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair,
     KeyPair as _, ParsedPublicKey, RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_2048_8192_SHA384,
     RSA_PKCS1_2048_8192_SHA512, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512,
     RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384, RSA_PSS_2048_8192_SHA512, RSA_PSS_SHA256,
-    RSA_PSS_SHA384, RSA_PSS_SHA512, RsaKeyPair, RsaSignatureEncoding, VerificationAlgorithm,
+    RSA_PSS_SHA384, RSA_PSS_SHA512, RsaKeyPair, RsaParameters, RsaPublicKeyComponents,
+    RsaSignatureEncoding, VerificationAlgorithm,
 };
 use rind::{digest, hmac};
 
@@ -87,9 +87,9 @@ fn new_signer(algorithm: &Algorithm, key: &EncodingKey) -> Result<Box<dyn JwtSig
 
     Ok(match algorithm {
         // HMAC keeps the keyed state rather than a copy of the secret.
-        Algorithm::HS256 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA256, der)),
-        Algorithm::HS384 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA384, der)),
-        Algorithm::HS512 => signer(algorithm, hmac::Key::new(hmac::HMAC_SHA512, der)),
+        Algorithm::HS256 => signer(algorithm, hmac::Key::new(&hmac::HMAC_SHA256, der)),
+        Algorithm::HS384 => signer(algorithm, hmac::Key::new(&hmac::HMAC_SHA384, der)),
+        Algorithm::HS512 => signer(algorithm, hmac::Key::new(&hmac::HMAC_SHA512, der)),
         Algorithm::ES256 => ecdsa(&ECDSA_P256_SHA256_FIXED_SIGNING)?,
         Algorithm::ES384 => ecdsa(&ECDSA_P384_SHA384_FIXED_SIGNING)?,
         Algorithm::EdDSA => signer(
@@ -127,18 +127,14 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
             ErrorKind::InvalidEcdsaKey,
         )
     };
-    let rsa = |verification: &'static dyn VerificationAlgorithm| -> Result<Box<dyn JwtVerifier>> {
-        let der = match key.kind() {
-            DecodingKeyKind::SecretOrDer(der) => der.to_vec(),
-            DecodingKeyKind::RsaModulusExponent { n, e } => pkcs1::RsaPublicKey {
-                modulus: UintRef::new(n).map_err(invalid_rsa)?,
-                public_exponent: UintRef::new(e).map_err(invalid_rsa)?,
+    let rsa = |verification: &'static RsaParameters| -> Result<Box<dyn JwtVerifier>> {
+        let key = match key.kind() {
+            DecodingKeyKind::SecretOrDer(der) => ParsedPublicKey::new(verification, der),
+            DecodingKeyKind::RsaModulusExponent { n, e } => {
+                RsaPublicKeyComponents { n, e }.to_parsed_public_key(verification)
             }
-            .to_der()
-            .map_err(invalid_rsa)?,
         };
-        let key = ParsedPublicKey::new(verification, der).map_err(invalid_rsa)?;
-        Ok(verifier(algorithm, key))
+        Ok(verifier(algorithm, key.map_err(invalid_rsa)?))
     };
 
     let hmac = |hmac_algorithm| -> Result<Box<dyn JwtVerifier>> {
@@ -147,9 +143,9 @@ fn new_verifier(algorithm: &Algorithm, key: &DecodingKey) -> Result<Box<dyn JwtV
     };
 
     Ok(match algorithm {
-        Algorithm::HS256 => hmac(hmac::HMAC_SHA256)?,
-        Algorithm::HS384 => hmac(hmac::HMAC_SHA384)?,
-        Algorithm::HS512 => hmac(hmac::HMAC_SHA512)?,
+        Algorithm::HS256 => hmac(&hmac::HMAC_SHA256)?,
+        Algorithm::HS384 => hmac(&hmac::HMAC_SHA384)?,
+        Algorithm::HS512 => hmac(&hmac::HMAC_SHA512)?,
         Algorithm::ES256 => ecdsa(&ECDSA_P256_SHA256_FIXED)?,
         Algorithm::ES384 => ecdsa(&ECDSA_P384_SHA384_FIXED)?,
         Algorithm::EdDSA => parse(

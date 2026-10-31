@@ -49,7 +49,7 @@ impl CryptoProvider for Provider {
     fn hmac(&self, algorithm: DigestAlgorithm, secret: &[u8]) -> Result<Box<dyn HmacContext>> {
         match algorithm {
             DigestAlgorithm::Sha256 => Ok(Box::new(Context::new(hmac::Context::with_key(
-                &hmac::Key::new(hmac::HMAC_SHA256, secret),
+                &hmac::Key::new(&hmac::HMAC_SHA256, secret),
             )))),
             other => Err(unsupported(other)),
         }

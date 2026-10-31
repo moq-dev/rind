@@ -67,6 +67,10 @@ fn ecdsa() {
             &ECDSA_P384_SHA384_ASN1_SIGNING,
             &include_bytes!("../src/high/ecdsa/secp384r1.pkcs8.der")[..],
         ),
+        (
+            &ECDSA_P521_SHA512_ASN1_SIGNING,
+            &include_bytes!("../src/high/ecdsa/secp521r1.pkcs8.der")[..],
+        ),
     ] {
         check_zeroed_on_drop(Box::pin(
             EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap(),
@@ -86,8 +90,8 @@ fn ed25519() {
 #[test]
 fn ecdh() {
     use rind::agreement::*;
-    for algorithm in [&X25519, &ECDH_P256, &ECDH_P384] {
-        let key = EphemeralPrivateKey::generate(algorithm).unwrap();
+    for algorithm in [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521] {
+        let key = PrivateKey::generate(algorithm).unwrap();
         check_zeroed_on_drop(Box::pin(key));
     }
 }
@@ -102,7 +106,7 @@ fn mlkem768() {
 fn hkdf() {
     use rind::hkdf::*;
 
-    let salt = Salt::new(HKDF_SHA256, b"salt");
+    let salt = Salt::new(&HKDF_SHA256, b"salt");
     check_zeroed_on_drop(Box::pin(salt.extract(b"ikm")));
     check_zeroed_on_drop(Box::pin(salt));
 }
@@ -111,12 +115,7 @@ fn hkdf() {
 fn hmac() {
     use rind::hmac::*;
 
-    for algorithm in [
-        HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-        HMAC_SHA256,
-        HMAC_SHA384,
-        HMAC_SHA512,
-    ] {
+    for algorithm in [&legacy::HMAC_SHA1, &HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512] {
         let key = Key::new(algorithm, &[0xffu8; 32]);
         // A partial block leaves message bytes buffered beside the keyed states.
         let mut ctx = Context::with_key(&key);
@@ -127,16 +126,34 @@ fn hmac() {
 }
 
 #[test]
+fn pbkdf2() {
+    use rind::pbkdf2::*;
+
+    for algorithm in [
+        &legacy::PBKDF2_HMAC_SHA1,
+        &PBKDF2_HMAC_SHA256,
+        &PBKDF2_HMAC_SHA384,
+        &PBKDF2_HMAC_SHA512,
+    ] {
+        check_zeroed_on_drop(Box::pin(Secret::new(algorithm, b"password")));
+    }
+}
+
+#[test]
 fn aead() {
-    use rind::aead::{
-        AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, LessSafeKey, RandomizedNonceKey, UnboundKey,
-    };
+    use rind::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, RandomizedNonceKey};
 
     for algorithm in [&AES_128_GCM, &AES_256_GCM, &CHACHA20_POLY1305] {
-        let key = UnboundKey::new(algorithm, &[0xffu8; 32][..algorithm.key_len()]).unwrap();
-        check_zeroed_on_drop(Box::pin(LessSafeKey::new(key)));
+        let key = Key::new(algorithm, &[0xffu8; 32][..algorithm.key_len()]).unwrap();
+        check_zeroed_on_drop(Box::pin(key));
     }
     check_zeroed_on_drop(Box::pin(RandomizedNonceKey::new(&[0xffu8; 32])));
+
+    use rind::aead::quic::{AES_128, AES_256, CHACHA20, HeaderProtectionKey};
+    for algorithm in [&AES_128, &AES_256, &CHACHA20] {
+        let key = &[0xffu8; 32][..algorithm.key_len()];
+        check_zeroed_on_drop(Box::pin(HeaderProtectionKey::new(algorithm, key).unwrap()));
+    }
 }
 
 #[test]

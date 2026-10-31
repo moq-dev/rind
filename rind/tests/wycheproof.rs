@@ -3,12 +3,11 @@ use std::io::BufReader;
 
 use rind::Error;
 use rind::aead::{
-    AES_128_GCM, AES_256_GCM, Aad, CHACHA20_POLY1305, LessSafeKey, Nonce, RandomNonce,
-    RandomizedNonceKey, UnboundKey,
+    AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce, RandomNonce, RandomizedNonceKey, Tag,
 };
 use rind::cipher::ChaCha20;
 use rind::signature;
-use rind::{hkdf, hmac};
+use rind::{hkdf, hmac, pbkdf2};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -27,6 +26,13 @@ struct TestGroup {
 
     #[serde(default, rename(deserialize = "publicKeyAsn"), with = "hex::serde")]
     public_key_asn: Vec<u8>,
+
+    // The PKCS#1 public key of a signing group.
+    #[serde(default, rename(deserialize = "keyAsn"), with = "hex::serde")]
+    key_asn: Vec<u8>,
+
+    #[serde(default, rename(deserialize = "keySize"))]
+    key_size: usize,
 
     #[serde(default, rename(deserialize = "privateKeyPkcs8"), with = "hex::serde")]
     private_key_pkcs8: Vec<u8>,
@@ -76,6 +82,12 @@ struct Test {
     size: usize,
     #[serde(default, with = "hex::serde")]
     okm: Vec<u8>,
+    #[serde(default, with = "hex::serde")]
+    password: Vec<u8>,
+    #[serde(default, rename(deserialize = "iterationCount"))]
+    iteration_count: u32,
+    #[serde(default, with = "hex::serde")]
+    dk: Vec<u8>,
     result: ExpectedResult,
 }
 
@@ -85,6 +97,11 @@ struct PublicKey {
     uncompressed: Vec<u8>,
     #[serde(default, with = "hex::serde")]
     pk: Vec<u8>,
+    // RSA, as a DER `INTEGER`, so with a sign byte when the top bit is set.
+    #[serde(default, with = "hex::serde")]
+    modulus: Vec<u8>,
+    #[serde(default, rename(deserialize = "publicExponent"), with = "hex::serde")]
+    public_exponent: Vec<u8>,
 }
 
 #[derive(Copy, Clone, Deserialize, Debug, PartialEq)]
@@ -146,10 +163,10 @@ impl Drop for Summary {
 #[test]
 fn hmac_tests() {
     for (file, algorithm) in [
-        ("hmac_sha1_test.json", hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY),
-        ("hmac_sha256_test.json", hmac::HMAC_SHA256),
-        ("hmac_sha384_test.json", hmac::HMAC_SHA384),
-        ("hmac_sha512_test.json", hmac::HMAC_SHA512),
+        ("hmac_sha1_test.json", &hmac::legacy::HMAC_SHA1),
+        ("hmac_sha256_test.json", &hmac::HMAC_SHA256),
+        ("hmac_sha384_test.json", &hmac::HMAC_SHA384),
+        ("hmac_sha512_test.json", &hmac::HMAC_SHA512),
     ] {
         let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
             .unwrap_or_else(|_| panic!("failed to open data file {file}"));
@@ -189,7 +206,7 @@ fn truncated(tag: &[u8], expected: &[u8]) -> Result<(), Error> {
 
 #[test]
 fn hkdf_tests() {
-    fn check(file: &str, algorithm: hkdf::Algorithm) {
+    fn check(file: &str, algorithm: &'static hkdf::Algorithm) {
         let data_file = File::open(file).expect("failed to open data file");
         let reader = BufReader::new(data_file);
         let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
@@ -203,9 +220,7 @@ fn hkdf_tests() {
                 let mut okm = vec![0u8; test.size];
                 let prk = hkdf::Salt::new(algorithm, &test.salt).extract(&test.ikm);
                 let info = [test.info.as_slice()];
-                let result = prk
-                    .expand(&info, okm.len())
-                    .and_then(|expanded| expanded.fill(&mut okm));
+                let result = prk.expand(&info, okm.len()).fill(&mut okm);
 
                 match (test.result, result) {
                     (ExpectedResult::Valid, Ok(())) => assert_eq!(okm, test.okm),
@@ -218,8 +233,70 @@ fn hkdf_tests() {
 
     check(
         "../thirdparty/wycheproof/testvectors_v1/hkdf_sha256_test.json",
-        hkdf::HKDF_SHA256,
+        &hkdf::HKDF_SHA256,
     );
+}
+
+#[test]
+fn pbkdf2_tests() {
+    // Most vectors run 4096 iterations, and one 16,777,216: about a minute
+    // in a debug build, so only the release run takes them. The gate's
+    // differential tests against aws-lc-rs use few iterations instead.
+    if std::env::var_os("SLOW_TESTS").is_none() {
+        return;
+    }
+
+    // SHA-224, which rind does not offer, has its own file and is skipped.
+    for (file, algorithm, algorithm_len) in [
+        (
+            "pbkdf2_hmacsha1_test.json",
+            &pbkdf2::legacy::PBKDF2_HMAC_SHA1,
+            20,
+        ),
+        (
+            "pbkdf2_hmacsha256_test.json",
+            &pbkdf2::PBKDF2_HMAC_SHA256,
+            32,
+        ),
+        (
+            "pbkdf2_hmacsha384_test.json",
+            &pbkdf2::PBKDF2_HMAC_SHA384,
+            48,
+        ),
+        (
+            "pbkdf2_hmacsha512_test.json",
+            &pbkdf2::PBKDF2_HMAC_SHA512,
+            64,
+        ),
+    ] {
+        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+            .unwrap_or_else(|_| panic!("failed to open data file {file}"));
+
+        let reader = BufReader::new(data_file);
+        let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+        let mut summary = Summary::new();
+
+        for group in tests.groups {
+            summary.group(&group);
+            for test in group.tests {
+                summary.start(&test);
+
+                // Every vector is valid: none has a zero count or empty key.
+                assert_eq!(test.result, ExpectedResult::Valid);
+                let iterations = core::num::NonZeroU32::new(test.iteration_count).unwrap();
+                let secret = pbkdf2::Secret::new(algorithm, &test.password);
+                let mut dk = vec![0u8; test.dk.len()];
+                secret.derive(iterations, &test.salt, &mut dk).unwrap();
+                assert_eq!(dk, test.dk);
+                // rind verifies only keys at least as long as the HMAC output.
+                let wanted = match test.dk.len() < algorithm_len {
+                    true => Err(Error::WrongLength),
+                    false => Ok(()),
+                };
+                assert_eq!(secret.verify(iterations, &test.salt, &test.dk), wanted);
+            }
+        }
+    }
 }
 
 #[test]
@@ -253,6 +330,14 @@ fn test_verify_ecdsa() {
         (
             "ecdsa_secp384r1_sha512_test.json",
             &signature::ECDSA_P384_SHA512_ASN1,
+        ),
+        (
+            "ecdsa_secp521r1_sha512_p1363_test.json",
+            &signature::ECDSA_P521_SHA512_FIXED,
+        ),
+        (
+            "ecdsa_secp521r1_sha512_test.json",
+            &signature::ECDSA_P521_SHA512_ASN1,
         ),
     ] {
         let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
@@ -309,7 +394,7 @@ fn test_aes_gcm() {
                 }
                 len => panic!("unexpected key length {len}"),
             };
-            let ctx = LessSafeKey::new(UnboundKey::new(algorithm, &test.key).unwrap());
+            let ctx = Key::new(algorithm, &test.key).unwrap();
             let iv: [u8; 12] = match test.iv.try_into() {
                 Ok(iv) => iv,
                 Err(_) => {
@@ -321,22 +406,24 @@ fn test_aes_gcm() {
 
             // try decrypt
             let mut msg = test.ct.clone();
-            let result = ctx
-                .open_in_place_separate_tag(nonce(), Aad::from(&test.aad), &test.tag, &mut msg)
-                .map(|_| ());
+            let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
+                ctx.open_in_place_separate_tag(nonce(), &test.aad, tag, &mut msg)
+                    .map(|_| ())
+            });
 
             match (test.result, &result) {
                 (ExpectedResult::Valid, Ok(())) => {
                     assert_eq!(msg, test.msg);
                 }
                 (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
+                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.tag.len() != 16 => {}
                 _ => panic!("expected {:?} got {:?}", test.result, result.err()),
             }
 
             // and encrypt
             let mut ct = test.msg.clone();
             let tag = ctx
-                .seal_in_place_separate_tag(nonce(), Aad::from(&test.aad), &mut ct)
+                .seal_in_place_separate_tag(nonce(), &test.aad, &mut ct)
                 .unwrap();
 
             if test.result == ExpectedResult::Valid {
@@ -371,7 +458,7 @@ fn test_aes_gmac() {
                 }
                 len => panic!("unexpected key length {len}"),
             };
-            let ctx = LessSafeKey::new(UnboundKey::new(algorithm, &test.key).unwrap());
+            let ctx = Key::new(algorithm, &test.key).unwrap();
             let iv: [u8; 12] = match test.iv.try_into() {
                 Ok(iv) => iv,
                 Err(_) => {
@@ -382,19 +469,21 @@ fn test_aes_gmac() {
             let nonce = || Nonce::assume_unique_for_key(iv);
 
             // try decrypt
-            let result = ctx
-                .open_in_place_separate_tag(nonce(), Aad::from(&test.msg), &test.tag, &mut [])
-                .map(|_| ());
+            let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
+                ctx.open_in_place_separate_tag(nonce(), &test.msg, tag, &mut [])
+                    .map(|_| ())
+            });
 
             match (test.result, &result) {
                 (ExpectedResult::Valid, Ok(())) => {}
                 (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
+                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.tag.len() != 16 => {}
                 _ => panic!("expected {:?} got {:?}", test.result, result.err()),
             }
 
             // and encrypt
             let tag = ctx
-                .seal_in_place_separate_tag(nonce(), Aad::from(&test.msg), &mut [])
+                .seal_in_place_separate_tag(nonce(), &test.msg, &mut [])
                 .unwrap();
 
             if test.result == ExpectedResult::Valid {
@@ -431,25 +520,142 @@ fn test_rsa_pkcs1_verify() {
         for group in tests.groups {
             summary.group(&group);
 
-            let algorithm = match group.sha.as_ref() {
-                "SHA-256" => &signature::RSA_PKCS1_2048_8192_SHA256,
-                "SHA-384" => &signature::RSA_PKCS1_2048_8192_SHA384,
-                "SHA-512" => &signature::RSA_PKCS1_2048_8192_SHA512,
+            // Each algorithm for this hash, with the smallest modulus it takes.
+            let algorithms: &[(&signature::RsaParameters, usize)] = match group.sha.as_ref() {
+                "SHA-256" => &[
+                    (&signature::RSA_PKCS1_2048_8192_SHA256, 2048),
+                    (
+                        &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                ],
+                "SHA-384" => &[
+                    (&signature::RSA_PKCS1_2048_8192_SHA384, 2048),
+                    (&signature::RSA_PKCS1_3072_8192_SHA384, 3072),
+                ],
+                "SHA-512" => &[
+                    (&signature::RSA_PKCS1_2048_8192_SHA512, 2048),
+                    (
+                        &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                ],
                 other => panic!("unhandled sha {other:?}"),
             };
-            let key = signature::UnparsedPublicKey::new(algorithm, &group.public_key_asn);
+            let n = group.public_key.modulus.strip_prefix(&[0]).unwrap();
+            let components = signature::RsaPublicKeyComponents {
+                n,
+                e: &group.public_key.public_exponent[..],
+            };
 
-            for test in group.tests {
-                summary.start(&test);
+            for &(algorithm, min_bits) in algorithms {
+                let key = signature::UnparsedPublicKey::new(algorithm, &group.public_key_asn);
+                if group.key_size < min_bits {
+                    assert_eq!(key.verify(b"", &[]), Err(Error::OutOfRange));
+                    continue;
+                }
 
-                let result = key.verify(&test.msg, &test.sig);
-                match (test.result, &result) {
-                    (ExpectedResult::Valid, Ok(())) => {}
+                // The modulus with its sign byte is not minimal.
+                let signed = signature::RsaPublicKeyComponents {
+                    n: &group.public_key.modulus[..],
+                    e: components.e,
+                };
+                assert!(matches!(
+                    signed.verify(algorithm, b"", &[]),
+                    Err(Error::KeyRejected(_))
+                ));
+
+                for test in &group.tests {
+                    summary.start(test);
+
+                    let result = key.verify(&test.msg, &test.sig);
+                    match (test.result, &result) {
+                        (ExpectedResult::Valid, Ok(())) => {}
+                        (
+                            ExpectedResult::Invalid | ExpectedResult::Acceptable,
+                            Err(Error::BadSignature),
+                        ) => {}
+                        _ => panic!("expected {:?} got {:?}", test.result, result.err()),
+                    }
+                    assert_eq!(components.verify(algorithm, &test.msg, &test.sig), result);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_rsa_pkcs1_legacy_verify() {
+    // Wycheproof has no verification files for SHA-1 or 1024-bit moduli,
+    // but its signing files hold valid signatures for both.
+    for file in &[
+        "rsa_pkcs1_1024_sig_gen_test.json",
+        "rsa_pkcs1_2048_sig_gen_test.json",
+    ] {
+        let data_file = File::open(format!("../thirdparty/wycheproof/testvectors_v1/{file}"))
+            .expect("failed to open data file");
+        println!("file: {data_file:?}");
+
+        let reader = BufReader::new(data_file);
+        let tests: TestFile = serde_json::from_reader(reader).expect("invalid test JSON");
+        let mut summary = Summary::new();
+
+        for group in tests.groups {
+            summary.group(&group);
+
+            // Each algorithm for this hash, with the smallest modulus it takes.
+            let algorithms: &[(&signature::RsaParameters, usize)] = match group.sha.as_ref() {
+                "SHA-1" => &[
                     (
-                        ExpectedResult::Invalid | ExpectedResult::Acceptable,
-                        Err(Error::BadSignature),
-                    ) => {}
-                    _ => panic!("expected {:?} got {:?}", test.result, result.err()),
+                        &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                    (
+                        &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+                        2048,
+                    ),
+                ],
+                "SHA-256" => &[
+                    (
+                        &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                    (&signature::RSA_PKCS1_2048_8192_SHA256, 2048),
+                ],
+                "SHA-384" => &[
+                    (&signature::RSA_PKCS1_2048_8192_SHA384, 2048),
+                    (&signature::RSA_PKCS1_3072_8192_SHA384, 3072),
+                ],
+                "SHA-512" => &[
+                    (
+                        &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+                        1024,
+                    ),
+                    (&signature::RSA_PKCS1_2048_8192_SHA512, 2048),
+                ],
+                other => {
+                    summary.skipped(&format!("pkcs1 verification with {other} not supported"));
+                    continue;
+                }
+            };
+
+            for &(algorithm, min_bits) in algorithms {
+                let key = signature::UnparsedPublicKey::new(algorithm, &group.key_asn);
+                if group.key_size < min_bits {
+                    assert_eq!(key.verify(b"", &[]), Err(Error::OutOfRange));
+                    continue;
+                }
+
+                for test in &group.tests {
+                    summary.start(test);
+
+                    // Every case is valid or acceptable (a small modulus or
+                    // a weak hash), and binds its message.
+                    key.verify(&test.msg, &test.sig).unwrap();
+                    assert_eq!(
+                        key.verify(&[&test.msg[..], b"!"].concat(), &test.sig),
+                        Err(Error::BadSignature)
+                    );
                 }
             }
         }
@@ -607,28 +813,30 @@ fn test_chacha20poly1305() {
                 continue;
             }
 
-            let ctx = LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &test.key).unwrap());
+            let ctx = Key::new(&CHACHA20_POLY1305, &test.key).unwrap();
             let iv: [u8; 12] = test.iv.try_into().unwrap();
             let nonce = || Nonce::assume_unique_for_key(iv);
 
             // try decrypt
             let mut msg = test.ct.clone();
-            let result = ctx
-                .open_in_place_separate_tag(nonce(), Aad::from(&test.aad), &test.tag, &mut msg)
-                .map(|_| ());
+            let result = Tag::try_from(test.tag.as_slice()).and_then(|tag| {
+                ctx.open_in_place_separate_tag(nonce(), &test.aad, tag, &mut msg)
+                    .map(|_| ())
+            });
 
             match (test.result, &result) {
                 (ExpectedResult::Valid, Ok(())) => {
                     assert_eq!(msg, test.msg);
                 }
                 (ExpectedResult::Invalid, Err(Error::DecryptFailed)) => {}
+                (ExpectedResult::Invalid, Err(Error::WrongLength)) if test.tag.len() != 16 => {}
                 _ => panic!("expected {:?} got {:?}", test.result, result.err()),
             }
 
             // and encrypt
             let mut ct = test.msg.clone();
             let tag = ctx
-                .seal_in_place_separate_tag(nonce(), Aad::from(&test.aad), &mut ct)
+                .seal_in_place_separate_tag(nonce(), &test.aad, &mut ct)
                 .unwrap();
 
             if test.result == ExpectedResult::Valid {
@@ -702,7 +910,7 @@ fn test_xchacha20poly1305() {
             // try decrypt
             let mut sealed = [&test.ct[..], &test.tag[..]].concat();
             let result = ctx
-                .open_in_place(RandomNonce::from(iv), Aad::from(&test.aad), &mut sealed)
+                .open_in_place(RandomNonce::from(iv), &test.aad, &mut sealed)
                 .map(|msg| msg.to_vec());
 
             match (test.result, &result) {
@@ -717,11 +925,10 @@ fn test_xchacha20poly1305() {
             // tests check a sealed vector.
             let mut sealed = test.msg.clone();
             let nonce = ctx
-                .seal_in_place_append_tag(Aad::from(&test.aad), &mut sealed)
+                .seal_in_place_append_tag(&test.aad, &mut sealed)
                 .unwrap();
             assert_eq!(
-                ctx.open_in_place(nonce, Aad::from(&test.aad), &mut sealed)
-                    .unwrap(),
+                ctx.open_in_place(nonce, &test.aad, &mut sealed).unwrap(),
                 &test.msg[..]
             );
         }

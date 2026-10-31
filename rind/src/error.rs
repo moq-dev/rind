@@ -29,6 +29,9 @@ pub enum Error {
     /// Presented AEAD tag/aad/ciphertext/nonce was wrong
     DecryptFailed,
 
+    /// Values compared in constant time were not equal.
+    NotEqual,
+
     /// A key encoding was malformed or did not match the expected algorithm.
     KeyRejected(KeyRejected),
 }
@@ -40,7 +43,7 @@ pub struct KeyRejected(KeyFormatError);
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum KeyFormatError {
     Asn1(crate::high::asn1::Error),
-    MismatchedAgreementAlgorithm,
+    LeadingZero,
     UnsupportedPkcs8Version,
     MismatchedPkcs8Algorithm,
     MismatchedPkcs8Parameters,
@@ -60,9 +63,7 @@ impl core::fmt::Display for KeyRejected {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.0 {
             KeyFormatError::Asn1(e) => write!(f, "an ASN.1 decoding error: {e}"),
-            KeyFormatError::MismatchedAgreementAlgorithm => {
-                write!(f, "mismatched key agreement algorithm")
-            }
+            KeyFormatError::LeadingZero => write!(f, "an integer with a leading zero byte"),
             KeyFormatError::UnsupportedPkcs8Version => write!(f, "unsupported PKCS#8 version"),
             KeyFormatError::MismatchedPkcs8Algorithm => write!(f, "mismatched PKCS#8 algorithm"),
             KeyFormatError::MismatchedPkcs8Parameters => {
@@ -92,6 +93,7 @@ impl core::fmt::Display for Error {
             ),
             Self::BadSignature => write!(f, "presented signature is invalid"),
             Self::DecryptFailed => write!(f, "presented AEAD tag/aad/ciphertext/nonce was wrong"),
+            Self::NotEqual => write!(f, "values compared in constant time were not equal"),
             Self::KeyRejected(e) => write!(f, "a key was rejected: {e}"),
         }
     }
@@ -133,6 +135,10 @@ mod tests {
             "presented AEAD tag/aad/ciphertext/nonce was wrong"
         );
         assert_eq!(
+            format!("{}", Error::NotEqual),
+            "values compared in constant time were not equal"
+        );
+        assert_eq!(
             format!(
                 "{}",
                 Error::from(KeyFormatError::Asn1(
@@ -150,10 +156,6 @@ mod tests {
     #[test]
     fn test_keyrejected_display() {
         let display = |kfe| format!("{}", KeyRejected(kfe));
-        assert_eq!(
-            display(KeyFormatError::MismatchedAgreementAlgorithm),
-            "mismatched key agreement algorithm"
-        );
         assert_eq!(
             display(KeyFormatError::UnsupportedPkcs8Version),
             "unsupported PKCS#8 version"

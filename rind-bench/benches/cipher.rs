@@ -45,36 +45,21 @@ fn bench_header_protection(c: &mut Criterion) {
     let sample = [0x5au8; 16];
     let mut group = c.benchmark_group("quic-header-protection");
 
-    group.bench_function("aes128/aws-lc-rs", |b| {
-        use aws_lc_rs::aead::quic::{AES_128, HeaderProtectionKey};
-        let key = HeaderProtectionKey::new(&AES_128, &[0u8; 16]).unwrap();
-        b.iter(|| key.new_mask(&sample).unwrap());
-    });
-    group.bench_function("aes128/rind", |b| {
-        let key = rind::cipher::Aes::new(&rind::cipher::AES_128, &[0u8; 16]).unwrap();
-        b.iter(|| {
-            let mut block = sample;
-            key.encrypt_block(&mut block);
-            block
+    for (name, key_len) in [("aes128", 16), ("chacha20", 32)] {
+        let key = &[0u8; 32][..key_len];
+        group.bench_function(format!("{name}/aws-lc-rs"), |b| {
+            use aws_lc_rs::aead::quic::{AES_128, CHACHA20, HeaderProtectionKey};
+            let algorithm = if key_len == 16 { &AES_128 } else { &CHACHA20 };
+            let key = HeaderProtectionKey::new(algorithm, key).unwrap();
+            b.iter(|| key.new_mask(&sample).unwrap());
         });
-    });
-
-    group.bench_function("chacha20/aws-lc-rs", |b| {
-        use aws_lc_rs::aead::quic::{CHACHA20, HeaderProtectionKey};
-        let key = HeaderProtectionKey::new(&CHACHA20, &[0u8; 32]).unwrap();
-        b.iter(|| key.new_mask(&sample).unwrap());
-    });
-    group.bench_function("chacha20/rind", |b| {
-        let key = rind::cipher::ChaCha20::new([0u8; 32]);
-        let (counter, nonce) = sample.split_at(4);
-        let counter = u32::from_le_bytes(counter.try_into().unwrap());
-        let nonce: &[u8; 12] = nonce.try_into().unwrap();
-        b.iter(|| {
-            let mut mask = [0u8; 5];
-            key.apply_keystream(nonce, counter, &mut mask).unwrap();
-            mask
+        group.bench_function(format!("{name}/rind"), |b| {
+            use rind::aead::quic::{AES_128, CHACHA20, HeaderProtectionKey};
+            let algorithm = if key_len == 16 { &AES_128 } else { &CHACHA20 };
+            let key = HeaderProtectionKey::new(algorithm, key).unwrap();
+            b.iter(|| key.mask(&sample));
         });
-    });
+    }
 }
 
 criterion_group!(benches, bench_aes_ctr, bench_header_protection);

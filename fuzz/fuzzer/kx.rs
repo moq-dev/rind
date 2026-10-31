@@ -15,6 +15,9 @@ fuzz_target!(|op: Operation| {
         Operation::P384 { scalar, peer } => {
             check(&ours::ECDH_P384, &theirs::ECDH_P384, &scalar, &peer);
         }
+        Operation::P521 { scalar, peer } => {
+            check(&ours::ECDH_P521, &theirs::ECDH_P521, &scalar, &peer);
+        }
     }
 });
 
@@ -27,10 +30,9 @@ fn check(
     peer: &[u8],
 ) {
     // Both accept or refuse the same peer key, whatever their own scalar.
-    let ours_result = ours::agree_ephemeral(
-        ours::EphemeralPrivateKey::generate(ours_algorithm).unwrap(),
-        &ours::UnparsedPublicKey::new(ours_algorithm, peer),
-    );
+    let ours_result = ours::PrivateKey::generate(ours_algorithm)
+        .unwrap()
+        .agree(peer);
     let theirs_result = theirs::agree_ephemeral(
         theirs::EphemeralPrivateKey::generate(
             theirs_algorithm,
@@ -48,15 +50,11 @@ fn check(
     let Ok(theirs_key) = theirs::PrivateKey::from_private_key(theirs_algorithm, scalar) else {
         return;
     };
-    let ours_key = ours::EphemeralPrivateKey::generate(ours_algorithm).unwrap();
-    let ours_public = ours_key.compute_public_key();
+    let ours_key = ours::PrivateKey::generate(ours_algorithm).unwrap();
+    let ours_public = ours_key.public_key();
     let theirs_public = theirs_key.compute_public_key().unwrap();
 
-    let ours_secret = ours::agree_ephemeral(
-        ours_key,
-        &ours::UnparsedPublicKey::new(ours_algorithm, theirs_public.as_ref()),
-    )
-    .unwrap();
+    let ours_secret = ours_key.agree(theirs_public.as_ref()).unwrap();
     let theirs_secret = theirs::agree(
         &theirs_key,
         theirs::UnparsedPublicKey::new(theirs_algorithm, ours_public.as_ref()),
@@ -72,4 +70,5 @@ enum Operation {
     X25519 { scalar: [u8; 32], peer: [u8; 32] },
     P256 { scalar: [u8; 32], peer: [u8; 65] },
     P384 { scalar: [u8; 48], peer: [u8; 97] },
+    P521 { scalar: [u8; 66], peer: [u8; 133] },
 }

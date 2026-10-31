@@ -5,6 +5,7 @@
 
 pub(super) mod agreement;
 pub(super) mod asn1;
+pub(super) mod constant_time;
 pub(super) mod curve;
 pub(super) mod digest;
 pub(super) mod ecdsa;
@@ -14,6 +15,7 @@ pub(super) mod hkdf;
 pub(super) mod hmac;
 pub(super) mod hmac_drbg;
 pub(super) mod kem;
+pub(super) mod pbkdf2;
 pub(super) mod pkcs1;
 pub(super) mod pkcs8;
 pub(super) mod rsa;

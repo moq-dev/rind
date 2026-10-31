@@ -37,14 +37,12 @@ fn missing_feature_is_named() {
     // The child reports both refusals as output and lets the operation's
     // panic end it, since a `panic = "abort"` build cannot catch it.
     if let Some(operation) = std::env::var_os(CHILD) {
-        use rind::digest::{SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, digest};
+        use rind::digest::{SHA256, SHA384, SHA512, digest, legacy::SHA1};
 
         println!("check: {}", rind::cpu::check().unwrap_err());
         match operation.to_str().unwrap() {
-            "aes-gcm" => {
-                drop(rind::aead::UnboundKey::new(&rind::aead::AES_128_GCM, &[0; 16]).unwrap())
-            }
-            "sha1" => drop(digest(&SHA1_FOR_LEGACY_USE_ONLY, b"")),
+            "aes-gcm" => drop(rind::aead::Key::new(&rind::aead::AES_128_GCM, &[0; 16]).unwrap()),
+            "sha1" => drop(digest(&SHA1, b"")),
             "sha256" => drop(digest(&SHA256, b"")),
             "sha384" => drop(digest(&SHA384, b"")),
             "sha512" => drop(digest(&SHA512, b"")),

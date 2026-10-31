@@ -3,10 +3,9 @@
 ## Goal
 
 rind and every publishable `rind-*` adapter are on crates.io through
-release-plz. `rind-str0m` and `rind-instant-acme` publish later, through
-[rind-str0m on a str0m release](/quest/m1/moq/str0m.md) and
+release-plz. `rind-instant-acme` publishes later, through
 [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md), once
-their upstream releases exist.
+instant-acme 0.9 is released.
 
 ## Plan
 
@@ -22,3 +21,7 @@ configured. The token can publish new crates, so release-plz creates each
 Decided 2026-10-30 (maintainer): the first release does not wait on
 upstream releases. Publishing still waits for the maintainer's go-ahead on
 the release PR.
+
+## Required
+
+- [Public API audit](/quest/m1/moq/api/README.md) - the breaking API changes land before 0.1.0

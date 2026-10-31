@@ -52,6 +52,7 @@ impl RsaPrivateKey {
         if p.is_even()
             || q.is_even()
             || !(MIN_PRIVATE_MODULUS_BYTES..=MAX_PRIVATE_MODULUS_BYTES).contains(&p_len)
+            || n.len_bits() < MIN_MODULUS_BITS
         {
             return Err(Error::OutOfRange);
         }
@@ -354,6 +355,9 @@ pub(crate) const MAX_PRIVATE_MODULUS_BYTES: usize = MAX_PRIVATE_MODULUS_BITS / 8
 
 const MIN_PRIVATE_MODULUS_BITS: usize = 1024;
 const MIN_PRIVATE_MODULUS_BYTES: usize = MIN_PRIVATE_MODULUS_BITS / 8;
+
+// Signing keeps the 2048-bit floor that only legacy verification goes below.
+const MIN_MODULUS_BITS: usize = 2048;
 
 type SecretRsaPosIntModP = low::SecretPosInt<MAX_PRIVATE_MODULUS_WORDS>;
 type SecretRsaPosIntD = low::SecretPosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;

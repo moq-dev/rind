@@ -1,4 +1,4 @@
-use rind::aead::{self, Aad, LessSafeKey, UnboundKey};
+use rind::aead;
 use rustls::crypto::cipher::{
     AeadKey, InboundOpaqueMessage, InboundPlainMessage, Iv, KeyBlockShape, MessageDecrypter,
     MessageEncrypter, NONCE_LEN, Nonce, OutboundOpaqueMessage, OutboundPlainMessage,
@@ -8,8 +8,8 @@ use rustls::crypto::cipher::{
 use rustls::{ConnectionTrafficSecrets, ContentType, ProtocolVersion};
 
 /// rustls derives `key` at the algorithm's key length.
-fn less_safe_key(algorithm: &'static aead::Algorithm, key: &AeadKey) -> LessSafeKey {
-    LessSafeKey::new(UnboundKey::new(algorithm, key.as_ref()).unwrap())
+fn aead_key(algorithm: &'static aead::Algorithm, key: &AeadKey) -> aead::Key {
+    aead::Key::new(algorithm, key.as_ref()).unwrap()
 }
 
 /// The record nonce for `seq`, which never repeats under one key.
@@ -21,17 +21,11 @@ pub struct Chacha20Poly1305;
 
 impl Tls13AeadAlgorithm for Chacha20Poly1305 {
     fn encrypter(&self, key: AeadKey, iv: Iv) -> Box<dyn MessageEncrypter> {
-        Box::new(Tls13Cipher(
-            less_safe_key(&aead::CHACHA20_POLY1305, &key),
-            iv,
-        ))
+        Box::new(Tls13Cipher(aead_key(&aead::CHACHA20_POLY1305, &key), iv))
     }
 
     fn decrypter(&self, key: AeadKey, iv: Iv) -> Box<dyn MessageDecrypter> {
-        Box::new(Tls13Cipher(
-            less_safe_key(&aead::CHACHA20_POLY1305, &key),
-            iv,
-        ))
+        Box::new(Tls13Cipher(aead_key(&aead::CHACHA20_POLY1305, &key), iv))
     }
 
     fn key_len(&self) -> usize {
@@ -50,14 +44,14 @@ impl Tls13AeadAlgorithm for Chacha20Poly1305 {
 impl Tls12AeadAlgorithm for Chacha20Poly1305 {
     fn encrypter(&self, key: AeadKey, iv: &[u8], _: &[u8]) -> Box<dyn MessageEncrypter> {
         Box::new(ChaChaTls12Cipher(
-            less_safe_key(&aead::CHACHA20_POLY1305, &key),
+            aead_key(&aead::CHACHA20_POLY1305, &key),
             Iv::copy(iv),
         ))
     }
 
     fn decrypter(&self, key: AeadKey, iv: &[u8]) -> Box<dyn MessageDecrypter> {
         Box::new(ChaChaTls12Cipher(
-            less_safe_key(&aead::CHACHA20_POLY1305, &key),
+            aead_key(&aead::CHACHA20_POLY1305, &key),
             Iv::copy(iv),
         ))
     }
@@ -86,7 +80,7 @@ impl Tls12AeadAlgorithm for Chacha20Poly1305 {
 }
 
 /// TLS 1.3 record protection, which is the same for every AEAD.
-struct Tls13Cipher(LessSafeKey, Iv);
+struct Tls13Cipher(aead::Key, Iv);
 
 impl MessageEncrypter for Tls13Cipher {
     fn encrypt(
@@ -103,7 +97,7 @@ impl MessageEncrypter for Tls13Cipher {
 
         let tag = self
             .0
-            .seal_in_place_separate_tag(nonce(&self.1, seq), Aad::from(aad), payload.as_mut())
+            .seal_in_place_separate_tag(nonce(&self.1, seq), &aad, payload.as_mut())
             .map_err(|_| rustls::Error::EncryptError)?;
         payload.extend_from_slice(tag.as_ref());
 
@@ -129,7 +123,7 @@ impl MessageDecrypter for Tls13Cipher {
         let aad = make_tls13_aad(payload.len());
         let plain_len = self
             .0
-            .open_in_place(nonce(&self.1, seq), Aad::from(aad), payload)
+            .open_in_place(nonce(&self.1, seq), &aad, payload)
             .map_err(|_| rustls::Error::DecryptError)?
             .len();
 
@@ -138,7 +132,7 @@ impl MessageDecrypter for Tls13Cipher {
     }
 }
 
-struct ChaChaTls12Cipher(LessSafeKey, Iv);
+struct ChaChaTls12Cipher(aead::Key, Iv);
 
 impl MessageEncrypter for ChaChaTls12Cipher {
     fn encrypt(
@@ -154,7 +148,7 @@ impl MessageEncrypter for ChaChaTls12Cipher {
 
         let tag = self
             .0
-            .seal_in_place_separate_tag(nonce(&self.1, seq), Aad::from(aad), payload.as_mut())
+            .seal_in_place_separate_tag(nonce(&self.1, seq), &aad, payload.as_mut())
             .map_err(|_| rustls::Error::EncryptError)?;
         payload.extend_from_slice(tag.as_ref());
 
@@ -179,8 +173,12 @@ impl MessageDecrypter for ChaChaTls12Cipher {
             .ok_or(rustls::Error::DecryptError)?;
         let aad = make_tls12_aad(seq, m.typ, m.version, cipher_len);
         self.0
-            .open_in_place(nonce(&self.1, seq), Aad::from(aad), &mut m.payload)
+            .open_in_place(nonce(&self.1, seq), &aad, &mut m.payload)
             .map_err(|_| rustls::Error::DecryptError)?;
+
+        if cipher_len > MAX_FRAGMENT_LEN {
+            return Err(rustls::Error::PeerSentOversizedRecord);
+        }
 
         m.payload.truncate(cipher_len);
         Ok(m.into_plain_message())
@@ -206,11 +204,11 @@ impl TlsAesGcm {
 
 impl Tls13AeadAlgorithm for TlsAesGcm {
     fn encrypter(&self, key: AeadKey, iv: Iv) -> Box<dyn MessageEncrypter> {
-        Box::new(Tls13Cipher(less_safe_key(self.0, &key), iv))
+        Box::new(Tls13Cipher(aead_key(self.0, &key), iv))
     }
 
     fn decrypter(&self, key: AeadKey, iv: Iv) -> Box<dyn MessageDecrypter> {
-        Box::new(Tls13Cipher(less_safe_key(self.0, &key), iv))
+        Box::new(Tls13Cipher(aead_key(self.0, &key), iv))
     }
 
     fn key_len(&self) -> usize {
@@ -234,12 +232,12 @@ impl Tls12AeadAlgorithm for TlsAesGcm {
         explicit: &[u8],
     ) -> Box<dyn MessageEncrypter> {
         let iv = gcm_iv(write_iv, explicit);
-        Box::new(GcmTls12MessageEncrypter(less_safe_key(self.0, &key), iv))
+        Box::new(GcmTls12MessageEncrypter(aead_key(self.0, &key), iv))
     }
 
     fn decrypter(&self, key: AeadKey, iv: &[u8]) -> Box<dyn MessageDecrypter> {
         Box::new(GcmTls12MessageDecrypter(
-            less_safe_key(self.0, &key),
+            aead_key(self.0, &key),
             iv.try_into().unwrap(),
         ))
     }
@@ -262,7 +260,7 @@ impl Tls12AeadAlgorithm for TlsAesGcm {
     }
 }
 
-struct GcmTls12MessageDecrypter(LessSafeKey, [u8; 4]);
+struct GcmTls12MessageDecrypter(aead::Key, [u8; 4]);
 
 impl MessageDecrypter for GcmTls12MessageDecrypter {
     fn decrypt<'a>(
@@ -289,7 +287,7 @@ impl MessageDecrypter for GcmTls12MessageDecrypter {
         let payload = &mut msg.payload;
         let (_explicit_iv, sealed) = payload.split_at_mut(AESGCM_EXPLICIT_NONCE_LEN);
         self.0
-            .open_in_place(nonce, Aad::from(aad), sealed)
+            .open_in_place(nonce, &aad, sealed)
             .map_err(|_| rustls::Error::DecryptError)?;
 
         if plain_len > MAX_FRAGMENT_LEN {
@@ -302,7 +300,7 @@ impl MessageDecrypter for GcmTls12MessageDecrypter {
     }
 }
 
-struct GcmTls12MessageEncrypter(LessSafeKey, Iv);
+struct GcmTls12MessageEncrypter(aead::Key, Iv);
 
 impl MessageEncrypter for GcmTls12MessageEncrypter {
     fn encrypt(
@@ -322,7 +320,7 @@ impl MessageEncrypter for GcmTls12MessageEncrypter {
             .0
             .seal_in_place_separate_tag(
                 aead::Nonce::assume_unique_for_key(nonce.0),
-                Aad::from(aad),
+                &aad,
                 &mut payload.as_mut()[AESGCM_EXPLICIT_NONCE_LEN..],
             )
             .map_err(|_| rustls::Error::EncryptError)?;
@@ -498,5 +496,55 @@ mod tests {
 
         test_aes_gcm_tls12(128);
         test_aes_gcm_tls12(256);
+    }
+
+    /// rustls bounds TLS 1.2 plaintext only through the decrypter, so each
+    /// must refuse a record over 2^14 bytes that its encrypter would seal.
+    #[test]
+    fn tls12_refuses_oversized_records() {
+        // rustls only builds a 32-byte `AeadKey`; AES-128-GCM shares the GCM decrypter.
+        let algorithms: [&dyn Tls12AeadAlgorithm; 2] = [&Chacha20Poly1305, &AES_256_GCM];
+        for algorithm in algorithms {
+            let shape = algorithm.key_block_shape();
+            let key = random_bytes::<32>().unwrap();
+            let block = random_bytes::<20>().unwrap();
+            let (iv, explicit) = block.split_at(shape.fixed_iv_len);
+            let explicit = &explicit[..shape.explicit_nonce_len];
+            let mut encrypter = algorithm.encrypter(AeadKey::from(key), iv, explicit);
+            let mut decrypter = algorithm.decrypter(AeadKey::from(key), iv);
+
+            for (seq, len) in [MAX_FRAGMENT_LEN, MAX_FRAGMENT_LEN + 1]
+                .into_iter()
+                .enumerate()
+            {
+                let plain = vec![0x42; len];
+                let sealed = encrypter
+                    .encrypt(
+                        OutboundPlainMessage {
+                            typ: ContentType::ApplicationData,
+                            version: ProtocolVersion::TLSv1_2,
+                            payload: plain.as_slice().into(),
+                        },
+                        seq as u64,
+                    )
+                    .unwrap();
+                let mut payload = sealed.payload.as_ref().to_vec();
+                let opened = decrypter.decrypt(
+                    InboundOpaqueMessage::new(sealed.typ, sealed.version, &mut payload),
+                    seq as u64,
+                );
+
+                match opened {
+                    Ok(m) => assert!(
+                        len <= MAX_FRAGMENT_LEN && m.payload == plain,
+                        "{len}-byte record opened"
+                    ),
+                    Err(e) => assert!(
+                        len > MAX_FRAGMENT_LEN && e == Error::PeerSentOversizedRecord,
+                        "{len}-byte record: {e:?}"
+                    ),
+                }
+            }
+        }
     }
 }

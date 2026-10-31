@@ -16,11 +16,29 @@ use crate::mid::{rsa_priv, rsa_pub};
 /// An RSA verification public key.
 ///
 /// Keys supported by this library have public moduli between
-/// 2048- and 8192-bits.
+/// 1024- and 8192-bits; each verification algorithm may set a higher floor.
 #[derive(Debug)]
 pub(crate) struct VerifyingKey(rsa_pub::RsaPublicKey);
 
 impl VerifyingKey {
+    /// Loads an RSA public key from its big-endian modulus and exponent.
+    ///
+    /// A leading zero byte in either is refused, as ring and aws-lc-rs do.
+    pub(crate) fn from_components(n: &[u8], e: &[u8]) -> Result<Self, Error> {
+        let _entry = Entry::new_public();
+        if n.first() == Some(&0) || e.first() == Some(&0) {
+            return Err(KeyFormatError::LeadingZero.into());
+        }
+
+        let n = PosInt::from_bytes(n)?;
+        if e.len() > 4 {
+            return Err(Error::OutOfRange);
+        }
+        let e = e.iter().fold(0, |e, byte| e << 8 | u32::from(*byte));
+
+        Ok(Self(rsa_pub::RsaPublicKey::new(n, e)?))
+    }
+
     /// Decodes an RSA public verification key from PKCS#1 DER format.
     ///
     /// This format is defined in
@@ -95,6 +113,23 @@ impl VerifyingKey {
             .encode(&mut asn1::Encoder::new(output))
             .map_err(|_| Error::WrongLength)?;
         Ok(&output[..used])
+    }
+
+    /// Returns the public modulus length, in bits.
+    pub(crate) fn modulus_len_bits(&self) -> usize {
+        self.0.modulus_len_bits()
+    }
+
+    /// Verifies `signature`, using RSASSA-PKCS1-v1_5 with SHA-1.
+    ///
+    /// `message` is the (unhashed) signed message.  It is hashed
+    /// using SHA-1 by this function.
+    ///
+    /// [`Error::BadSignature`] is returned if the signature is invalid.
+    pub(crate) fn verify_pkcs1_sha1(&self, signature: &[u8], message: &[u8]) -> Result<(), Error> {
+        let _entry = Entry::new_public();
+        let hash = hash::LegacySha1::hash(message);
+        self._verify_pkcs1(signature, pkcs1::DIGESTINFO_SHA1, hash.as_ref())
     }
 
     /// Verifies `signature`, using RSASSA-PKCS1-v1_5 with SHA-256.

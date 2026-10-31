@@ -40,12 +40,12 @@ fn test_rc_aes256_gcm(key: &aes_gcm::Aes256Gcm, nonce: &[u8; 12], aad: &[u8], pl
         .unwrap();
 }
 
-fn test_rind_aes_gcm(key: &rind::aead::LessSafeKey, nonce: &[u8; 12], aad: &[u8], plain: &[u8]) {
+fn test_rind_aes_gcm(key: &rind::aead::Key, nonce: &[u8; 12], aad: &[u8], plain: &[u8]) {
     let mut ct = plain.to_vec();
     let _tag = key
         .seal_in_place_separate_tag(
             rind::aead::Nonce::assume_unique_for_key(*nonce),
-            rind::aead::Aad::from(aad),
+            aad,
             &mut ct,
         )
         .unwrap();
@@ -93,8 +93,8 @@ fn aes128_gcm(c: &mut Criterion) {
             },
         );
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
-            use rind::aead::{AES_128_GCM, LessSafeKey, UnboundKey};
-            let key = LessSafeKey::new(UnboundKey::new(&AES_128_GCM, &key).unwrap());
+            use rind::aead::{AES_128_GCM, Key};
+            let key = Key::new(&AES_128_GCM, &key).unwrap();
             b.iter(|| test_rind_aes_gcm(&key, &nonce, &aad, input));
         });
     }
@@ -142,8 +142,8 @@ fn aes256_gcm(c: &mut Criterion) {
             },
         );
         group.bench_with_input(BenchmarkId::new("rind", size_name), &input, |b, input| {
-            use rind::aead::{AES_256_GCM, LessSafeKey, UnboundKey};
-            let key = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &key).unwrap());
+            use rind::aead::{AES_256_GCM, Key};
+            let key = Key::new(&AES_256_GCM, &key).unwrap();
             b.iter(|| test_rind_aes_gcm(&key, &nonce, &aad, input));
         });
     }
