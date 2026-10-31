@@ -55,9 +55,10 @@ but there is also a public API for general-purpose use.
   AES, GHASH, SHA1, and SHA256 run [aws-lc]'s assembly for it instead.
   Without it, `rind::cpu::has_aes_hardware()` is false, and rind-rustls and
   rind-dimpl prefer ChaCha20-Poly1305, which is faster there: ChaCha20 runs
-  aws-lc's assembly, and so does Poly1305 where the CPU has NEON. SHA-384 and
-  SHA-512 always run aws-lc's assembly, with NEON where the CPU has it, and
-  with NEON, X25519's shared secret runs [BoringSSL]'s assembly.
+  aws-lc's assembly, and so does Poly1305 where the CPU has NEON. SHA-384,
+  SHA-512, and SHA-512/256 always run aws-lc's assembly, with NEON where the
+  CPU has it, and with NEON, X25519's shared secret runs [BoringSSL]'s
+  assembly.
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.
@@ -105,7 +106,7 @@ or a [quest](quest/README.md) covers it. The table describes
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | Graviola ⚡ | Graviola ⚡ | [aws-lc] ChaCha20 (copied) ⚡; NEON: [aws-lc] Poly1305 (copied) ⚡; otherwise: [HACL\*] Poly1305 ✓; Graviola AEAD; rind HChaCha20 over [HACL\*] rounds ✓ (copied) |
 | SHA-1 (legacy only) | rind | rind | crypto extension: [aws-lc] (copied); otherwise: rind |
 | SHA-256 | Graviola ⚡ | Graviola ⚡ | crypto extension: [aws-lc] (copied) ⚡; otherwise: Graviola ⚡ |
-| SHA-384, SHA-512 | Intel: [aws-lc] AVX (copied) ✓; otherwise: [aws-lc] scalar (copied) ⚡ | SHA-512 instructions: [aws-lc] (copied) ✓; otherwise: [aws-lc] scalar (copied) ✓ | NEON: [aws-lc] (copied) ⚡; otherwise: [aws-lc] scalar (copied) ⚡ |
+| SHA-384, SHA-512, SHA-512/256 | Intel: [aws-lc] AVX (copied) ✓; otherwise: [aws-lc] scalar (copied) ⚡ | SHA-512 instructions: [aws-lc] (copied) ✓; otherwise: [aws-lc] scalar (copied) ✓ | NEON: [aws-lc] (copied) ⚡; otherwise: [aws-lc] scalar (copied) ⚡ |
 | HMAC | Graviola ⚡ | Graviola ⚡ | Graviola ⚡ |
 | HKDF | rind ⚡ | rind ⚡ | rind ⚡ |
 | Constant-time comparison | Graviola | Graviola | rind |
@@ -237,12 +238,12 @@ where the CPU has the crypto extension, and the pure Rust SHA1 and SHA256
 otherwise: libcrux has no SHA1, and the pure Rust SHA256 is faster than
 libcrux's.
 
-SHA384/SHA512 run aws-lc's assembly everywhere. On x86_64, its AVX routine on
-Intel and its scalar routine on other CPUs, as aws-lc picks: the AVX routine is
-1.1x faster than the scalar one on Intel, and 1.5x slower on AMD's Zen. On
-aarch64, its routine for the SHA-512 instructions where the CPU has them, and
-its scalar routine otherwise; on 32-bit `arm`, its NEON routine where the CPU
-has NEON, and its scalar routine otherwise.
+SHA384, SHA512, and SHA512/256 run aws-lc's assembly everywhere. On x86_64,
+its AVX routine on Intel and its scalar routine on other CPUs, as aws-lc picks:
+the AVX routine is 1.1x faster than the scalar one on Intel, and 1.5x slower on
+AMD's Zen. On aarch64, its routine for the SHA-512 instructions where the CPU
+has them, and its scalar routine otherwise; on 32-bit `arm`, its NEON routine
+where the CPU has NEON, and its scalar routine otherwise.
 
 On x86_64 and aarch64, AES and GHASH always use the CPU's AES and carry-less multiply
 instructions (there are no fallbacks).
@@ -287,7 +288,7 @@ rind deviates, the item's docs say why.
 - `kem`: ML-KEM-768.
 - `signature`: ECDSA on P-256 and P-384, RSA PKCS#1 v1.5 and PSS, and
   Ed25519 key pairs and verification.
-- `digest`: SHA-1 (legacy only), SHA-256, SHA-384, and SHA-512.
+- `digest`: SHA-1 (legacy only), SHA-256, SHA-384, SHA-512, and SHA-512/256.
 - `hmac`: HMAC over those digests, keyed once and reused.
 - `hkdf`: HKDF-SHA256, whose output becomes an `aead` or `hmac` key.
 - `constant_time`: comparing secrets such as MACs without a timing leak.

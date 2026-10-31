@@ -163,7 +163,8 @@ pub mod signature {
 /// ```
 pub mod digest {
     pub use super::high::digest::{
-        Algorithm, Context, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, digest,
+        Algorithm, Context, Digest, SHA1_FOR_LEGACY_USE_ONLY, SHA256, SHA384, SHA512, SHA512_256,
+        digest,
     };
 }
 
