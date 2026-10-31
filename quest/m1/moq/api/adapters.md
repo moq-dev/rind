@@ -32,8 +32,9 @@ The inventory also found these, which don't need a decision:
   picks AES-GCM's variant by key length; store the algorithm instead.
 - rind-cpuid's feature list lacks `popcnt`, which rind requires.
 
-MoQ uses only each adapter's provider entry point, so check MoQ's planned
-call sites (moq-dev/moq `quest/m2/rind/`) against the new signatures.
+MoQ uses only the provider entry point of each adapter but rind-dimpl, whose
+dimpl it vendors, so check MoQ's planned call sites (moq-dev/moq
+`quest/m2/rind/`) against the new signatures.
 
 ## Required
 
