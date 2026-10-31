@@ -114,6 +114,31 @@ proptest! {
             prop_assert_eq!(rind::hmac::verify(&ours, &message, wanted.as_ref()), Ok(()));
         }
     }
+
+    #[test]
+    fn slice_comparison_matches_aws_lc_rs(
+        a in vec(any::<u8>(), 0..64),
+        other in vec(any::<u8>(), 0..64),
+        flip in any::<prop::sample::Index>(),
+    ) {
+        let mut flipped = a.clone();
+        if !flipped.is_empty() {
+            flipped[flip.index(a.len())] ^= 1;
+        }
+        for b in [&a, &flipped, &other] {
+            let ours = rind::constant_time::verify_slices_are_equal(&a, b);
+            let theirs = aws_lc_rs::constant_time::verify_slices_are_equal(&a, b);
+            prop_assert_eq!(ours.is_ok(), theirs.is_ok());
+            let wanted = if a.len() != b.len() {
+                Err(rind::Error::WrongLength)
+            } else if a != *b {
+                Err(rind::Error::NotEqual)
+            } else {
+                Ok(())
+            };
+            prop_assert_eq!(ours, wanted);
+        }
+    }
 }
 
 mod cipher {
