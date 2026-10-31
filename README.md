@@ -176,7 +176,9 @@ the exponent bits from the table of base powers in a side-channel-free way.
 The private operation is always followed by the public operation to verify the result
 (and the result compared in a side-channel-free way).
 
-Only RSA signing and verification are provided.  Our policy on RSA encryption is:
+Only RSA signing and verification are provided.  Signing keys have 2048- to
+8192-bit moduli; verification also takes 1024-bit moduli and SHA-1, but only
+under the `_FOR_LEGACY_USE_ONLY` algorithms.  Our policy on RSA encryption is:
 "These are not made. They should never be made. We will not make them. We will not help make them."
 
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
@@ -285,7 +287,8 @@ rind deviates, the item's docs say why.
 - `agreement`: ephemeral X25519 and ECDH on P-256 and P-384.
 - `kem`: ML-KEM-768.
 - `signature`: ECDSA on P-256 and P-384, RSA PKCS#1 v1.5 and PSS, and
-  Ed25519 key pairs and verification.
+  Ed25519 key pairs and verification, plus RSA keys given as their
+  components, and SHA-1 and 1024-bit RSA for verifying old signatures.
 - `digest`: SHA-1 (legacy only), SHA-256, SHA-384, and SHA-512.
 - `hmac`: HMAC over those digests, keyed once and reused.
 - `hkdf`: HKDF-SHA256, whose output becomes an `aead` or `hmac` key.

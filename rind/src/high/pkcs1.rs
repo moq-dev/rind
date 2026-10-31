@@ -56,6 +56,10 @@ pub(crate) fn encode_pkcs1_sig(out: &mut [u8], digest_info: &[u8], hash: &[u8]) 
     hash_out.copy_from_slice(hash);
 }
 
+pub(crate) static DIGESTINFO_SHA1: &[u8] = &[
+    0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14,
+];
+
 pub(crate) static DIGESTINFO_SHA256: &[u8] = &[
     0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
     0x00, 0x04, 0x20,
@@ -260,81 +264,29 @@ mod tests {
     use crate::mid::rng::SliceRandomSource;
 
     #[test]
-    fn digestinfo_sha256_is_correct() {
-        let hash = [0xaa; 32];
+    fn digestinfos_are_correct() {
+        for (algorithm, digest_info, hash_len) in [
+            (&oid::id_sha1, DIGESTINFO_SHA1, 20),
+            (&oid::id_sha256, DIGESTINFO_SHA256, 32),
+            (&oid::id_sha384, DIGESTINFO_SHA384, 48),
+            (&oid::id_sha512, DIGESTINFO_SHA512, 64),
+        ] {
+            let hash = [0xaa; 64];
+            let hash = &hash[..hash_len];
 
-        let di = pkix::DigestInfo {
-            digestAlgorithm: pkix::AlgorithmIdentifier {
-                algorithm: oid::id_sha256.clone(),
-                parameters: Some(asn1::Any::Null(asn1::Null)),
-            },
-            digest: asn1::OctetString::new(&hash),
-        };
+            let di = pkix::DigestInfo {
+                digestAlgorithm: pkix::AlgorithmIdentifier {
+                    algorithm: algorithm.clone(),
+                    parameters: Some(asn1::Any::Null(asn1::Null)),
+                },
+                digest: asn1::OctetString::new(hash),
+            };
 
-        let mut correct = vec![0; di.encoded_len()];
-        di.encode(&mut asn1::Encoder::new(&mut correct)).unwrap();
+            let mut correct = vec![0; di.encoded_len()];
+            di.encode(&mut asn1::Encoder::new(&mut correct)).unwrap();
 
-        let actual = {
-            let mut v = Vec::new();
-            v.extend_from_slice(DIGESTINFO_SHA256);
-            v.extend_from_slice(&hash);
-            v
-        };
-
-        println!("correct: {correct:#04x?}");
-        assert_eq!(actual, correct);
-    }
-
-    #[test]
-    fn digestinfo_sha384_is_correct() {
-        let hash = [0xaa; 48];
-
-        let di = pkix::DigestInfo {
-            digestAlgorithm: pkix::AlgorithmIdentifier {
-                algorithm: oid::id_sha384.clone(),
-                parameters: Some(asn1::Any::Null(asn1::Null)),
-            },
-            digest: asn1::OctetString::new(&hash),
-        };
-
-        let mut correct = vec![0; di.encoded_len()];
-        di.encode(&mut asn1::Encoder::new(&mut correct)).unwrap();
-
-        let actual = {
-            let mut v = Vec::new();
-            v.extend_from_slice(DIGESTINFO_SHA384);
-            v.extend_from_slice(&hash);
-            v
-        };
-
-        println!("correct: {correct:#04x?}");
-        assert_eq!(actual, correct);
-    }
-
-    #[test]
-    fn digestinfo_sha512_is_correct() {
-        let hash = [0xaa; 64];
-
-        let di = pkix::DigestInfo {
-            digestAlgorithm: pkix::AlgorithmIdentifier {
-                algorithm: oid::id_sha512.clone(),
-                parameters: Some(asn1::Any::Null(asn1::Null)),
-            },
-            digest: asn1::OctetString::new(&hash),
-        };
-
-        let mut correct = vec![0; di.encoded_len()];
-        di.encode(&mut asn1::Encoder::new(&mut correct)).unwrap();
-
-        let actual = {
-            let mut v = Vec::new();
-            v.extend_from_slice(DIGESTINFO_SHA512);
-            v.extend_from_slice(&hash);
-            v
-        };
-
-        println!("correct: {correct:#04x?}");
-        assert_eq!(actual, correct);
+            assert_eq!([digest_info, hash].concat(), correct, "{algorithm:?}");
+        }
     }
 
     #[test]

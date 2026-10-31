@@ -83,6 +83,52 @@ fn rsa2048_pkcs1_sha256_verify(c: &mut Criterion) {
     });
 }
 
+fn rsa1024_pkcs1_sha1_verify(c: &mut Criterion) {
+    // Wycheproof's `rsa_pkcs1_1024_sig_gen_test.json`, the first SHA-1 case.
+    let public_key = b"\x30\x81\x89\x02\x81\x81\x00\xd0\x94\x1e\x63\xa9\x80\xfa\x92\xfb\x25\xed\x4c\x7b\x33\x07\xf8\x27\x02\x30\x34\xae\x7f\x1a\x74\x91\xf0\x69\x9c\xa7\x60\x72\x85\xe6\x2a\xd8\xe9\x94\xba\xc2\x1b\x8b\x6e\x30\x5e\x33\x4f\x48\x74\x06\x7d\x28\xe3\x04\x23\x0d\xca\x7f\x0e\x85\xf7\xce\x59\x57\x70\xb6\xe0\x54\xc9\xf8\x44\xba\x86\xc0\x69\x6e\xeb\xa0\x76\x9d\x8d\x4a\x34\x7e\x8f\xe8\x5c\x72\x4a\xc1\xc4\x49\x94\xaf\x18\xa3\x9e\x71\x9f\x72\x1f\x1b\xc5\x0c\x46\xa3\x9e\x6c\x07\x5f\xcd\x16\x49\xf0\x1f\x22\x60\x8c\xe7\xdc\x69\x55\x50\x22\x58\x33\x69\x87\xd9\x02\x03\x01\x00\x01";
+    let signature = b"\x03\xe6\x4d\x14\x8e\x05\x20\x1b\x02\x1f\xb5\xd3\xd7\x2a\xb6\xab\xd4\x29\x4b\xe6\xc1\x67\x32\x77\xba\x58\x22\xad\x2f\xe7\xce\x4b\xb2\x9a\xc5\x47\xb2\xfd\xf0\x9c\x28\x94\xea\x0e\x31\xe7\x6f\x1b\x3e\x19\x37\xdb\x91\xc3\x89\x46\x7e\x9a\x8a\xc7\xbe\x0a\x4f\x67\x44\x56\xf0\x1c\x5b\x4f\xa4\x27\x7a\x26\x02\x8b\x49\xb1\x6e\x25\x68\x98\x27\xd0\xa4\xb9\xf1\xc2\x5a\x63\x35\x0d\xc1\x51\x31\xda\x90\x8a\x05\xc7\xcf\xa8\xc0\x8a\x67\xac\x9e\xfe\x3b\x0c\xd0\x4a\xba\x7d\xb1\x20\x64\xcb\xc3\x67\x29\xea\xae\xc5\x40\xc4\xbc\x12";
+    let message = b"";
+
+    let mut group = c.benchmark_group("rsa1024-pkcs1-sha1-verify");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("ring", |b| {
+        use ring::signature;
+        let peer_public_key = signature::UnparsedPublicKey::new(
+            &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            public_key,
+        );
+
+        b.iter(|| {
+            black_box(peer_public_key.verify(message, signature)).unwrap();
+        })
+    });
+
+    group.bench_function("aws-lc-rs", |b| {
+        use aws_lc_rs::signature;
+        let peer_public_key = signature::UnparsedPublicKey::new(
+            &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            public_key,
+        );
+
+        b.iter(|| {
+            black_box(peer_public_key.verify(message, signature)).unwrap();
+        })
+    });
+
+    group.bench_function("rind", |b| {
+        use rind::signature;
+        let peer_public_key = signature::UnparsedPublicKey::new(
+            &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            public_key,
+        );
+
+        b.iter(|| {
+            black_box(peer_public_key.verify(message, signature)).unwrap();
+        })
+    });
+}
+
 fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
     // Signed here, since PSS signatures are randomized.
     use rind::signature::{KeyPair, RSA_PSS_SHA256, RsaKeyPair};
@@ -134,6 +180,7 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
 criterion_group!(
     benches,
     rsa2048_pkcs1_sha256_verify,
+    rsa1024_pkcs1_sha1_verify,
     rsa2048_pss_sha256_verify
 );
 criterion_main!(benches);
