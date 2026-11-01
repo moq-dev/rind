@@ -423,7 +423,7 @@ impl SigningKey {
             &asn1::oid::rsaEncryption,
             Some(asn1::Any::Null(asn1::Null)),
         )
-        .and_then(|k| Self::from_pkcs1_der(k.private_key()))
+        .and_then(|k| Self::from_pkcs1_der(k.v1_private_key()?))
     }
 
     /// Returns the matching public key.

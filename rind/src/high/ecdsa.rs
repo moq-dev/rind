@@ -49,7 +49,7 @@ impl<C: Curve> SigningKey<C> {
             &asn1::oid::id_ecPublicKey,
             Some(asn1::Any::ObjectId(C::oid())),
         )
-        .and_then(|k| Self::from_sec1_der(k.private_key()))
+        .and_then(|k| Self::from_sec1_der(k.v1_private_key()?))
     }
 
     /// Encode this private key in PKCS#8 DER format.
@@ -89,7 +89,7 @@ impl<C: Curve> SigningKey<C> {
         let key = Self::new(C::PrivateKey::from_bytes(ecpk.privateKey.as_octets())?)?;
 
         if let Some(expected_public_key) = ecpk.publicKey.inner()
-            && key.public_key_uncompressed() != expected_public_key.as_octets()
+            && !key.is_public_key(expected_public_key.as_octets())
         {
             return Err(KeyFormatError::MismatchedSec1PublicKey.into());
         }
@@ -98,7 +98,8 @@ impl<C: Curve> SigningKey<C> {
     }
 
     /// Load an ECDSA private key from its fixed-length big-endian scalar,
-    /// checking it against `public_key`, an X9.62 uncompressed point.
+    /// checking it against `public_key`, an X9.62 uncompressed or compressed
+    /// point.
     pub(crate) fn from_private_key_and_public_key(
         private_key: &[u8],
         public_key: &[u8],
@@ -109,9 +110,29 @@ impl<C: Curve> SigningKey<C> {
         }
 
         let key = Self::new(C::PrivateKey::from_bytes(private_key)?)?;
-        match key.public_key_uncompressed() == public_key {
+        match key.is_public_key(public_key) {
             true => Ok(key),
             false => Err(KeyFormatError::MismatchedPublicKey.into()),
+        }
+    }
+
+    /// Whether `encoded`, an X9.62 uncompressed or compressed point, is this
+    /// key's public key.
+    ///
+    /// A compressed point is `x` and the parity of `y`, which name at most
+    /// one point, so comparing them with this key's matches exactly the
+    /// encodings that decompress to it, with no square root. A hybrid point
+    /// is refused.
+    fn is_public_key(&self, encoded: &[u8]) -> bool {
+        let Some((_, xy)) = self.public_key_uncompressed().split_first() else {
+            return false;
+        };
+        let (x, y) = xy.split_at(xy.len() / 2);
+        match encoded.split_first() {
+            Some((&tag @ (0x02 | 0x03), compressed)) => {
+                compressed == x && y.last().is_some_and(|y| tag == 0x02 | (y & 1))
+            }
+            _ => encoded == self.public_key_uncompressed(),
         }
     }
 
