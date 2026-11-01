@@ -8,20 +8,20 @@ There are also a selection AMD CPUs that are characterised manually.
 | AMD Zen 3 | :large_blue_circle: | :white_circle: | adx, aes, avx, avx2, ~~avx512bw~~, ~~avx512f~~, bmi1, bmi2, pclmulqdq, sha, ssse3, ~~vaes~~ |
 | AMD Zen 4 | :large_blue_circle: | :large_blue_circle: | adx, aes, avx, avx2, avx512bw, avx512f, avx512vl, bmi1, bmi2, pclmulqdq, sha, ssse3, vaes, vpclmulqdq |
 | Intel Pentium4 Prescott | :white_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ~~ssse3~~, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Merom | :white_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Penryn | :white_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Nehalem | :white_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Westmere | :white_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Sandy Bridge | :white_circle: | :white_circle: | ~~adx~~, aes, avx, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Ivy Bridge | :white_circle: | :white_circle: | ~~adx~~, aes, avx, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Haswell | :white_circle: | :white_circle: | ~~adx~~, aes, avx, avx2, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, bmi1, bmi2, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Merom | :large_blue_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Penryn | :large_blue_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Nehalem | :large_blue_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Westmere | :large_blue_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Sandy Bridge | :large_blue_circle: | :white_circle: | ~~adx~~, aes, avx, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Ivy Bridge | :large_blue_circle: | :white_circle: | ~~adx~~, aes, avx, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Haswell | :large_blue_circle: | :white_circle: | ~~adx~~, aes, avx, avx2, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, bmi1, bmi2, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
 | Intel Broadwell | :large_blue_circle: | :white_circle: | adx, aes, avx, avx2, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, bmi1, bmi2, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Saltwell | :white_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Silvermont | :white_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Goldmont | :white_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Goldmont Plus | :white_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Tremont | :white_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
-| Intel Snow Ridge | :white_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Saltwell | :large_blue_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Silvermont | :large_blue_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Goldmont | :large_blue_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Goldmont Plus | :large_blue_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Tremont | :large_blue_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Snow Ridge | :large_blue_circle: | :white_circle: | ~~adx~~, aes, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
 | Intel Skylake | :large_blue_circle: | :white_circle: | adx, aes, avx, avx2, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, bmi1, bmi2, pclmulqdq, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
 | Intel Cannon Lake | :large_blue_circle: | :white_circle: | adx, aes, avx, avx2, avx512bw, avx512f, avx512vl, bmi1, bmi2, pclmulqdq, sha, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
 | Intel Ice Lake | :large_blue_circle: | :large_blue_circle: | adx, aes, avx, avx2, avx512bw, avx512f, avx512vl, bmi1, bmi2, pclmulqdq, sha, ssse3, vaes, vpclmulqdq |

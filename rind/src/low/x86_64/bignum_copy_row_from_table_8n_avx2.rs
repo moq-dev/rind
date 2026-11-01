@@ -9,12 +9,13 @@ pub(crate) fn bignum_copy_row_from_table_8n_avx2(
     _height: u64,
     width: u64,
     index: u64,
+    _token: super::cpu::HaveAvx2,
 ) {
     debug_assert!(z.len() as u64 == width);
     debug_assert!(width.is_multiple_of(8));
     debug_assert!(table.len() as u64 == _height * width);
 
-    // SAFETY: this crate requires the `avx` and `avx2` cpu features
+    // SAFETY: `_token` proves the `avx` and `avx2` cpu features
     unsafe { _bignum_copy_row_from_table_8n_avx2(z, table, width, index) }
 }
 

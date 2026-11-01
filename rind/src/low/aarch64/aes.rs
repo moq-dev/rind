@@ -580,11 +580,16 @@ mod tests {
 
             let nonce = bytes(12, seed).try_into().unwrap();
             for counter in [0, 1, u32::MAX - 3, u32::MAX] {
-                let mut want: [u8; 128] = bytes(128, counter).try_into().unwrap();
-                let mut got = want;
-                aes_ctr::apply_8(&hw, &nonce, counter, &mut want);
-                aes_ctr::apply_8(&vpaes, &nonce, counter, &mut got);
-                assert_eq!(got, want, "{key_len}-byte key, counter {counter}");
+                for len in [1, 15, 16, 17, 127, 128, 129, 300] {
+                    let mut want = bytes(len, counter);
+                    let mut got = want.clone();
+                    aes_ctr::apply(&hw, &nonce, counter, &mut want);
+                    aes_ctr::apply(&vpaes, &nonce, counter, &mut got);
+                    assert_eq!(
+                        got, want,
+                        "{key_len}-byte key, counter {counter}, {len} bytes"
+                    );
+                }
             }
         }
     }

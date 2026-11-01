@@ -12,16 +12,7 @@ fn check_passes() {
 #[test]
 fn missing_feature_is_named() {
     #[cfg(target_arch = "x86_64")]
-    const REQUIRED: &[&str] = &[
-        "ssse3",
-        "popcnt",
-        "aes",
-        "pclmulqdq",
-        "avx",
-        "avx2",
-        "bmi2",
-        "adx",
-    ];
+    const REQUIRED: &[&str] = &["ssse3"];
     #[cfg(target_arch = "aarch64")]
     const REQUIRED: &[&str] = &["neon"];
 
@@ -55,11 +46,6 @@ fn missing_feature_is_named() {
         .iter()
         .flat_map(|feature| OPERATIONS.iter().map(move |operation| (feature, operation)))
     {
-        // valgrind cannot run adx, so this build accepts its absence.
-        if *feature == "adx" && option_env!("VALGRIND_BUG_494162").is_some() {
-            continue;
-        }
-
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "missing_feature_is_named", "--nocapture"])
             .env(CHILD, operation)

@@ -978,6 +978,8 @@ use crate::low::macros::*;
         macro_value, _macro_args = self.rust_macros[name]
         for vv in macro_value:
             self.visit_operands(vv)
+        # A register passed only as an argument is clobbered too.
+        self.visit_operands(params)
         value = self.expand_rust_macros_in_macro_call(params)
         print("%s!(%s)," % (name, value), file=self.output)
 

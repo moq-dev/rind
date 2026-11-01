@@ -23,9 +23,14 @@ Mach-O. The tables move to Rust statics, written as array literals beside the
 routines, which the routines reach through `sym` operands; a label inside a
 table becomes the table's operand plus the label's offset. Helpers, the local
 routines the others `bl` to, become naked functions of their own, reached the
-same way. An `inner` helper, an entry point inside a routine that falls
-through to it, gets its own copy from its label on, and the routine drops the
-label line.
+same way, as are the routines of another import that a routine `calls`. An
+`inner` label, an entry point inside a routine that falls through to it,
+does not end the routine, which drops the label line; one naming a helper
+gives that helper its own copy from the label on, which opens a CFI frame of
+its own where the copy closes one. A routine that calls into
+the middle of a helper `carries` it: the helper's body follows the routine's
+in the same file, so the call reaches it as a local label. An import's `cpp`
+defines drop branches rind never takes.
 """
 
 import os
@@ -158,6 +163,99 @@ IMPORTS_64 = [
         "routines": ["sha512_block_data_order_avx", "sha512_block_data_order_nohw"],
     },
     {
+        "arch": "x86_64",
+        "source": "sha256-x86_64.S",
+        "tag": "sha256",
+        "perlasm": "crypto/fipsmodule/sha/asm/sha512-x86_64.pl",
+        "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["K256"],
+        "routines": ["sha256_block_data_order_avx", "sha256_block_data_order_ssse3"],
+    },
+    # The rest of the x86_64 imports are for CPUs without AVX2.
+    {
+        "arch": "x86_64",
+        "source": "sha1-x86_64.S",
+        "tag": "sha1",
+        "perlasm": "crypto/fipsmodule/sha/asm/sha1-x86_64.pl",
+        "copyright": "Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["K_XX_XX"],
+        "routines": ["sha1_block_data_order_avx", "sha1_block_data_order_ssse3"],
+    },
+    {
+        "arch": "x86_64",
+        "source": "chacha-x86_64.S",
+        "dir": "chacha",
+        "tag": "chacha",
+        "perlasm": "crypto/chacha/asm/chacha-x86_64.pl",
+        "copyright": "Copyright 2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["zero", "rot16"],
+        "routines": ["ChaCha20_ctr32_nohw", "ChaCha20_ctr32_ssse3_4x"],
+    },
+    # bn_sqr8x_mont without its mulx branch, which needs BMI2 and ADX.
+    {
+        "arch": "x86_64",
+        "source": "x86_64-mont.S",
+        "tag": "mont",
+        "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont.pl",
+        "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "cpp": ["-DMY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2"],
+        "tables": [],
+        "routines": ["bn_mul4x_mont", "bn_sqr8x_mont"],
+        "calls": ["bn_sqr8x_internal"],
+    },
+    {
+        "arch": "x86_64",
+        "source": "x86_64-mont5.S",
+        "tag": "mont5",
+        "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont5.pl",
+        "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": [],
+        "routines": ["bn_sqr8x_internal"],
+        "inner": ["__bn_sqr8x_internal", "__bn_sqr8x_reduction"],
+    },
+    # Of those, these are AES and GHASH for CPUs without AVX, or without
+    # AES-NI and PCLMULQDQ.
+    {
+        "arch": "x86_64",
+        "source": "aesni-x86_64.S",
+        "tag": "aesni",
+        "perlasm": "crypto/fipsmodule/aes/asm/aesni-x86_64.pl",
+        "copyright": "Copyright 2009-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": [],
+        "routines": ["aes_hw_ctr32_encrypt_blocks"],
+        "carries": ["_aesni_encrypt8"],
+    },
+    {
+        "arch": "x86_64",
+        "source": "vpaes-x86_64.S",
+        "tag": "vpaes",
+        "perlasm": "crypto/fipsmodule/aes/asm/vpaes-x86_64.pl",
+        "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["_vpaes_consts"],
+        "routines": ["vpaes_set_encrypt_key", "vpaes_encrypt", "vpaes_ctr32_encrypt_blocks"],
+        "helpers": [
+            "_vpaes_preheat",
+            "_vpaes_encrypt_core",
+            "_vpaes_encrypt_core_2x",
+            "_vpaes_schedule_core",
+            "_vpaes_schedule_192_smear",
+            "_vpaes_schedule_round",
+            "_vpaes_schedule_low_round",
+            "_vpaes_schedule_transform",
+            "_vpaes_schedule_mangle",
+        ],
+        "inner": ["_vpaes_schedule_low_round"],
+    },
+    {
+        "arch": "x86_64",
+        "source": "ghash-ssse3-x86_64.S",
+        "tag": "ghash",
+        "perlasm": "crypto/fipsmodule/modes/asm/ghash-ssse3-x86_64.pl",
+        "notice": ["Copyright (c) 2019, Google Inc.", "SPDX-License-Identifier: ISC"],
+        "tables": ["reverse_bytes", "low4_mask"],
+        "routines": ["gcm_ghash_ssse3"],
+    },
+    {
         "arch": "aarch64",
         "source": "sha512-armv8.S",
         "tag": "sha512",
@@ -278,11 +376,12 @@ def body(lines, label, local, inner=()):
 
 
 def table(lines, label, local):
-    """The values from `label` up to the first line that is not one, their
-    width in bytes, and the offset of each label within them, keyed without
-    `local`."""
+    """The values from `label` up to the first line that is not one of the
+    same width, their width in bytes, and the offset of each label within
+    them, keyed without `local`. A label just before a change of width starts
+    the next table, which a spec names separately."""
     start = find(lines, [label]) + 1
-    widths = {".quad": 8, ".long": 4}
+    widths = {".quad": 8, ".long": 4, ".byte": 1}
     values, width, offsets = [], None, {}
     for line in lines[start:]:
         words = re.sub(r"(//|#).*", "", line).replace(",", " ").split()
@@ -291,15 +390,14 @@ def table(lines, label, local):
         if len(words) == 1 and words[0].startswith(local) and words[0].endswith(":"):
             offsets[words[0][len(local) : -1]] = len(values) * width if width else 0
             continue
-        if words[0] not in widths:
+        if words[0] not in widths or width not in (None, widths[words[0]]):
             break
-        if width not in (None, widths[words[0]]):
-            sys.exit(f"mixed widths in table: {label}")
         width = widths[words[0]]
         values += words[1:]
     if not values:
         sys.exit(f"empty table: {label}")
-    return values, width, offsets
+    end = len(values) * width
+    return values, width, {sub: offset for sub, offset in offsets.items() if offset < end}
 
 
 def words(names):
@@ -377,8 +475,8 @@ def import_64(aws_lc):
         out_dir = os.path.join(ROOT, spec["arch"], "aws_lc")
         stem = spec["source"].removesuffix(".S")
         for flavor, (directory, defines, prefix, local) in arch["flavors"].items():
-            source = os.path.join("generated-src", directory, "crypto", "fipsmodule", spec["source"])
-            lines = preprocess(os.path.join(aws_lc, source), arch["cpp"] + defines)
+            source = os.path.join("generated-src", directory, "crypto", spec.get("dir", "fipsmodule"), spec["source"])
+            lines = preprocess(os.path.join(aws_lc, source), arch["cpp"] + defines + spec.get("cpp", []))
 
             # A flavor names a table with or without its local prefix, and a
             # label inside it by the table's operand plus its offset.
@@ -397,14 +495,22 @@ def import_64(aws_lc):
 
             helpers = spec.get("helpers", [])
             operands |= {name: (name.lstrip("_"), 0) for name in helpers}
+            # Routines of another import that these call.
+            operands |= {prefix + name: (name, 0) for name in spec.get("calls", [])}
             entries = [(f"{prefix}{name}:", name) for name in spec["routines"]]
             entries += [(f"{name}:", name.lstrip("_")) for name in helpers]
             inner = spec.get("inner", [])
             # A routine falls through these labels, which name helpers with
             # their own copy.
             dropped = [[f"{name}:"] for name in inner]
+            carried = [line for name in spec.get("carries", []) for line in body(lines, f"{name}:", local)]
             for label, name in entries:
                 text = [line for line in body(lines, label, local, inner) if line.split() not in dropped]
+                if name in spec["routines"]:
+                    text += carried
+                directives = [line.split()[:1] for line in text]
+                if label[:-1] in inner and [".cfi_endproc"] in directives and [".cfi_startproc"] not in directives:
+                    text = [".cfi_startproc"] + text
                 text = escape(text, operands, local, spec["tag"], arch["comment"])
                 write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
 

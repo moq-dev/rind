@@ -23,6 +23,22 @@ if __name__ == "__main__":
         parse_file(input, d)
 
     with (
+        open("../../thirdparty/s2n-bignum/x86/curve25519/curve25519_x25519_alt.S") as input,
+        open("../../rind/src/low/x86_64/curve25519_x25519_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "curve25519_x25519_alt",
+            parameter_map=[
+                ("inout", "res.as_mut_ptr() => _"),
+                ("inout", "scalar.as_ptr() => _"),
+                ("inout", "point.as_ptr() => _"),
+            ],
+            rust_decl="fn curve25519_x25519_alt(res: &mut [u64; 4], scalar: &[u64; 4], point: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    with (
         open(
             "../../thirdparty/s2n-bignum/x86/curve25519/curve25519_x25519base.S"
         ) as input,
@@ -37,6 +53,24 @@ if __name__ == "__main__":
                 ("inout", "scalar.as_ptr() => _"),
             ],
             rust_decl="fn curve25519_x25519base(res: &mut [u64; 4], scalar: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    with (
+        open(
+            "../../thirdparty/s2n-bignum/x86/curve25519/curve25519_x25519base_alt.S"
+        ) as input,
+        open("../../rind/src/low/x86_64/curve25519_x25519base_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.add_const_symbol("curve25519_x25519base_alt_constant")
+        d.emit_rust_function(
+            "curve25519_x25519base_alt",
+            parameter_map=[
+                ("inout", "res.as_mut_ptr() => _"),
+                ("inout", "scalar.as_ptr() => _"),
+            ],
+            rust_decl="fn curve25519_x25519base_alt(res: &mut [u64; 4], scalar: &[u64; 4])",
         )
         parse_file(input, d)
 
