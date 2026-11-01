@@ -20,7 +20,3 @@ multiple of four words at 1024 and 2048 bits.
   aws-lc's aarch64 Montgomery routines.
 - Cover each new path in ctgrind, the forced-path tests, and the RSA bench
   rows at 3072 and 4096 bits, and record before and after numbers.
-
-## Required
-
-- [x86_64 without AVX2, BMI2, ADX, or AES-NI](/quest/m1/moq/x86-portable.md) - both touch `low`'s Montgomery dispatch
