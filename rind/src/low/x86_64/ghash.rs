@@ -13,7 +13,8 @@ use core::arch::x86_64::*;
 use core::mem;
 
 use super::aes_gcm_vaes::VaesKernel;
-use super::cpu::{HaveAesHardware, HaveAvx512ForAesGcm, HaveVaesAvx2ForAesGcm};
+use super::cpu::{HaveAesHardware, HaveAvx512ForAesGcm, HaveSsse3, HaveVaesAvx2ForAesGcm};
+use super::ghash_nohw::NohwTable;
 use super::ghash_ssse3_x86_64::Ssse3Table;
 use crate::low;
 
@@ -61,12 +62,17 @@ pub(crate) enum GhashTable {
     /// SSSE3's, which the table picks when the CPU lacks AES-NI or
     /// PCLMULQDQ.
     Ssse3(Ssse3Table),
+    /// Integer code's, which the table picks when the CPU also lacks SSSE3.
+    Nohw(NohwTable),
 }
 
 impl GhashTable {
     pub(crate) fn new(h: u128) -> Self {
         let Some(hw) = HaveAesHardware::check() else {
-            return Self::Ssse3(Ssse3Table::new(&h.to_be_bytes()));
+            return match HaveSsse3::check() {
+                Some(token) => Self::Ssse3(Ssse3Table::new(&h.to_be_bytes(), token)),
+                None => Self::Nohw(NohwTable::new(&h.to_be_bytes())),
+            };
         };
         if let Some(token) = HaveAvx512ForAesGcm::check() {
             return Self::Avx512(GhashTableAvx512::new(h, hw, token));
@@ -294,17 +300,26 @@ impl<'a> Ghash<'a> {
             // SAFETY: avx512.token proves features were dynamically checked
             GhashTable::Avx512(avx512) => unsafe { avx512.add(bytes, self.current) },
             GhashTable::Ssse3(table) => {
-                let mut xi = self.xi();
-                let (blocks, tail) = bytes.as_chunks::<16>();
-                table.ghash(&mut xi, blocks);
-                if !tail.is_empty() {
-                    let mut last = [0u8; 16];
-                    last[..tail.len()].copy_from_slice(tail);
-                    table.ghash(&mut xi, &[last]);
-                }
-                return self.set_xi(xi);
+                return self.add_by(bytes, |xi, blocks| table.ghash(xi, blocks));
+            }
+            GhashTable::Nohw(table) => {
+                return self.add_by(bytes, |xi, blocks| table.ghash(xi, blocks));
             }
         };
+    }
+
+    /// Inputs `bytes`, zero-padded, by `ghash`, which folds whole blocks into
+    /// the state in GCM's byte order.
+    fn add_by(&mut self, bytes: &[u8], ghash: impl Fn(&mut [u8; 16], &[[u8; 16]])) {
+        let mut xi = self.xi();
+        let (blocks, tail) = bytes.as_chunks::<16>();
+        ghash(&mut xi, blocks);
+        if !tail.is_empty() {
+            let mut last = [0u8; 16];
+            last[..tail.len()].copy_from_slice(tail);
+            ghash(&mut xi, &[last]);
+        }
+        self.set_xi(xi);
     }
 
     pub(crate) fn into_bytes(self) -> [u8; 16] {
@@ -313,20 +328,13 @@ impl<'a> Ghash<'a> {
 
     /// The state in GCM's byte order, as BoringSSL's `Xi`.
     pub(crate) fn xi(&self) -> [u8; 16] {
-        // SAFETY: rind requires SSSE3
-        m128i_to_u128(unsafe { byteswap(self.current) }).to_le_bytes()
+        m128i_to_u128(self.current).to_be_bytes()
     }
 
     /// Sets the state from GCM's byte order, as BoringSSL's `Xi`.
     pub(crate) fn set_xi(&mut self, xi: [u8; 16]) {
-        // SAFETY: rind requires SSSE3
-        self.current = unsafe { byteswap(u128_to_m128i(u128::from_le_bytes(xi))) };
+        self.current = u128_to_m128i(u128::from_be_bytes(xi));
     }
-}
-
-#[target_feature(enable = "ssse3")]
-fn byteswap(x: __m128i) -> __m128i {
-    _mm_shuffle_epi8(x, BYTESWAP)
 }
 
 #[inline]
@@ -588,7 +596,7 @@ mod tests {
     }
 
     // Checks the table the CPU picks, and every slower one it can run: the
-    // SSSE3 table, and PCLMULQDQ where the CPU picks VAES.
+    // integer and SSSE3 tables, and PCLMULQDQ where the CPU picks VAES.
     fn check(key: u128, input: &[u8]) {
         println!("check: input={input:02x?}");
         let tb = model::GhashTable::new(key);
@@ -598,8 +606,14 @@ mod tests {
 
         let mut tables = vec![
             GhashTable::new(key),
-            GhashTable::Ssse3(Ssse3Table::new(&key.to_be_bytes())),
+            GhashTable::Nohw(NohwTable::new(&key.to_be_bytes())),
         ];
+        if let Some(token) = HaveSsse3::check() {
+            tables.push(GhashTable::Ssse3(Ssse3Table::new(
+                &key.to_be_bytes(),
+                token,
+            )));
+        }
         if let Some(hw) = HaveAesHardware::check() {
             tables.push(GhashTable::Clmul(ClmulTable::new(key, hw)));
         }

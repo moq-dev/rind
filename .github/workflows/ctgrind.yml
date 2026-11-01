@@ -49,8 +49,9 @@ jobs:
   # arithmetic, the SSE2 selects, rind's AES-GCM and GHASH intrinsics without
   # VEX encoding, and aws-lc's AES-NI CTR. The `no-aes` row also denies AES-NI
   # and PCLMULQDQ, for aws-lc's vpaes and SSSE3 GHASH, as Core 2 and Nehalem
-  # run. The denial takes debug assertions, which the optimised build then
-  # keeps.
+  # run, and the `no-ssse3` row SSSE3, for aws-lc's SSE2 AES, integer GHASH,
+  # ChaCha20, SHA-1, and SHA-256, as `qemu64` runs. The denial takes debug
+  # assertions, which the optimised build then keeps.
   x86_64-portable:
     name: x86_64-portable (${{ matrix.cpu }})
     strategy:
@@ -63,6 +64,8 @@ jobs:
             deny: RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_sha=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=1
           - cpu: no-aes
             deny: RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0
+          - cpu: no-ssse3
+            deny: RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

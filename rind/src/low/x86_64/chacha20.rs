@@ -5,7 +5,7 @@
 //! ChaCha20: rind's AVX2 kernels where the CPU has AVX2, and otherwise
 //! aws-lc's `chacha-x86_64` routines, imported by `admin/import-aws-lc`, at
 //! the lengths aws-lc runs each: four blocks at a time with SSSE3 above 128
-//! bytes, and integer code up to that.
+//! bytes, and integer code up to that, or at every length without SSSE3.
 //!
 //! The aws-lc assembly is not formally verified: its correctness rests on its
 //! use and testing in OpenSSL, BoringSSL, and aws-lc, and on rind's tests of
@@ -13,13 +13,14 @@
 
 use core::arch::x86_64::*;
 
-use super::cpu::HaveAvx2;
+use super::cpu::{HaveAvx2, HaveSsse3};
 
 pub(crate) struct ChaCha20 {
     key: [u32; 8],
     /// The block counter, then the 96-bit nonce.
     counter_nonce: [u32; 4],
     avx2: Option<HaveAvx2>,
+    ssse3: Option<HaveSsse3>,
 }
 
 impl ChaCha20 {
@@ -29,6 +30,7 @@ impl ChaCha20 {
             key: words(key),
             counter_nonce: words(nonce),
             avx2: HaveAvx2::check(),
+            ssse3: HaveSsse3::check(),
         }
     }
 
@@ -38,7 +40,7 @@ impl ChaCha20 {
         match self.avx2 {
             // SAFETY: the token proves the `avx2` cpu feature
             Some(_) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
-            None => chacha20_ctr32(&self.key, &self.counter_nonce, buffer),
+            None => chacha20_ctr32(&self.key, &self.counter_nonce, buffer, self.ssse3),
         }
         self.counter_nonce[0] =
             self.counter_nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
@@ -52,11 +54,19 @@ impl XChaCha20 {
         let (nonce, suffix) = nonce.split_at(16);
         let mut counter_nonce = [0u8; 16];
         counter_nonce[8..].copy_from_slice(suffix);
+        let nonce = nonce.try_into().unwrap();
+        let ssse3 = HaveSsse3::check();
+        let key = match ssse3 {
+            // SAFETY: the token proves the `ssse3` cpu feature
+            Some(_) => unsafe { hchacha_ssse3(key, nonce) },
+            // SAFETY: every x86_64 CPU has SSE2
+            None => unsafe { hchacha_sse2(key, nonce) },
+        };
         Self(ChaCha20 {
-            // SAFETY: this crate requires the `ssse3` cpu feature
-            key: unsafe { hchacha(key, nonce.try_into().unwrap()) },
+            key,
             counter_nonce: words(&counter_nonce),
             avx2: HaveAvx2::check(),
+            ssse3,
         })
     }
 
@@ -82,18 +92,25 @@ const SSSE3_4X_MIN_LEN: usize = 129;
 /// XORs the keystream for `key` and `counter_nonce` into `buffer`. The
 /// routines' 32-bit counter wraps unspecified past 2^32 blocks, which callers
 /// rule out with `mid::chacha20::check_counter`.
-fn chacha20_ctr32(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
+fn chacha20_ctr32(
+    key: &[u32; 8],
+    counter_nonce: &[u32; 4],
+    buffer: &mut [u8],
+    ssse3: Option<HaveSsse3>,
+) {
     let len = buffer.len();
     let ptr = buffer.as_mut_ptr();
-    match len {
+    match (len, ssse3) {
         // Both routines require at least one byte.
-        0 => {}
+        (0, _) => {}
         // SAFETY: `buffer` is `len` readable and writable bytes, which the
         // routine allows to alias exactly, and `key` and `counter_nonce` are
-        // 8 and 4 words.
-        1..SSSE3_4X_MIN_LEN => unsafe { chacha20_ctr32_nohw(ptr, ptr, len, key, counter_nonce) },
-        // SAFETY: as above, and this crate requires the `ssse3` cpu feature.
-        _ => unsafe { chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce) },
+        // 8 and 4 words. The token proves the `ssse3` cpu feature.
+        (SSSE3_4X_MIN_LEN.., Some(_)) => unsafe {
+            chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce)
+        },
+        // SAFETY: as above.
+        _ => unsafe { chacha20_ctr32_nohw(ptr, ptr, len, key, counter_nonce) },
     }
 }
 
@@ -189,7 +206,7 @@ macro_rules! rotate_left {
     };
 }
 
-macro_rules! rotate_left_128 {
+macro_rules! rotate_left_128_ssse3 {
     ($reg:expr, 8) => {
         // this is a byte shuffle leftwards, except little-endian
         _mm_shuffle_epi8(
@@ -203,6 +220,16 @@ macro_rules! rotate_left_128 {
             $reg,
             _mm_set_epi8(13, 12, 15, 14, 9, 8, 11, 10, 5, 4, 7, 6, 1, 0, 3, 2),
         )
+    };
+    ($reg:expr, $rot:literal) => {
+        rotate_left_128_sse2!($reg, $rot)
+    };
+}
+
+macro_rules! rotate_left_128_sse2 {
+    ($reg:expr, 16) => {
+        // swaps the halves of each word
+        _mm_shufflehi_epi16(_mm_shufflelo_epi16($reg, 0b10_11_00_01), 0b10_11_00_01)
     };
     ($reg:expr, $rot:literal) => {
         _mm_or_si128(_mm_slli_epi32($reg, $rot), _mm_srli_epi32($reg, 32 - $rot))
@@ -587,70 +614,79 @@ fn core_2x(t07: __m256i, z8f: &mut __m256i, xor_out: &mut [u8]) {
     }
 }
 
-/// HChaCha20 of `key` and `nonce`: the ChaCha20 rounds without the final
-/// addition, keeping words 0-3 and 12-15.
-#[target_feature(enable = "ssse3")]
-fn hchacha(key: &[u8; 32], nonce: &[u8; 16]) -> [u32; 8] {
-    // SAFETY: `SIGMA`, `key` and `nonce` are all readable
-    let (mut z03, mut z47, mut z8b, mut zcf) = unsafe {
-        (
-            _mm_lddqu_si128(SIGMA.as_ptr().cast()),
-            _mm_lddqu_si128(key[0..16].as_ptr().cast()),
-            _mm_lddqu_si128(key[16..32].as_ptr().cast()),
-            _mm_lddqu_si128(nonce[0..16].as_ptr().cast()),
-        )
+/// Defines `$name`, HChaCha20 of `key` and `nonce`: the ChaCha20 rounds
+/// without the final addition, keeping words 0-3 and 12-15. It rotates with
+/// `$rotate`, under the target features given: SSSE3's byte shuffles, or
+/// SSE2 alone, which every x86_64 CPU has.
+macro_rules! hchacha {
+    ($name:ident, $features:literal, $rotate:ident) => {
+        #[target_feature(enable = $features)]
+        fn $name(key: &[u8; 32], nonce: &[u8; 16]) -> [u32; 8] {
+            // SAFETY: `SIGMA`, `key` and `nonce` are all readable
+            let (mut z03, mut z47, mut z8b, mut zcf) = unsafe {
+                (
+                    _mm_loadu_si128(SIGMA.as_ptr().cast()),
+                    _mm_loadu_si128(key[0..16].as_ptr().cast()),
+                    _mm_loadu_si128(key[16..32].as_ptr().cast()),
+                    _mm_loadu_si128(nonce[0..16].as_ptr().cast()),
+                )
+            };
+
+            for _ in 0..10 {
+                z03 = _mm_add_epi32(z03, z47);
+                zcf = _mm_xor_si128(zcf, z03);
+                zcf = $rotate!(zcf, 16);
+
+                z8b = _mm_add_epi32(z8b, zcf);
+                z47 = _mm_xor_si128(z47, z8b);
+                z47 = $rotate!(z47, 12);
+
+                z03 = _mm_add_epi32(z03, z47);
+                zcf = _mm_xor_si128(zcf, z03);
+                zcf = $rotate!(zcf, 8);
+
+                z8b = _mm_add_epi32(z8b, zcf);
+                z47 = _mm_xor_si128(z47, z8b);
+                z47 = $rotate!(z47, 7);
+
+                z47 = _mm_shuffle_epi32(z47, 0b00_11_10_01);
+                z8b = _mm_shuffle_epi32(z8b, 0b01_00_11_10);
+                zcf = _mm_shuffle_epi32(zcf, 0b10_01_00_11);
+
+                z03 = _mm_add_epi32(z03, z47);
+                zcf = _mm_xor_si128(zcf, z03);
+                zcf = $rotate!(zcf, 16);
+
+                z8b = _mm_add_epi32(z8b, zcf);
+                z47 = _mm_xor_si128(z47, z8b);
+                z47 = $rotate!(z47, 12);
+
+                z03 = _mm_add_epi32(z03, z47);
+                zcf = _mm_xor_si128(zcf, z03);
+                zcf = $rotate!(zcf, 8);
+
+                z8b = _mm_add_epi32(z8b, zcf);
+                z47 = _mm_xor_si128(z47, z8b);
+                z47 = $rotate!(z47, 7);
+
+                z47 = _mm_shuffle_epi32(z47, 0b10_01_00_11);
+                z8b = _mm_shuffle_epi32(z8b, 0b01_00_11_10);
+                zcf = _mm_shuffle_epi32(zcf, 0b00_11_10_01);
+            }
+
+            let mut out = [0u32; 8];
+            // SAFETY: `out` is 8 writable words
+            unsafe {
+                _mm_storeu_si128(out[0..4].as_mut_ptr().cast(), z03);
+                _mm_storeu_si128(out[4..8].as_mut_ptr().cast(), zcf);
+            }
+            out
+        }
     };
-
-    for _ in 0..10 {
-        z03 = _mm_add_epi32(z03, z47);
-        zcf = _mm_xor_si128(zcf, z03);
-        zcf = rotate_left_128!(zcf, 16);
-
-        z8b = _mm_add_epi32(z8b, zcf);
-        z47 = _mm_xor_si128(z47, z8b);
-        z47 = rotate_left_128!(z47, 12);
-
-        z03 = _mm_add_epi32(z03, z47);
-        zcf = _mm_xor_si128(zcf, z03);
-        zcf = rotate_left_128!(zcf, 8);
-
-        z8b = _mm_add_epi32(z8b, zcf);
-        z47 = _mm_xor_si128(z47, z8b);
-        z47 = rotate_left_128!(z47, 7);
-
-        z47 = _mm_shuffle_epi32(z47, 0b00_11_10_01);
-        z8b = _mm_shuffle_epi32(z8b, 0b01_00_11_10);
-        zcf = _mm_shuffle_epi32(zcf, 0b10_01_00_11);
-
-        z03 = _mm_add_epi32(z03, z47);
-        zcf = _mm_xor_si128(zcf, z03);
-        zcf = rotate_left_128!(zcf, 16);
-
-        z8b = _mm_add_epi32(z8b, zcf);
-        z47 = _mm_xor_si128(z47, z8b);
-        z47 = rotate_left_128!(z47, 12);
-
-        z03 = _mm_add_epi32(z03, z47);
-        zcf = _mm_xor_si128(zcf, z03);
-        zcf = rotate_left_128!(zcf, 8);
-
-        z8b = _mm_add_epi32(z8b, zcf);
-        z47 = _mm_xor_si128(z47, z8b);
-        z47 = rotate_left_128!(z47, 7);
-
-        z47 = _mm_shuffle_epi32(z47, 0b10_01_00_11);
-        z8b = _mm_shuffle_epi32(z8b, 0b01_00_11_10);
-        zcf = _mm_shuffle_epi32(zcf, 0b00_11_10_01);
-    }
-
-    let mut out = [0u32; 8];
-    // SAFETY: `out` is 8 writable words
-    unsafe {
-        _mm_storeu_si128(out[0..4].as_mut_ptr().cast(), z03);
-        _mm_storeu_si128(out[4..8].as_mut_ptr().cast(), zcf);
-    }
-    out
 }
+
+hchacha!(hchacha_ssse3, "ssse3", rotate_left_128_ssse3);
+hchacha!(hchacha_sse2, "sse2", rotate_left_128_sse2);
 
 const SIGMA: [u8; 16] = *b"expand 32-byte k";
 
@@ -659,38 +695,55 @@ const SIGMA: [u8; 16] = *b"expand 32-byte k";
 mod tests {
     use super::*;
 
-    // AVX2, where present, hides aws-lc's routines from every other test, so
-    // they are checked against it directly: every length through both
-    // routines' boundaries and two four-block batches, each continued by a
-    // second call, which a whole number of blocks leaves contiguous.
+    // The CPU's fastest path hides the others from every other test, so
+    // aws-lc's routines, with SSSE3 and without, are checked against it
+    // directly: every length through both routines' boundaries and two
+    // four-block batches, each continued by a second call, which a whole
+    // number of blocks leaves contiguous.
     #[test]
-    fn aws_lc_matches_avx2() {
-        if HaveAvx2::check().is_none() {
-            return;
-        }
+    fn paths_match() {
         let key = core::array::from_fn(|i| i as u8);
         let nonce = core::array::from_fn(|i| (i * 7) as u8);
         for len in 0..=600 {
-            let mut avx2 = ChaCha20::new(&key, &nonce);
-            let mut aws_lc = ChaCha20 {
-                avx2: None,
-                ..ChaCha20::new(&key, &nonce)
-            };
             let mut want = vec![0x5a; len + 200];
-            let mut got = want.clone();
+            let mut fastest = ChaCha20::new(&key, &nonce);
             let (first, second) = want.split_at_mut(len);
-            avx2.cipher(first);
-            avx2.cipher(second);
-            let (first, second) = got.split_at_mut(len);
-            aws_lc.cipher(first);
-            aws_lc.cipher(second);
-            assert_eq!(got, want, "{len} bytes, then 200");
+            fastest.cipher(first);
+            fastest.cipher(second);
+
+            for (path, ssse3) in [("ssse3", HaveSsse3::check()), ("nohw", None)] {
+                let mut aws_lc = ChaCha20 {
+                    avx2: None,
+                    ssse3,
+                    ..ChaCha20::new(&key, &nonce)
+                };
+                let mut got = vec![0x5a; len + 200];
+                let (first, second) = got.split_at_mut(len);
+                aws_lc.cipher(first);
+                aws_lc.cipher(second);
+                assert_eq!(got, want, "{path}, {len} bytes, then 200");
+            }
 
             if len % 64 == 0 {
                 let mut whole = vec![0x5a; len + 200];
                 ChaCha20::new(&key, &nonce).cipher(&mut whole);
                 assert_eq!(whole, want, "{len} bytes, then 200, at once");
             }
+        }
+    }
+
+    // SSSE3, where present, hides the SSE2 HChaCha20 from every other test.
+    #[test]
+    fn hchacha_paths_match() {
+        if HaveSsse3::check().is_none() {
+            return;
+        }
+        for seed in 1..=4u8 {
+            let key = core::array::from_fn(|i| (i as u8).wrapping_mul(seed).wrapping_add(seed));
+            let nonce = core::array::from_fn(|i| (i as u8).wrapping_mul(0x9d) ^ seed);
+            // SAFETY: SSSE3 was checked above, and every x86_64 CPU has SSE2
+            let (want, got) = unsafe { (hchacha_ssse3(&key, &nonce), hchacha_sse2(&key, &nonce)) };
+            assert_eq!(got, want, "seed {seed}");
         }
     }
 

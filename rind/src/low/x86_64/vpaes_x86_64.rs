@@ -10,6 +10,7 @@
 //! testing in OpenSSL, BoringSSL, and aws-lc, and on rind's tests of it
 //! against AES-NI, Wycheproof, and aws-lc-rs.
 
+use super::cpu::HaveSsse3;
 use crate::low;
 
 /// An expanded AES-128 or AES-256 encryption key, in vpaes's own format:
@@ -22,7 +23,7 @@ pub(crate) struct VpaesKey {
 
 impl VpaesKey {
     /// Expands a 16- or 32-byte key.
-    pub(crate) fn new(key: &[u8]) -> Self {
+    pub(crate) fn new(key: &[u8], _: HaveSsse3) -> Self {
         let bits = match key.len() {
             16 => 128,
             32 => 256,
@@ -33,7 +34,7 @@ impl VpaesKey {
             rounds: 0,
         };
         // SAFETY: `key` holds `bits / 8` bytes and `r` is an `AES_KEY`. The
-        // routines need only SSSE3, which rind requires.
+        // routines need only SSSE3, which the token proves.
         let ret = unsafe { vpaes_set_encrypt_key(key.as_ptr(), bits, &mut r) };
         // aws-lc's always succeeds.
         debug_assert_eq!(ret, 0);
@@ -43,7 +44,8 @@ impl VpaesKey {
     /// Encrypts one block in place.
     pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
         // SAFETY: `inout` is one readable and writable block, which aws-lc
-        // allows to alias, and `self` an expanded key.
+        // allows to alias, and `self` an expanded key, which only a
+        // `HaveSsse3` token builds.
         unsafe { vpaes_encrypt(inout.as_ptr(), inout.as_mut_ptr(), self) }
     }
 
@@ -53,8 +55,9 @@ impl VpaesKey {
     /// a big-endian counter, incremented with 32-bit wrapping.
     pub(crate) fn ctr32(&self, ivec: &[u8; 16], inout: &mut [[u8; 16]]) {
         // SAFETY: `inout` is `inout.len()` readable and writable blocks, which
-        // aws-lc allows to alias, and `self` an expanded key. The routine
-        // returns at once for zero blocks.
+        // aws-lc allows to alias, and `self` an expanded key, which only a
+        // `HaveSsse3` token builds. The routine returns at once for zero
+        // blocks.
         unsafe {
             vpaes_ctr32_encrypt_blocks(
                 inout.as_ptr().cast(),
