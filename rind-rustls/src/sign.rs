@@ -2,8 +2,8 @@ use core::fmt;
 use std::sync::Arc;
 
 use rind::signature::sign::{
-    ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384,
-    RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384, RSA_PSS_SHA512,
+    ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, RSA_PKCS1_SHA256,
+    RSA_PKCS1_SHA384, RSA_PKCS1_SHA512, RSA_PSS_SHA256, RSA_PSS_SHA384, RSA_PSS_SHA512,
 };
 use rind::signature::{
     EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, RsaKeyPair, RsaSigningAlgorithm,
@@ -29,7 +29,7 @@ impl rustls::crypto::KeyProvider for Provider {
 }
 
 /// Each curve's one scheme, since TLS 1.3 binds the hash to the curve.
-const ECDSA: [(&EcdsaSigningAlgorithm, SignatureScheme); 2] = [
+const ECDSA: [(&EcdsaSigningAlgorithm, SignatureScheme); 3] = [
     (
         &ECDSA_P256_SHA256_ASN1,
         SignatureScheme::ECDSA_NISTP256_SHA256,
@@ -37,6 +37,10 @@ const ECDSA: [(&EcdsaSigningAlgorithm, SignatureScheme); 2] = [
     (
         &ECDSA_P384_SHA384_ASN1,
         SignatureScheme::ECDSA_NISTP384_SHA384,
+    ),
+    (
+        &ECDSA_P521_SHA512_ASN1,
+        SignatureScheme::ECDSA_NISTP521_SHA512,
     ),
 ];
 
@@ -292,8 +296,8 @@ mod tests {
         ));
         assert!(provider.load_private_key(rsa2048_pkcs8).is_ok());
 
-        // Valid inputs: ECDSA P256 and P384 keys in SEC1 and PKCS#8 DER
-        // format, each choosing only its curve's scheme.
+        // Valid inputs: ECDSA P256, P384, and P521 keys in SEC1 and PKCS#8
+        // DER format, each choosing only its curve's scheme.
         for (sec1, pkcs8, scheme) in [
             (
                 &include_bytes!("../../rind/src/high/ecdsa/secp256r1.der")[..],
@@ -304,6 +308,11 @@ mod tests {
                 &include_bytes!("../../rind/src/high/ecdsa/secp384r1.der")[..],
                 &include_bytes!("../../rind/src/high/ecdsa/secp384r1.pkcs8.der")[..],
                 SignatureScheme::ECDSA_NISTP384_SHA384,
+            ),
+            (
+                &include_bytes!("../../rind/src/high/ecdsa/secp521r1.der")[..],
+                &include_bytes!("../../rind/src/high/ecdsa/secp521r1.pkcs8.der")[..],
+                SignatureScheme::ECDSA_NISTP521_SHA512,
             ),
         ] {
             let keys = [
@@ -317,6 +326,7 @@ mod tests {
                 let schemes = [
                     SignatureScheme::ECDSA_NISTP256_SHA256,
                     SignatureScheme::ECDSA_NISTP384_SHA384,
+                    SignatureScheme::ECDSA_NISTP521_SHA512,
                 ];
                 assert_eq!(key.choose_scheme(&schemes).unwrap().scheme(), scheme);
             }
@@ -445,6 +455,7 @@ mod tests {
         for (pkcs8, (algorithm, scheme)) in [
             &include_bytes!("../../rind/src/high/ecdsa/secp256r1.pkcs8.der")[..],
             &include_bytes!("../../rind/src/high/ecdsa/secp384r1.pkcs8.der")[..],
+            &include_bytes!("../../rind/src/high/ecdsa/secp521r1.pkcs8.der")[..],
         ]
         .into_iter()
         .zip(ECDSA)
@@ -479,14 +490,18 @@ mod tests {
             assert_eq!(
                 ecdsa
                     .choose_scheme(&[
-                        SignatureScheme::ECDSA_NISTP521_SHA512,
+                        SignatureScheme::RSA_PSS_SHA256,
                         scheme,
-                        SignatureScheme::ED25519,
+                        SignatureScheme::ED25519
                     ])
                     .unwrap()
                     .scheme(),
                 scheme
             );
+
+            // TLS carries ECDSA signatures ASN.1-encoded.
+            let signer = ecdsa.choose_scheme(&[scheme]).unwrap();
+            assert!(signer.sign(b"hello").unwrap().starts_with(&[0x30]));
         }
     }
 

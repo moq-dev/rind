@@ -29,5 +29,5 @@ Decided by the maintainer on 2026-10-30:
 ## Required
 
 - [P-521 in rind-rcgen](/quest/m3/parity/rcgen-p521.md) - waiting on rcgen to export its P-521 algorithms without aws-lc-rs
-- [rustls provider parity](/quest/m3/parity/rustls.md) - rind-rustls offers what aws-lc-rs's provider does
+- [rustls provider parity](/quest/m3/parity/rustls.md) - rind-rustls offers ML-KEM-1024 and ML-DSA, the last of what aws-lc-rs's provider does
 - [aws-lc-rs extras on demand](/quest/m3/parity/aws-lc-extras.md) - waiting on a consumer for each aws-lc-rs-only algorithm

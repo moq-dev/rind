@@ -289,15 +289,17 @@ rind-rustls mirrors the layout of rustls's own providers.
 |---|---|
 | `default_provider()` | `default_provider()?` |
 | `DEFAULT_CIPHER_SUITES`, `ALL_CIPHER_SUITES` | the same, preferring AES-128-GCM to AES-256-GCM; `default_provider()` puts ChaCha20-Poly1305 first where rind runs AES without CPU instructions |
-| `DEFAULT_KX_GROUPS`, `ALL_KX_GROUPS` | the same: X25519MLKEM768, X25519, P-256, then P-384 |
+| `DEFAULT_KX_GROUPS` | the same: X25519MLKEM768, X25519, P-256, then P-384 |
+| `ALL_KX_GROUPS` | X25519MLKEM768, SECP256R1MLKEM768, X25519, P-256, P-384, P-521, then MLKEM768 |
 | `cipher_suite::*` | the same nine suites |
-| `kx_group::X25519`, `SECP256R1`, `SECP384R1`, `X25519MLKEM768` | the same |
-| `kx_group::SECP256R1MLKEM768`, `MLKEM768`, `MLKEM1024` | none |
+| `kx_group::X25519`, `SECP256R1`, `SECP384R1`, `X25519MLKEM768`, `SECP256R1MLKEM768`, `MLKEM768` | the same, plus `SECP521R1` |
+| `kx_group::MLKEM1024` | none; [rustls provider parity](quest/m3/parity/rustls.md) |
 | `Ticketer::new()` | the same, which also refuses a CPU missing a feature |
 | `sign::any_supported_type` and the other `sign` loaders, `hpke` | none; load keys through the provider's `key_provider` |
 
-rind-rustls signs with RSA, ECDSA P-256 and P-384, and Ed25519 keys; ECDSA
-P-521 neither signs nor verifies.
+rind-rustls signs with RSA, ECDSA P-256, P-384, and P-521, and Ed25519 keys,
+and verifies what aws-lc-rs's provider does, short of ML-DSA, which it neither
+signs nor verifies; see [rustls provider parity](quest/m3/parity/rustls.md).
 
 ### rind-rcgen
 

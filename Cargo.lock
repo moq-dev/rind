@@ -3048,6 +3048,7 @@ dependencies = [
 name = "rind-rustls"
 version = "0.1.0"
 dependencies = [
+ "aws-lc-rs",
  "crabgrind 0.4.0",
  "env_logger",
  "hex",

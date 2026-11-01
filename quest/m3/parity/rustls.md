@@ -1,12 +1,13 @@
-# [M] rustls provider parity
+# [S] rustls provider parity
 
 ## Goal
 
-rind-rustls offers every cipher suite, key-exchange group, and signature scheme that aws-lc-rs's rustls provider does, including secp521r1, ECDSA P-521, and the SECP256R1MLKEM768 and MLKEM768 groups.
+rind-rustls offers the rest of aws-lc-rs's rustls provider: the MLKEM1024 key-exchange group, and the ML-DSA-44, ML-DSA-65, and ML-DSA-87 signature schemes, both signing and verifying.
 
 ## Plan
 
-Decided by the maintainer on 2026-10-30, planning ring and aws-lc-rs parity.
-
-- Compare with the rustls version rind-rustls targets, and list anything
-  aws-lc-rs offers only behind a feature.
+- Waits on rind having ML-KEM-1024 and ML-DSA, which
+  [aws-lc-rs extras](/quest/m3/parity/aws-lc-extras.md) holds until a consumer
+  asks; rind-rustls already offers everything else aws-lc-rs's provider does.
+- `aws_lc_rs_parity` in `rind-rustls/src/lib.rs` lists these as the only gaps;
+  drop each exclusion as it lands.
