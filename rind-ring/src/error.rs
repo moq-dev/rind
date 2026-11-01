@@ -57,6 +57,10 @@ impl KeyRejected {
         Self(Reason::Ring("TooLarge"))
     }
 
+    pub(crate) fn inconsistent_components() -> Self {
+        Self(Reason::Ring("InconsistentComponents"))
+    }
+
     pub(crate) fn wrong_algorithm() -> Self {
         Self(Reason::Ring("WrongAlgorithm"))
     }

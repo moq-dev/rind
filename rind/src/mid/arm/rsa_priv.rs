@@ -14,6 +14,8 @@ use crate::low;
 use crate::mid::rng::RandomSource;
 use crate::mid::rsa_key_size::RsaKeySize;
 
+#[path = "../rsa_priv/exponents.rs"]
+mod exponents;
 #[path = "rsa_priv/generate.rs"]
 mod generate;
 

@@ -308,16 +308,22 @@ impl EcdsaKeyPair {
         Ok(pkcs8::Document::new(key.to_pkcs8()))
     }
 
-    /// Loads a PKCS#8 `ECPrivateKey` on `alg`'s curve.
+    /// Loads a PKCS#8 `ECPrivateKey` on `alg`'s curve, refused unless it
+    /// carries its public key as an uncompressed point.
     pub fn from_pkcs8(
         alg: &'static EcdsaSigningAlgorithm,
         pkcs8: &[u8],
         rng: &dyn rand::SecureRandom,
     ) -> Result<Self, error::KeyRejected> {
         let _ = rng;
-        rind::signature::EcdsaKeyPair::from_pkcs8(alg.rind, pkcs8)
-            .map(Self::new)
-            .map_err(error::KeyRejected::rind)
+        let key = rind::signature::EcdsaKeyPair::from_pkcs8(alg.rind, pkcs8)
+            .map_err(error::KeyRejected::rind)?;
+        // ring requires the public key, uncompressed, where rind also takes
+        // it compressed.
+        match der::ecdsa_pkcs8_public_key(pkcs8) == Some(key.public_key().as_ref()) {
+            true => Ok(Self::new(key)),
+            false => Err(error::KeyRejected::invalid_encoding()),
+        }
     }
 
     /// Loads a big-endian private scalar, refused unless `public_key`, an
@@ -329,13 +335,17 @@ impl EcdsaKeyPair {
         rng: &dyn rand::SecureRandom,
     ) -> Result<Self, error::KeyRejected> {
         let _ = rng;
-        rind::signature::EcdsaKeyPair::from_private_key_and_public_key(
+        let key = rind::signature::EcdsaKeyPair::from_private_key_and_public_key(
             alg.rind,
             private_key,
             public_key,
         )
-        .map(Self::new)
-        .map_err(error::KeyRejected::rind)
+        .map_err(error::KeyRejected::rind)?;
+        // rind also takes the point compressed, which ring refuses.
+        match key.public_key().as_ref() == public_key {
+            true => Ok(Self::new(key)),
+            false => Err(error::KeyRejected::inconsistent_components()),
+        }
     }
 
     fn new(key: rind::signature::EcdsaKeyPair) -> Self {

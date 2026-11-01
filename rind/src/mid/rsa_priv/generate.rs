@@ -3,11 +3,16 @@
 
 //! RSA key generation routines.
 //!
+//! These run in constant time in the secret primes, revealing only whether
+//! each candidate is discarded.
+//!
 //! All references below are to FIPS186-5:
 //! <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf>
 
+use super::exponents::{Exponents, PUBLIC_EXPONENT, shift_right_secret};
+use super::{MAX_PRIVATE_MODULUS_BYTES, MAX_PRIVATE_MODULUS_WORDS};
 use crate::Error;
-use crate::low::PosInt;
+use crate::low::{self, PosInt, ct};
 use crate::mid::rng::RandomSource;
 use crate::mid::rsa_key_size::RsaKeySize;
 
@@ -16,48 +21,49 @@ pub(super) fn generate_key(
     candidate_random: &mut dyn RandomSource,
     checks_random: &mut dyn RandomSource,
 ) -> Result<super::RsaPrivateKey, Error> {
+    let len = size.prime_bits() / 64;
     loop {
         let p = random_prime(size, candidate_random, checks_random)?;
         let q = random_prime(size, candidate_random, checks_random)?;
 
-        if p.equals(&q) {
+        if public(p.equals(&q)) {
             // for the set of `RsaSizes` supported here, choosing p == q
             // means `random` is hosed.
             return Err(Error::RngFailed);
         }
 
-        // arrange that q < p
-        let (p, q) = if q.less_than(&p) { (p, q) } else { (q, p) };
+        // arrange that q < p, without revealing which was drawn first.
+        let swap = u64::from(p.less_than(&q));
+        let mut words = [[0u64; MAX_PRIVATE_MODULUS_WORDS]; 2];
+        let [hi, lo] = &mut words;
+        low::bignum_mux(swap, &mut hi[..len], q.as_words(), p.as_words());
+        low::bignum_mux(swap, &mut lo[..len], p.as_words(), q.as_words());
+        let p: super::RsaPosIntModP = PosInt::from_words(&hi[..len])?;
+        let q: super::RsaPosIntModP = PosInt::from_words(&lo[..len])?;
 
-        let n: super::RsaPosIntModN = PosInt::mul(&p, &q);
-        let e = PosInt::word(PUBLIC_EXPONENT.into());
-
-        let one = PosInt::one();
-        let p_1: super::RsaPosIntModP = p.sub(&one);
-        let q_1: super::RsaPosIntModP = q.sub(&one);
-        let phi = PosInt::mul(&p_1, &q_1);
-
-        let d = match e.invert_vartime(&phi) {
-            Some(d) => d,
-            None => {
-                // That means e is not coprime with phi; because e is prime, that means
-                // phi has a factor of e -- p or q are 1 mod e.
-                //
-                // We throw away both primes and start again.
-                continue;
-            }
+        let Some(k) = Exponents::derive(p.as_words(), q.as_words()) else {
+            // e divides p - 1 or q - 1, or d is too small: throw away both
+            // primes and start again.
+            continue;
         };
 
         let iqmp = q.mod_inverse(&p);
-        let dp = d.reduce_even(&p_1);
-        let dq = d.reduce_even(&q_1);
+        let n: super::RsaPosIntModN = PosInt::mul(&p, &q);
 
-        return super::RsaPrivateKey::new(p, q, d, dp, dq, iqmp, n, PUBLIC_EXPONENT.into());
+        // `new` checks only what the construction fixes (odd, full-length
+        // primes of matching widths), so its branches reveal nothing.
+        return super::RsaPrivateKey::new(
+            public(p),
+            public(q),
+            public(PosInt::from_words(&k.d[..len * 2])?),
+            public(PosInt::from_words(&k.dp[..len])?),
+            public(PosInt::from_words(&k.dq[..len])?),
+            public(iqmp),
+            public(n),
+            PUBLIC_EXPONENT.into(),
+        );
     }
 }
-
-/// We only support F4 for the public exponent.
-const PUBLIC_EXPONENT: u32 = 0x10001;
 
 fn random_prime(
     size: RsaKeySize,
@@ -79,7 +85,7 @@ fn random_prime_one(
     checks_random: &mut dyn RandomSource,
 ) -> Result<Option<super::RsaPosIntModP>, Error> {
     let bytes = size.prime_bits() / 8;
-    let mut buffer = [0u8; super::MAX_PRIVATE_MODULUS_BYTES];
+    let mut buffer = [0u8; MAX_PRIVATE_MODULUS_BYTES];
     candidate_random.fill(&mut buffer[..bytes])?;
 
     // set top two bits to ensure the product of two primes, n, is the right size.
@@ -88,7 +94,9 @@ fn random_prime_one(
     // set bottom bit: an even number (of given `size`) is never prime
     buffer[bytes - 1] |= 0b0000_0001;
 
+    // The top byte is nonzero, so this is `bytes` wide.
     let candidate = PosInt::from_bytes(&buffer[..bytes])?;
+    ct::secret_slice(candidate.as_words());
 
     if is_prime(&candidate, size, checks_random)? {
         Ok(Some(candidate))
@@ -104,7 +112,7 @@ fn is_prime(
 ) -> Result<bool, Error> {
     let small_primes = PosInt::from_bytes(PRODUCT_OF_SMALL_PRIMES).unwrap();
 
-    if !candidate.is_coprime(&small_primes) {
+    if !public(candidate.is_coprime(&small_primes)) {
         return Ok(false);
     }
 
@@ -117,47 +125,26 @@ fn miller_rabin(
     rng: &mut dyn RandomSource,
 ) -> Result<bool, Error> {
     // See FIPS186-5 B.3.1:
-    // Steps 1 & 2:
-    let mr = MillerRabinParams::new(w);
-
-    // 3. wlen = len(w).
-    let w_len = w.len_bits();
+    // Steps 1 to 3.
+    let mr = MillerRabinParams::new(w)?;
 
     // 4. For i = 1 to iterations do
-    let mut iter = 1..=size.miller_rabin_rounds();
-    loop {
-        // 4.1. Obtain a string b of wlen bits from a DRBG.
-        //      Convert b to an integer using the algorithm in B.2.1.
-        //
-        // We obtain bytes, and then discard the excess high bits.
-        let mut buffer = [0u8; super::MAX_PRIVATE_MODULUS_BYTES];
-        let w_bytes = w_len.div_ceil(8);
-        rng.fill(&mut buffer[..w_bytes])?;
-        if w_len & 7 != 0 {
-            buffer[0] &= (1u8 << (w_len & 7)).saturating_sub(1);
+    for _ in 0..size.miller_rabin_rounds() {
+        // Steps 4.1-4.6 inclusive.
+        if !mr.check_base(&mr.random_base(rng)?) {
+            return Ok(false);
         }
-        let b = PosInt::from_bytes(&buffer[..w_bytes])?;
-
-        // Steps 4.2-4.6 inclusive.
-        match mr.check_base(&b) {
-            MillerRabinResult::UnsuitableBase => continue,
-            MillerRabinResult::PossiblyPrime => {}
-            MillerRabinResult::Composite => {
-                return Ok(false);
-            }
-        };
-
         // 4.7. Continue
-        if iter.next().is_none() {
-            // 5. Return PROBABLY PRIME.
-            return Ok(true);
-        }
     }
+
+    // 5. Return PROBABLY PRIME.
+    Ok(true)
 }
 
 struct MillerRabinParams<'a> {
     w: &'a MaxPosInt,
-    w1: MaxPosInt,
+    w2: MaxPosInt,
+    w3: MaxPosInt,
     a: usize,
     m: MaxPosInt,
     w_0: u64,
@@ -167,13 +154,16 @@ struct MillerRabinParams<'a> {
 }
 
 impl<'a> MillerRabinParams<'a> {
-    fn new(w: &'a MaxPosInt) -> Self {
+    fn new(w: &'a MaxPosInt) -> Result<Self, Error> {
         // 1. Let a be the largest integer such that 2 ^ a divides w - 1.
         let w1 = w.sub(&PosInt::word(1));
         let a = w1.count_trailing_zeroes();
 
         // 2. m = (w - 1) / 2 ^ a.
-        let m = w1.shift_right_vartime(a);
+        let len = w.as_words().len();
+        let mut m = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+        shift_right_secret(w1.as_words(), a, &mut m[..len]);
+        let m = PosInt::from_words(&m[..len])?;
 
         // Main arithmetic below is done in montgomery form mod w.
         let w_montifier = w.montifier();
@@ -181,24 +171,39 @@ impl<'a> MillerRabinParams<'a> {
         let mont_w1 = w1.to_montgomery(&w_montifier, w);
         let mont_one = w.fixed_one().mont_mul(&w_montifier, w, w_0);
 
-        Self {
+        Ok(Self {
             w,
-            w1,
+            w2: w.sub(&PosInt::word(2)),
+            w3: w.sub(&PosInt::word(3)),
             a,
             m,
             w_0,
             w_montifier,
             mont_w1,
             mont_one,
-        }
+        })
     }
 
-    fn check_base(&self, b: &MaxPosInt) -> MillerRabinResult {
-        // 4.2. If ((b <= 1) or (b >= w - 1)), then go to step 4.1.
-        if b.len_bits() <= 1 || !b.less_than(&self.w1) {
-            return MillerRabinResult::UnsuitableBase;
-        }
+    /// Steps 4.1 and 4.2: a base `b` with `1 < b < w - 1`.
+    ///
+    /// Rather than draw `wlen` bits until they fall in range, which would
+    /// reveal how far `w` is below a power of two, this draws 64 bits more
+    /// and reduces them, so each base is within `2 ^ -64` of uniform.
+    fn random_base(&self, rng: &mut dyn RandomSource) -> Result<MaxPosInt, Error> {
+        let bytes = self.w.as_words().len() * 8 + 8;
+        let mut buffer = [0u8; MAX_PRIVATE_MODULUS_BYTES + 8];
+        rng.fill(&mut buffer[..bytes])?;
+        let wide = PosInt::<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>::from_bytes(&buffer[..bytes])?;
+        // w - 2 - (wide mod (w - 3)) is in [2, w - 2].
+        Ok(self.w2.sub(&wide.reduce_even(&self.w3)))
+    }
 
+    /// Steps 4.3 to 4.6, returning false for COMPOSITE.
+    ///
+    /// As aws-lc's `bn_miller_rabin_iteration`, this squares until `wlen`
+    /// rather than `a`, which is secret, and exits early only for a
+    /// composite.
+    fn check_base(&self, b: &MaxPosInt) -> bool {
         // 4.3. z = b ^ m mod w.
         let mut z = b.to_montgomery(&self.w_montifier, self.w).mont_exp(
             self.mont_one.clone(),
@@ -208,36 +213,29 @@ impl<'a> MillerRabinParams<'a> {
         );
 
         // 4.4. If ((z = 1) or (z = w − 1)), then go to step 4.7.
-        if z.equals(&self.mont_one) || z.equals(&self.mont_w1) {
-            return MillerRabinResult::PossiblyPrime;
-        }
+        let mut possibly_prime = z.equals(&self.mont_one) | z.equals(&self.mont_w1);
 
         // 4.5. For j = 1 to a − 1 do.
-        for _j in 1..self.a {
+        for j in 1..self.w.as_words().len() * 64 {
+            if public((j == self.a) & !possibly_prime) {
+                break;
+            }
+
             // 4.5.1. z = z ^ 2 mod w.
             z = z.mont_sqr(self.w, self.w_0);
 
             // 4.5.2. If (z = w − 1), then go to step 4.7.
-            if z.equals(&self.mont_w1) {
-                return MillerRabinResult::PossiblyPrime;
-            }
+            possibly_prime |= z.equals(&self.mont_w1);
 
             // 4.5.3 If (z = 1), then go to step 4.6.
-            if z.equals(&self.mont_one) {
-                return MillerRabinResult::Composite;
+            if public(z.equals(&self.mont_one) & !possibly_prime) {
+                break;
             }
         }
 
-        // 4.6. Return COMPOSITE.
-        MillerRabinResult::Composite
+        // 4.6. Return COMPOSITE, unless step 4.7 was reached.
+        public(possibly_prime)
     }
-}
-
-#[derive(Debug)]
-enum MillerRabinResult {
-    UnsuitableBase,
-    PossiblyPrime,
-    Composite,
 }
 
 /// Product of the primes from 3..743, such that the product fits in 1024-bits
@@ -260,7 +258,12 @@ const PRODUCT_OF_SMALL_PRIMES: &[u8] = &[
     0x51, 0x86, 0xd4, 0x11, 0xdf, 0x36, 0x36, 0x8f, 0x06, 0x1a, 0xa3, 0x60, 0x11, 0xf3, 0x01, 0x79,
 ];
 
-type MaxPosInt = PosInt<{ super::MAX_PRIVATE_MODULUS_WORDS }>;
+type MaxPosInt = PosInt<MAX_PRIVATE_MODULUS_WORDS>;
+
+/// Declassifies a decision this module reveals by branching on it.
+fn public<T>(v: T) -> T {
+    ct::into_public(v)
+}
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
