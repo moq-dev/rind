@@ -35,9 +35,8 @@ pub fn check() -> Result<(), MissingFeature> {
 pub fn has_aes_hardware() -> bool {
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     return super::HaveCryptoExt::check().is_some();
-    // rind requires AES instructions on x86_64.
     #[cfg(target_arch = "x86_64")]
-    return true;
+    return super::x86_64::cpu::HaveAesHardware::check().is_some();
 }
 
 /// Panics with [`check`]'s error rather than run instructions this CPU lacks.

@@ -6,10 +6,10 @@
 use core::arch::x86_64::*;
 use core::mem;
 
-use super::aes::AesKey;
+use super::aes::{AesKey, HwKey};
+use super::aes_ctr;
 use super::cpu::HaveAvx512ForAesGcm;
-use super::ghash::{self, Ghash};
-use crate::low::ghash::{GhashTable, GhashTableAvx512};
+use super::ghash::{self, ClmulTable, Ghash, GhashTable, GhashTableAvx512};
 
 pub(crate) fn encrypt(
     key: &AesKey,
@@ -32,7 +32,7 @@ pub(crate) fn decrypt(
 }
 
 // AES-GCM encrypt (if `ENC` is `true`) or decrypt, on the fastest path for
-// the CPU the GHASH key was made on and the message's length.
+// the CPU the key and GHASH table were made on and the message's length.
 fn cipher<const ENC: bool>(
     key: &AesKey,
     ghash: &mut Ghash<'_>,
@@ -41,29 +41,50 @@ fn cipher<const ENC: bool>(
     cipher_inout: &mut [u8],
 ) {
     let len = cipher_inout.len();
-    match ghash.table {
+    let AesKey::Hw(hw_key) = key else {
+        return composed::<ENC>(key, ghash, initial_counter, aad, cipher_inout);
+    };
+    let table = match ghash.table {
         GhashTable::Avx512(GhashTableAvx512 { vaes, .. })
             if len >= AVX512_KERNEL_MINIMUM_CIPHER_LEN =>
         {
             ghash.add(aad);
-            vaes.cipher::<ENC>(key, initial_counter, ghash, cipher_inout);
+            return vaes.cipher::<ENC>(hw_key, initial_counter, ghash, cipher_inout);
         }
         GhashTable::Avx512(GhashTableAvx512 { token, .. }) if len >= AVX512_MINIMUM_CIPHER_LEN => {
-            // SAFETY: this crate requires the `aes`, `sse3`, `ssse3`, `pclmulqdq`, `avx` and `avx2` cpu features;
+            // SAFETY: only a `HaveAesHardware` token builds `hw_key`, and
             // `token` proves the remaining features were dynamically checked
-            unsafe { _cipher_avx512::<ENC>(key, ghash, initial_counter, aad, cipher_inout, *token) }
+            return unsafe {
+                _cipher_avx512::<ENC>(hw_key, ghash, initial_counter, aad, cipher_inout, *token)
+            };
         }
         GhashTable::VaesAvx2(_, vaes) if len >= VAES_AVX2_MINIMUM_CIPHER_LEN => {
             ghash.add(aad);
-            vaes.cipher::<ENC>(key, initial_counter, ghash, cipher_inout);
+            return vaes.cipher::<ENC>(hw_key, initial_counter, ghash, cipher_inout);
         }
-        // SAFETY: this crate requires the `aes`, `ssse3`, `pclmulqdq` and `avx` cpu features
-        _ => unsafe { _cipher::<ENC>(key, ghash, initial_counter, aad, cipher_inout) },
+        GhashTable::Clmul(table)
+        | GhashTable::VaesAvx2(table, _)
+        | GhashTable::Avx512(GhashTableAvx512 { avx: table, .. }) => table,
+        GhashTable::Ssse3(_) => {
+            return composed::<ENC>(key, ghash, initial_counter, aad, cipher_inout);
+        }
+    };
+    match table.avx {
+        // SAFETY: only a `HaveAesHardware` token builds `hw_key` and `table`,
+        // proving AES-NI, PCLMULQDQ, and SSSE3, and the `HaveAvx` token AVX.
+        Some(_) => unsafe {
+            by8_avx::<ENC>(hw_key, table, ghash, initial_counter, aad, cipher_inout)
+        },
+        // SAFETY: only a `HaveAesHardware` token builds `hw_key` and `table`,
+        // proving AES-NI, PCLMULQDQ, and SSSE3.
+        None => unsafe { by8_sse::<ENC>(hw_key, table, ghash, initial_counter, aad, cipher_inout) },
     }
 }
 
-#[target_feature(enable = "aes,ssse3,pclmulqdq,avx")]
-fn _cipher<const ENC: bool>(
+/// AES-CTR and GHASH in separate passes, for a key without AES-NI, as aws-lc
+/// composes vpaes and SSSE3 GHASH: they take turns over 3 KB at a time, as
+/// aws-lc's `GHASH_CHUNK`, which stays in L1 and spreads each routine's setup.
+fn composed<const ENC: bool>(
     key: &AesKey,
     ghash: &mut Ghash<'_>,
     initial_counter: &[u8; 16],
@@ -72,174 +93,220 @@ fn _cipher<const ENC: bool>(
 ) {
     ghash.add(aad);
 
-    let (rk_first, rks, rk_last) = key.round_keys();
+    let (nonce, ctr) = initial_counter.split_at(12);
+    let nonce = nonce.try_into().unwrap();
+    // The first counter block encrypts the tag.
+    let mut ctr = u32::from_be_bytes(ctr.try_into().unwrap()).wrapping_add(1);
 
-    let mut counter = Counter::new(initial_counter);
-    let (by8_iter, remainder) = cipher_inout.as_chunks_mut::<128>();
-    let avx_ghash_table = ghash.table.avx();
-
-    for blocks in by8_iter {
-        // prefetch to avoid any stall later
-        super::cpu::prefetch(blocks, 64);
-
-        let c1 = counter.next();
-        let c2 = counter.next();
-        let c3 = counter.next();
-        let c4 = counter.next();
-        let c5 = counter.next();
-        let c6 = counter.next();
-        let c7 = counter.next();
-        let c8 = counter.next();
-
-        let mut c1 = _mm_xor_si128(c1, rk_first);
-        let mut c2 = _mm_xor_si128(c2, rk_first);
-        let mut c3 = _mm_xor_si128(c3, rk_first);
-        let mut c4 = _mm_xor_si128(c4, rk_first);
-        let mut c5 = _mm_xor_si128(c5, rk_first);
-        let mut c6 = _mm_xor_si128(c6, rk_first);
-        let mut c7 = _mm_xor_si128(c7, rk_first);
-        let mut c8 = _mm_xor_si128(c8, rk_first);
-
-        for rk in rks {
-            c1 = _mm_aesenc_si128(c1, *rk);
-            c2 = _mm_aesenc_si128(c2, *rk);
-            c3 = _mm_aesenc_si128(c3, *rk);
-            c4 = _mm_aesenc_si128(c4, *rk);
-            c5 = _mm_aesenc_si128(c5, *rk);
-            c6 = _mm_aesenc_si128(c6, *rk);
-            c7 = _mm_aesenc_si128(c7, *rk);
-            c8 = _mm_aesenc_si128(c8, *rk);
+    let (chunks, remainder) = cipher_inout.as_chunks_mut::<128>();
+    for group in chunks.chunks_mut(24) {
+        if !ENC {
+            ghash.add(group.as_flattened());
         }
-
-        let c1 = _mm_aesenclast_si128(c1, rk_last);
-        let c2 = _mm_aesenclast_si128(c2, rk_last);
-        let c3 = _mm_aesenclast_si128(c3, rk_last);
-        let c4 = _mm_aesenclast_si128(c4, rk_last);
-        let c5 = _mm_aesenclast_si128(c5, rk_last);
-        let c6 = _mm_aesenclast_si128(c6, rk_last);
-        let c7 = _mm_aesenclast_si128(c7, rk_last);
-        let c8 = _mm_aesenclast_si128(c8, rk_last);
-
-        // SAFETY: `blocks` is 128 bytes and readable
-        let (p1, p2, p3, p4, p5, p6, p7, p8) = unsafe {
-            (
-                _mm_loadu_si128(blocks.as_ptr().add(0).cast()),
-                _mm_loadu_si128(blocks.as_ptr().add(16).cast()),
-                _mm_loadu_si128(blocks.as_ptr().add(32).cast()),
-                _mm_loadu_si128(blocks.as_ptr().add(48).cast()),
-                _mm_loadu_si128(blocks.as_ptr().add(64).cast()),
-                _mm_loadu_si128(blocks.as_ptr().add(80).cast()),
-                _mm_loadu_si128(blocks.as_ptr().add(96).cast()),
-                _mm_loadu_si128(blocks.as_ptr().add(112).cast()),
-            )
-        };
-
-        let c1 = _mm_xor_si128(c1, p1);
-        let c2 = _mm_xor_si128(c2, p2);
-        let c3 = _mm_xor_si128(c3, p3);
-        let c4 = _mm_xor_si128(c4, p4);
-        let c5 = _mm_xor_si128(c5, p5);
-        let c6 = _mm_xor_si128(c6, p6);
-        let c7 = _mm_xor_si128(c7, p7);
-        let c8 = _mm_xor_si128(c8, p8);
-
-        // SAFETY: `blocks` is 128 bytes and writable, due to `as_chunks_mut`
-        unsafe {
-            _mm_storeu_si128(blocks.as_mut_ptr().add(0).cast(), c1);
-            _mm_storeu_si128(blocks.as_mut_ptr().add(16).cast(), c2);
-            _mm_storeu_si128(blocks.as_mut_ptr().add(32).cast(), c3);
-            _mm_storeu_si128(blocks.as_mut_ptr().add(48).cast(), c4);
-            _mm_storeu_si128(blocks.as_mut_ptr().add(64).cast(), c5);
-            _mm_storeu_si128(blocks.as_mut_ptr().add(80).cast(), c6);
-            _mm_storeu_si128(blocks.as_mut_ptr().add(96).cast(), c7);
-            _mm_storeu_si128(blocks.as_mut_ptr().add(112).cast(), c8);
+        aes_ctr::apply(key, nonce, ctr, group.as_flattened_mut());
+        if ENC {
+            ghash.add(group.as_flattened());
         }
-
-        let (a1, a2, a3, a4, a5, a6, a7, a8) = if ENC {
-            (c1, c2, c3, c4, c5, c6, c7, c8)
-        } else {
-            (p1, p2, p3, p4, p5, p6, p7, p8)
-        };
-
-        let a1 = _mm_shuffle_epi8(a1, BYTESWAP);
-        let a2 = _mm_shuffle_epi8(a2, BYTESWAP);
-        let a3 = _mm_shuffle_epi8(a3, BYTESWAP);
-        let a4 = _mm_shuffle_epi8(a4, BYTESWAP);
-        let a5 = _mm_shuffle_epi8(a5, BYTESWAP);
-        let a6 = _mm_shuffle_epi8(a6, BYTESWAP);
-        let a7 = _mm_shuffle_epi8(a7, BYTESWAP);
-        let a8 = _mm_shuffle_epi8(a8, BYTESWAP);
-
-        let a1 = _mm_xor_si128(ghash.current, a1);
-        ghash.current = ghash::_mul8(avx_ghash_table, a1, a2, a3, a4, a5, a6, a7, a8);
+        ctr = ctr.wrapping_add(8 * group.len() as u32);
     }
-
-    let cipher_inout = remainder;
 
     if !ENC {
-        ghash.add(cipher_inout);
+        ghash.add(remainder);
     }
-
-    {
-        let (blocks_iter, remainder) = cipher_inout.as_chunks_mut::<16>();
-        for block in blocks_iter {
-            let c1 = counter.next();
-
-            let mut c1 = _mm_xor_si128(c1, rk_first);
-
-            for rk in rks {
-                c1 = _mm_aesenc_si128(c1, *rk);
-            }
-
-            let c1 = _mm_aesenclast_si128(c1, rk_last);
-
-            // SAFETY: `block` is 16 bytes due to `as_chunks_mut`
-            let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
-            let c1 = _mm_xor_si128(c1, p1);
-
-            // SAFETY: `block` is 16 bytes and writable, due to `as_chunks_mut`
-            unsafe { _mm_storeu_si128(block.as_mut_ptr().cast(), c1) };
-        }
-
-        let cipher_inout = remainder;
-        if !cipher_inout.is_empty() {
-            let mut block = [0u8; 16];
-            let len = cipher_inout.len();
-            debug_assert!(len < 16);
-            block[..len].copy_from_slice(cipher_inout);
-
-            let c1 = counter.next();
-            let mut c1 = _mm_xor_si128(c1, rk_first);
-
-            for rk in rks {
-                c1 = _mm_aesenc_si128(c1, *rk);
-            }
-
-            let c1 = _mm_aesenclast_si128(c1, rk_last);
-
-            // SAFETY: `block` is 16 bytes and writable.
-            let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
-            let c1 = _mm_xor_si128(c1, p1);
-
-            // SAFETY: `block` is 16 bytes and writable.
-            unsafe {
-                _mm_storeu_si128(block.as_mut_ptr().cast(), c1);
-            }
-
-            cipher_inout.copy_from_slice(&block[..len]);
-        }
-    }
-
+    aes_ctr::apply(key, nonce, ctr, remainder);
     if ENC {
-        ghash.add(cipher_inout);
+        ghash.add(remainder);
     }
 }
+
+/// Defines `$name`, which encrypts (if `ENC`) or decrypts eight blocks at a
+/// time with AES-CTR and GHASH stitched, for the target features given: one
+/// copy runs VEX-encoded, one without AVX.
+macro_rules! by8 {
+    ($name:ident, $features:literal) => {
+        #[target_feature(enable = $features)]
+        fn $name<const ENC: bool>(
+            key: &HwKey,
+            table: &ClmulTable,
+            ghash: &mut Ghash<'_>,
+            initial_counter: &[u8; 16],
+            aad: &[u8],
+            cipher_inout: &mut [u8],
+        ) {
+            ghash.add(aad);
+
+            let (rk_first, rks, rk_last) = key.round_keys();
+
+            let mut counter = Counter::new(initial_counter);
+            let (by8_iter, remainder) = cipher_inout.as_chunks_mut::<128>();
+
+            for blocks in by8_iter {
+                // prefetch to avoid any stall later
+                super::cpu::prefetch(blocks, 64);
+
+                let c1 = counter.next();
+                let c2 = counter.next();
+                let c3 = counter.next();
+                let c4 = counter.next();
+                let c5 = counter.next();
+                let c6 = counter.next();
+                let c7 = counter.next();
+                let c8 = counter.next();
+
+                let mut c1 = _mm_xor_si128(c1, rk_first);
+                let mut c2 = _mm_xor_si128(c2, rk_first);
+                let mut c3 = _mm_xor_si128(c3, rk_first);
+                let mut c4 = _mm_xor_si128(c4, rk_first);
+                let mut c5 = _mm_xor_si128(c5, rk_first);
+                let mut c6 = _mm_xor_si128(c6, rk_first);
+                let mut c7 = _mm_xor_si128(c7, rk_first);
+                let mut c8 = _mm_xor_si128(c8, rk_first);
+
+                for rk in rks {
+                    c1 = _mm_aesenc_si128(c1, *rk);
+                    c2 = _mm_aesenc_si128(c2, *rk);
+                    c3 = _mm_aesenc_si128(c3, *rk);
+                    c4 = _mm_aesenc_si128(c4, *rk);
+                    c5 = _mm_aesenc_si128(c5, *rk);
+                    c6 = _mm_aesenc_si128(c6, *rk);
+                    c7 = _mm_aesenc_si128(c7, *rk);
+                    c8 = _mm_aesenc_si128(c8, *rk);
+                }
+
+                let c1 = _mm_aesenclast_si128(c1, rk_last);
+                let c2 = _mm_aesenclast_si128(c2, rk_last);
+                let c3 = _mm_aesenclast_si128(c3, rk_last);
+                let c4 = _mm_aesenclast_si128(c4, rk_last);
+                let c5 = _mm_aesenclast_si128(c5, rk_last);
+                let c6 = _mm_aesenclast_si128(c6, rk_last);
+                let c7 = _mm_aesenclast_si128(c7, rk_last);
+                let c8 = _mm_aesenclast_si128(c8, rk_last);
+
+                // SAFETY: `blocks` is 128 bytes and readable
+                let (p1, p2, p3, p4, p5, p6, p7, p8) = unsafe {
+                    (
+                        _mm_loadu_si128(blocks.as_ptr().add(0).cast()),
+                        _mm_loadu_si128(blocks.as_ptr().add(16).cast()),
+                        _mm_loadu_si128(blocks.as_ptr().add(32).cast()),
+                        _mm_loadu_si128(blocks.as_ptr().add(48).cast()),
+                        _mm_loadu_si128(blocks.as_ptr().add(64).cast()),
+                        _mm_loadu_si128(blocks.as_ptr().add(80).cast()),
+                        _mm_loadu_si128(blocks.as_ptr().add(96).cast()),
+                        _mm_loadu_si128(blocks.as_ptr().add(112).cast()),
+                    )
+                };
+
+                let c1 = _mm_xor_si128(c1, p1);
+                let c2 = _mm_xor_si128(c2, p2);
+                let c3 = _mm_xor_si128(c3, p3);
+                let c4 = _mm_xor_si128(c4, p4);
+                let c5 = _mm_xor_si128(c5, p5);
+                let c6 = _mm_xor_si128(c6, p6);
+                let c7 = _mm_xor_si128(c7, p7);
+                let c8 = _mm_xor_si128(c8, p8);
+
+                // SAFETY: `blocks` is 128 bytes and writable, due to `as_chunks_mut`
+                unsafe {
+                    _mm_storeu_si128(blocks.as_mut_ptr().add(0).cast(), c1);
+                    _mm_storeu_si128(blocks.as_mut_ptr().add(16).cast(), c2);
+                    _mm_storeu_si128(blocks.as_mut_ptr().add(32).cast(), c3);
+                    _mm_storeu_si128(blocks.as_mut_ptr().add(48).cast(), c4);
+                    _mm_storeu_si128(blocks.as_mut_ptr().add(64).cast(), c5);
+                    _mm_storeu_si128(blocks.as_mut_ptr().add(80).cast(), c6);
+                    _mm_storeu_si128(blocks.as_mut_ptr().add(96).cast(), c7);
+                    _mm_storeu_si128(blocks.as_mut_ptr().add(112).cast(), c8);
+                }
+
+                let (a1, a2, a3, a4, a5, a6, a7, a8) = if ENC {
+                    (c1, c2, c3, c4, c5, c6, c7, c8)
+                } else {
+                    (p1, p2, p3, p4, p5, p6, p7, p8)
+                };
+
+                let a1 = _mm_shuffle_epi8(a1, BYTESWAP);
+                let a2 = _mm_shuffle_epi8(a2, BYTESWAP);
+                let a3 = _mm_shuffle_epi8(a3, BYTESWAP);
+                let a4 = _mm_shuffle_epi8(a4, BYTESWAP);
+                let a5 = _mm_shuffle_epi8(a5, BYTESWAP);
+                let a6 = _mm_shuffle_epi8(a6, BYTESWAP);
+                let a7 = _mm_shuffle_epi8(a7, BYTESWAP);
+                let a8 = _mm_shuffle_epi8(a8, BYTESWAP);
+
+                let a1 = _mm_xor_si128(ghash.current, a1);
+                ghash.current = ghash::_mul8(table, a1, a2, a3, a4, a5, a6, a7, a8);
+            }
+
+            let cipher_inout = remainder;
+
+            if !ENC {
+                ghash.add(cipher_inout);
+            }
+
+            {
+                let (blocks_iter, remainder) = cipher_inout.as_chunks_mut::<16>();
+                for block in blocks_iter {
+                    let c1 = counter.next();
+
+                    let mut c1 = _mm_xor_si128(c1, rk_first);
+
+                    for rk in rks {
+                        c1 = _mm_aesenc_si128(c1, *rk);
+                    }
+
+                    let c1 = _mm_aesenclast_si128(c1, rk_last);
+
+                    // SAFETY: `block` is 16 bytes due to `as_chunks_mut`
+                    let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
+                    let c1 = _mm_xor_si128(c1, p1);
+
+                    // SAFETY: `block` is 16 bytes and writable, due to `as_chunks_mut`
+                    unsafe { _mm_storeu_si128(block.as_mut_ptr().cast(), c1) };
+                }
+
+                let cipher_inout = remainder;
+                if !cipher_inout.is_empty() {
+                    let mut block = [0u8; 16];
+                    let len = cipher_inout.len();
+                    debug_assert!(len < 16);
+                    block[..len].copy_from_slice(cipher_inout);
+
+                    let c1 = counter.next();
+                    let mut c1 = _mm_xor_si128(c1, rk_first);
+
+                    for rk in rks {
+                        c1 = _mm_aesenc_si128(c1, *rk);
+                    }
+
+                    let c1 = _mm_aesenclast_si128(c1, rk_last);
+
+                    // SAFETY: `block` is 16 bytes and writable.
+                    let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
+                    let c1 = _mm_xor_si128(c1, p1);
+
+                    // SAFETY: `block` is 16 bytes and writable.
+                    unsafe {
+                        _mm_storeu_si128(block.as_mut_ptr().cast(), c1);
+                    }
+
+                    cipher_inout.copy_from_slice(&block[..len]);
+                }
+            }
+
+            if ENC {
+                ghash.add(cipher_inout);
+            }
+        }
+    };
+}
+
+by8!(by8_avx, "aes,ssse3,pclmulqdq,avx");
+by8!(by8_sse, "aes,ssse3,pclmulqdq");
 
 #[target_feature(
     enable = "aes,avx,avx2,avx512bw,avx512f,avx512vl,sse3,ssse3,pclmulqdq,vaes,vpclmulqdq"
 )]
 fn _cipher_avx512<const ENC: bool>(
-    key: &AesKey,
+    key: &HwKey,
     ghash: &mut Ghash<'_>,
     initial_counter: &[u8; 16],
     aad: &[u8],
@@ -476,3 +543,68 @@ const BYTESWAP_512_EPI64: __m512i = unsafe {
         55, 54, 53, 52, 51, 50, 49, 48, 63, 62, 61, 60, 59, 58, 57, 56,
     ])
 };
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use crate::low::x86_64::cpu::HaveAesHardware;
+    use crate::low::x86_64::ghash_ssse3_x86_64::Ssse3Table;
+    use crate::low::x86_64::vpaes_x86_64::VpaesKey;
+
+    // Every other test sees only the path the CPU picks, so the slower ones
+    // are checked against it here: AES-NI and PCLMULQDQ without AVX, and
+    // vpaes with SSSE3 GHASH. Each key size, and AAD and message lengths
+    // around the block, eight-block, and sixteen-block boundaries, both ways.
+    #[test]
+    fn paths_match() {
+        let Some(hw) = HaveAesHardware::check() else {
+            return;
+        };
+        let bytes = |n: usize, seed: u32| -> Vec<u8> {
+            (0..n as u32)
+                .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
+                .collect()
+        };
+        for key_len in [16, 32] {
+            let key = bytes(key_len, 1);
+            let fast = AesKey::new(&key);
+            let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
+            let mut h = [0u8; 16];
+            fast.encrypt_block(&mut h);
+            let fast_table = GhashTable::new(u128::from_be_bytes(h));
+            let mut sse = ClmulTable::new(u128::from_be_bytes(h), hw);
+            sse.avx = None;
+            let slow = [
+                (&fast, GhashTable::Clmul(sse)),
+                (&vpaes, GhashTable::Ssse3(Ssse3Table::new(&h))),
+            ];
+
+            for aad_len in [0, 1, 16, 17] {
+                for msg_len in [0, 1, 15, 16, 17, 112, 127, 128, 129, 255, 256, 257, 1000] {
+                    // As GCM's: a 96-bit nonce, then a counter of 1.
+                    let mut counter = [0u8; 16];
+                    counter[..12].copy_from_slice(&bytes(12, msg_len as u32));
+                    counter[15] = 1;
+                    let aad = bytes(aad_len, 2);
+                    let plain = bytes(msg_len, 3);
+
+                    let (mut want, mut want_ghash) = (plain.clone(), Ghash::new(&fast_table));
+                    encrypt(&fast, &mut want_ghash, &counter, &aad, &mut want);
+                    for (key, table) in &slow {
+                        let (mut got, mut got_ghash) = (plain.clone(), Ghash::new(table));
+                        encrypt(key, &mut got_ghash, &counter, &aad, &mut got);
+                        let what = format!("{key_len} {aad_len} {msg_len}");
+                        assert_eq!(got, want, "{what}");
+                        assert_eq!(got_ghash.xi(), want_ghash.xi(), "{what}");
+
+                        let mut ghash = Ghash::new(table);
+                        decrypt(key, &mut ghash, &counter, &aad, &mut got);
+                        assert_eq!(got, plain, "{what}");
+                        assert_eq!(ghash.xi(), want_ghash.xi(), "{what}");
+                    }
+                }
+            }
+        }
+    }
+}

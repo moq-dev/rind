@@ -2,20 +2,37 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 // Plastering over the differences between (eg) mlkem_ntt() between x86-64 and aarch64.
+//
+// Each picks s2n-bignum's AVX2 routine where the CPU has AVX2, and otherwise
+// the portable port of mlkem-native's C, which measured faster there than
+// libcrux's portable ML-KEM. The two keep coefficients in different orders,
+// so a process never mixes them: the CPU's features are read once.
+
+use super::cpu::HaveAvx2;
+use crate::low::generic::{mlkem as generic, mlkem_poly as portable};
 
 /// Forward number-theoretic transform from ML-KEM
 pub(crate) fn mlkem_ntt(a: &mut [i16; 256]) {
-    super::mlkem_ntt::mlkem_ntt(a, &Q_DATA.0);
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_ntt::mlkem_ntt(a, &Q_DATA.0),
+        None => portable::mlkem_ntt(a),
+    }
 }
 
 /// Inverse number-theoretic transform from ML-KEM
 pub(crate) fn mlkem_intt(a: &mut [i16; 256]) {
-    super::mlkem_intt::mlkem_intt(a, &Q_DATA.0);
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_intt::mlkem_intt(a, &Q_DATA.0),
+        None => portable::mlkem_intt(a),
+    }
 }
 
 /// Precompute the mulcache data for a polynomial in the NTT domain
 pub(crate) fn mlkem_mulcache_compute(x: &mut [i16; 128], a: &[i16; 256]) {
-    super::mlkem_mulcache_compute::mlkem_mulcache_compute(x, a, &Q_DATA.0);
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_mulcache_compute::mlkem_mulcache_compute(x, a, &Q_DATA.0),
+        None => portable::mlkem_mulcache_compute(x, a),
+    }
 }
 
 /// Do rejection sampling, where `input` is SHAKE128 bytes, and `r` is a
@@ -23,7 +40,69 @@ pub(crate) fn mlkem_mulcache_compute(x: &mut [i16; 128], a: &[i16; 256]) {
 ///
 /// Returns the number of items of `r` written.
 pub(crate) fn mlkem_rej_uniform_vartime(r: &mut [i16; 256], input: &[u8]) -> u64 {
-    super::mlkem_rej_uniform_vartime::mlkem_rej_uniform_vartime(r, input, &MLKEM_REJ_UNIFORM_TABLE)
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_rej_uniform_vartime::mlkem_rej_uniform_vartime(
+            r,
+            input,
+            &MLKEM_REJ_UNIFORM_TABLE,
+        ),
+        None => portable::mlkem_rej_uniform_vartime(r, input),
+    }
+}
+
+/// Scalar product of 3-element polynomial vectors in the NTT domain, with
+/// the mulcache `bt` of `b`
+pub(crate) fn mlkem_basemul_k3(
+    r: &mut [i16; 256],
+    a: &[i16; 768],
+    b: &[i16; 768],
+    bt: &[i16; 384],
+) {
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_basemul_k3::mlkem_basemul_k3(r, a, b, bt),
+        None => portable::mlkem_basemul_k3(r, a, b, bt),
+    }
+}
+
+/// Canonical reduction of polynomial coefficients for ML-KEM
+pub(crate) fn mlkem_reduce(a: &mut [i16; 256]) {
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_reduce::mlkem_reduce(a),
+        None => portable::mlkem_reduce(a),
+    }
+}
+
+/// Conversion of ML-KEM polynomial coefficients to Montgomery form
+pub(crate) fn mlkem_tomont(a: &mut [i16; 256]) {
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_tomont::mlkem_tomont(a),
+        None => portable::mlkem_tomont(a),
+    }
+}
+
+/// Unpack ML-KEM polynomial coefficients as 12-bit numbers
+pub(crate) fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384]) {
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_frombytes::mlkem_frombytes(r, a),
+        None => generic::mlkem_frombytes(r, a),
+    }
+}
+
+/// Pack ML-KEM polynomial coefficients as 12-bit numbers
+pub(crate) fn mlkem_tobytes(r: &mut [u8; 384], a: &[i16; 256]) {
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_tobytes::mlkem_tobytes(r, a),
+        None => portable::mlkem_tobytes(r, a),
+    }
+}
+
+/// Reorder ML-KEM polynomial coefficients from their natural order into the
+/// order the other routines use
+pub(crate) fn mlkem_unpack(a: &mut [i16; 256]) {
+    match HaveAvx2::check() {
+        Some(_) => super::mlkem_unpack::mlkem_unpack(a),
+        None => generic::mlkem_unpack(a),
+    }
 }
 
 #[repr(align(32))]
@@ -333,3 +412,159 @@ const MLKEM_REJ_UNIFORM_TABLE: [i8; 4096] = [
     2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1, -1, // 254
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, // 255
 ];
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // AVX2, where present, hides the portable routines from every other
+    // test, so each is checked against s2n-bignum's. Those keep NTT-domain
+    // coefficients in their own order: `mlkem_unpack` converts natural order
+    // to it, and `mlkem_tobytes` converts back as it packs.
+    #[test]
+    fn portable_matches_avx2() {
+        if HaveAvx2::check().is_none() {
+            return;
+        }
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move |bound: i16| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % (2 * bound as u64 - 1)) as i16 - (bound - 1)
+        };
+        // The AVX2 routines load aligned vectors.
+        let to_avx2 = |x: &[i16; 256]| {
+            let mut y = Coeffs(*x);
+            super::super::mlkem_unpack::mlkem_unpack(&mut y.0);
+            y
+        };
+        let bytes_avx2 = |mut y: Coeffs<256>| {
+            super::super::mlkem_reduce::mlkem_reduce(&mut y.0);
+            let mut out = [0; 384];
+            super::super::mlkem_tobytes::mlkem_tobytes(&mut out, &y.0);
+            out
+        };
+        let bytes_portable = |mut x: [i16; 256]| {
+            portable::mlkem_reduce(&mut x);
+            let mut out = [0; 384];
+            portable::mlkem_tobytes(&mut out, &x);
+            out
+        };
+
+        for round in 0..16 {
+            let x: [i16; 256] = core::array::from_fn(|_| next(3329));
+            // The forward NTT takes natural order to the AVX2 routines' own,
+            // and the inverse takes it back.
+            let mut want = Coeffs(x);
+            super::super::mlkem_ntt::mlkem_ntt(&mut want.0, &Q_DATA.0);
+            let mut got = x;
+            portable::mlkem_ntt(&mut got);
+            assert_eq!(bytes_portable(got), bytes_avx2(want), "ntt, round {round}");
+
+            let mut want = to_avx2(&x);
+            super::super::mlkem_intt::mlkem_intt(&mut want.0, &Q_DATA.0);
+            let mut got = x;
+            portable::mlkem_intt(&mut got);
+            assert_eq!(
+                bytes_portable(got),
+                bytes_portable(want.0),
+                "intt, round {round}"
+            );
+
+            type Op = (&'static str, fn(&mut [i16; 256]), fn(&mut [i16; 256]));
+            let ops: [Op; 2] = [
+                (
+                    "tomont",
+                    super::super::mlkem_tomont::mlkem_tomont,
+                    portable::mlkem_tomont,
+                ),
+                (
+                    "reduce",
+                    super::super::mlkem_reduce::mlkem_reduce,
+                    portable::mlkem_reduce,
+                ),
+            ];
+            for (name, avx2, port) in ops {
+                let mut want = to_avx2(&x);
+                avx2(&mut want.0);
+                let mut got = x;
+                port(&mut got);
+                assert_eq!(
+                    bytes_portable(got),
+                    bytes_avx2(want),
+                    "{name}, round {round}"
+                );
+            }
+
+            // Base multiplication, whose inputs are at most 2^12.
+            let a: [i16; 768] = core::array::from_fn(|_| next(4096));
+            let b: [i16; 768] = core::array::from_fn(|_| next(4096));
+            let (mut a_avx2, mut b_avx2) = (Coeffs([0; 768]), Coeffs([0; 768]));
+            let (mut bt, mut bt_avx2) = ([0; 384], Coeffs([0; 384]));
+            for k in 0..3 {
+                let poly = |v: &[i16; 768]| -> [i16; 256] {
+                    v[256 * k..256 * (k + 1)].try_into().unwrap()
+                };
+                a_avx2.0[256 * k..256 * (k + 1)].copy_from_slice(&to_avx2(&poly(&a)).0);
+                b_avx2.0[256 * k..256 * (k + 1)].copy_from_slice(&to_avx2(&poly(&b)).0);
+                portable::mlkem_mulcache_compute(
+                    (&mut bt[128 * k..128 * (k + 1)]).try_into().unwrap(),
+                    &poly(&b),
+                );
+                super::super::mlkem_mulcache_compute::mlkem_mulcache_compute(
+                    (&mut bt_avx2.0[128 * k..128 * (k + 1)]).try_into().unwrap(),
+                    b_avx2.0[256 * k..256 * (k + 1)].try_into().unwrap(),
+                    &Q_DATA.0,
+                );
+            }
+            let mut want = Coeffs([0; 256]);
+            super::super::mlkem_basemul_k3::mlkem_basemul_k3(
+                &mut want.0,
+                &a_avx2.0,
+                &b_avx2.0,
+                &bt_avx2.0,
+            );
+            let mut got = [0; 256];
+            portable::mlkem_basemul_k3(&mut got, &a, &b, &bt);
+            assert_eq!(
+                bytes_portable(got),
+                bytes_avx2(want),
+                "basemul, round {round}"
+            );
+
+            // Packing, from canonical coefficients.
+            let mut canonical = x;
+            portable::mlkem_reduce(&mut canonical);
+            let packed = bytes_portable(canonical);
+            let mut want = Coeffs([0; 256]);
+            super::super::mlkem_frombytes::mlkem_frombytes(&mut want.0, &packed);
+            let mut got = [0; 256];
+            generic::mlkem_frombytes(&mut got, &packed);
+            assert_eq!(to_avx2(&got).0, want.0, "frombytes, round {round}");
+            assert_eq!(
+                bytes_avx2(to_avx2(&canonical)),
+                packed,
+                "tobytes, round {round}"
+            );
+
+            // Rejection sampling: short input, and enough to fill `r`.
+            let input: Vec<u8> = (0..840).map(|_| next(256) as u8).collect();
+            for len in [12, 48, 504, 840] {
+                let (mut want, mut got) = (Coeffs([0; 256]), [0; 256]);
+                let want_n = super::super::mlkem_rej_uniform_vartime::mlkem_rej_uniform_vartime(
+                    &mut want.0,
+                    &input[..len],
+                    &MLKEM_REJ_UNIFORM_TABLE,
+                );
+                let got_n = portable::mlkem_rej_uniform_vartime(&mut got, &input[..len]);
+                assert_eq!(
+                    (got_n, got),
+                    (want_n, want.0),
+                    "rej_uniform, {len} bytes, round {round}"
+                );
+            }
+        }
+    }
+}

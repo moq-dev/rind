@@ -21,7 +21,7 @@ def emit(arch, source_dir, out_dir, source, name, rust_decl, parameters, hoist=N
         parse_file(input, d)
 
 
-def emit_all(arch, source_dir, out_dir, alt):
+def emit_all(arch, source_dir, out_dir, alt, suffix="", only_mulx=False):
     zx = ["z.as_mut_ptr() => _", "x.as_ptr() => _"]
     zxy = zx + ["y.as_ptr() => _"]
     p3p1p2 = ["p3.as_mut_ptr() => _", "p1.as_ptr() => _", "p2.as_ptr() => _"]
@@ -58,7 +58,7 @@ def emit_all(arch, source_dir, out_dir, alt):
             zx,
         ),
         (
-            "bignum_mod_n521_9",
+            "bignum_mod_n521_9" + (alt if only_mulx else ""),
             "bignum_mod_n521",
             "fn bignum_mod_n521(z: &mut [u64; 9], x: &[u64; 9])",
             zx,
@@ -82,7 +82,18 @@ def emit_all(arch, source_dir, out_dir, alt):
             p3p1p2[:2],
         ),
     ]:
-        emit(arch, source_dir, out_dir, source, name, rust_decl, parameters)
+        # Only the routines using BMI2 and ADX need a twin without them.
+        if only_mulx and not source.endswith(alt):
+            continue
+        emit(
+            arch,
+            source_dir,
+            out_dir,
+            source,
+            name + suffix,
+            rust_decl.replace(f"fn {name}(", f"fn {name}{suffix}("),
+            parameters,
+        )
 
     # Its local functions follow its body; the last of them ends the hoist.
     last = "sqr_p521" if source_dir == "x86" else "sub_p521"
@@ -91,8 +102,8 @@ def emit_all(arch, source_dir, out_dir, alt):
         source_dir,
         out_dir,
         "p521_jscalarmul" + alt,
-        "p521_jscalarmul",
-        "fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point: &[u64; 27])",
+        "p521_jscalarmul" + suffix,
+        f"fn p521_jscalarmul{suffix}(res: &mut [u64; 27], scalar: &[u64; 9], point: &[u64; 27])",
         ["res.as_mut_ptr() => _", "scalar.as_ptr() => _", "point.as_ptr() => _"],
         hoist=["proc", f"Lp521_jscalarmul{alt}_{last}", "ret"],
     )
@@ -100,5 +111,7 @@ def emit_all(arch, source_dir, out_dir, alt):
 
 if __name__ == "__main__":
     emit_all(Architecture_amd64, "x86", "x86_64", "")
+    # For CPUs without BMI2 and ADX, chosen at run time.
+    emit_all(Architecture_amd64, "x86", "x86_64", "_alt", suffix="_alt", only_mulx=True)
     # The `_alt` routines measured faster on aarch64 (Neoverse N2).
     emit_all(Architecture_aarch64, "arm", "aarch64", "_alt")

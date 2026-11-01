@@ -4,22 +4,22 @@ use core::arch::aarch64::*;
 
 use super::aes::{_aes128_8_blocks, _aes256_8_blocks, HwKey};
 use crate::low::AesKey;
+use crate::low::generic::ctr;
 
-/// XORs eight blocks of AES-CTR keystream into `inout`.
+/// XORs AES-CTR keystream into `inout`.
 ///
 /// The counter blocks are `nonce` followed by the big-endian `counter`,
-/// `counter + 1`, ... `counter + 7`, wrapping within 32 bits.
-pub(crate) fn apply_8(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128]) {
+/// `counter + 1`, and so on, wrapping within 32 bits.
+pub(crate) fn apply(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8]) {
     match key {
-        // SAFETY: only a `HaveCryptoExt` token builds `AesKey128` and
-        // `AesKey256`, and rind requires NEON.
-        AesKey::Hw(key) => unsafe { _apply_8(key, nonce, counter, inout) },
-        AesKey::Vpaes(key) => {
-            let mut ivec = [0u8; 16];
-            ivec[..12].copy_from_slice(nonce);
-            ivec[12..].copy_from_slice(&counter.to_be_bytes());
-            key.ctr32(&ivec, inout.as_chunks_mut::<16>().0);
-        }
+        AesKey::Hw(key) => ctr::by8(counter, inout, |counter, chunk| {
+            // SAFETY: only a `HaveCryptoExt` token builds `AesKey128` and
+            // `AesKey256`, and rind requires NEON.
+            unsafe { _apply_8(key, nonce, counter, chunk) }
+        }),
+        AesKey::Vpaes(key) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
+            key.ctr32(ivec, blocks)
+        }),
     }
 }
 

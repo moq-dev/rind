@@ -15,12 +15,16 @@ mod generic {
     #[cfg(not(target_arch = "arm"))]
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
+    pub(super) mod ctr;
     #[cfg(all(test, not(target_arch = "arm")))]
     pub(crate) mod ghash;
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     pub(crate) mod mlkem;
     #[cfg(target_arch = "aarch64")]
     pub(crate) mod mlkem768;
+    // x86_64's ML-KEM arithmetic for CPUs without AVX2.
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) mod mlkem_poly;
     // armv7's group orders, picked from by modulus.
     #[cfg(target_arch = "arm")]
     pub(crate) mod order;
@@ -32,7 +36,7 @@ mod generic {
     pub(crate) mod p521;
     #[cfg(not(target_arch = "arm"))]
     pub(crate) mod poly1305;
-    // armv7's SHA1 and SHA256, also built in x86_64 tests to check the AVX2
+    // armv7's SHA1 and SHA256, also built in x86_64 tests to check the vector
     // paths against.
     #[cfg(any(target_arch = "arm", all(test, target_arch = "x86_64")))]
     pub(super) mod sha1;
@@ -81,36 +85,30 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::bignum_ctz::bignum_ctz;
         pub(crate) use x86_64::bignum_demont::bignum_demont;
         pub(crate) use x86_64::bignum_point_select::{bignum_aff_point_select_p384, bignum_aff_point_select_p521};
-        pub(crate) use x86_64::bignum_demont_p256::bignum_demont_p256;
-        pub(crate) use x86_64::bignum_demont_p384::bignum_demont_p384;
+        pub(crate) use x86_64::adx_mux::bignum_demont_p256;
+        pub(crate) use x86_64::adx_mux::bignum_demont_p384;
         pub(crate) use x86_64::bignum_digitsize::bignum_digitsize;
-        pub(crate) use x86_64::bignum_emontredc_8n::bignum_emontredc_8n;
         pub(crate) use x86_64::bignum_eq::bignum_eq;
         pub(crate) use x86_64::bignum_inv_p256::bignum_inv_p256;
         pub(crate) use x86_64::bignum_inv_p384::bignum_inv_p384;
         pub(crate) use x86_64::bignum_inv_p521::bignum_inv_p521;
-        pub(crate) use x86_64::bignum_kmul_16_32::bignum_kmul_16_32;
-        pub(crate) use x86_64::bignum_kmul_32_64::bignum_kmul_32_64;
-        pub(crate) use x86_64::bignum_ksqr_16_32::bignum_ksqr_16_32;
-        pub(crate) use x86_64::bignum_ksqr_32_64::bignum_ksqr_32_64;
-        pub(crate) use x86_64::bignum_madd_n25519::bignum_madd_n25519;
+        pub(crate) use x86_64::adx_mux::bignum_madd_n25519;
         pub(crate) use x86_64::bignum_mod_n25519::bignum_mod_n25519;
         pub(crate) use x86_64::bignum_mod_n256::bignum_mod_n256;
         pub(crate) use x86_64::bignum_mod_n384::bignum_mod_n384;
-        pub(crate) use x86_64::bignum_mod_n521::bignum_mod_n521;
+        pub(crate) use x86_64::adx_mux::bignum_mod_n521;
         pub(crate) use x86_64::bignum_modadd::bignum_modadd;
         pub(crate) use x86_64::bignum_modinv::bignum_modinv;
         pub(crate) use x86_64::bignum_modsub::bignum_modsub;
         pub(crate) use x86_64::bignum_montifier::bignum_montifier;
         pub(crate) use x86_64::bignum_montmul::bignum_montmul;
-        pub(crate) use x86_64::bignum_montmul_p256::bignum_montmul_p256;
-        pub(crate) use x86_64::bignum_montmul_p384::bignum_montmul_p384;
+        pub(crate) use x86_64::adx_mux::bignum_montmul_p256;
+        pub(crate) use x86_64::adx_mux::bignum_montmul_p384;
         pub(crate) use x86_64::bignum_montredc::bignum_montredc;
-        pub(crate) use x86_64::bignum_montsqr::bignum_montsqr;
-        pub(crate) use x86_64::bignum_montsqr_p256::bignum_montsqr_p256;
-        pub(crate) use x86_64::bignum_montsqr_p384::bignum_montsqr_p384;
+        pub(crate) use x86_64::adx_mux::bignum_montsqr_p256;
+        pub(crate) use x86_64::adx_mux::bignum_montsqr_p384;
         pub(crate) use x86_64::bignum_mul::bignum_mul;
-        pub(crate) use x86_64::bignum_mul_p521::bignum_mul_p521;
+        pub(crate) use x86_64::adx_mux::bignum_mul_p521;
         pub(crate) use x86_64::bignum_mux::bignum_mux;
         pub(crate) use x86_64::bignum_neg_p25519::bignum_neg_p25519;
         pub(crate) use x86_64::bignum_neg_p256::bignum_neg_p256;
@@ -119,42 +117,43 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::bignum_negmodinv::bignum_negmodinv;
         pub(crate) use x86_64::bignum_optsub::bignum_optsub;
         pub(crate) use x86_64::bignum_shr_small::bignum_shr_small;
-        pub(crate) use x86_64::bignum_sqr_p521::bignum_sqr_p521;
-        pub(crate) use x86_64::bignum_tomont_p256::bignum_tomont_p256;
-        pub(crate) use x86_64::bignum_tomont_p384::bignum_tomont_p384;
-        pub(crate) use x86_64::curve25519_x25519::curve25519_x25519;
-        pub(crate) use x86_64::curve25519_x25519base::curve25519_x25519base;
-        pub(crate) use x86_64::edwards25519_decode::edwards25519_decode;
-        pub(crate) use x86_64::edwards25519_scalarmulbase::edwards25519_scalarmulbase;
-        pub(crate) use x86_64::edwards25519_scalarmuldouble::edwards25519_scalarmuldouble;
+        pub(crate) use x86_64::adx_mux::bignum_sqr_p521;
+        pub(crate) use x86_64::adx_mux::bignum_tomont_p256;
+        pub(crate) use x86_64::adx_mux::bignum_tomont_p384;
+        pub(crate) use x86_64::adx_mux::curve25519_x25519;
+        pub(crate) use x86_64::adx_mux::curve25519_x25519base;
+        pub(crate) use x86_64::adx_mux::edwards25519_decode;
+        pub(crate) use x86_64::adx_mux::edwards25519_scalarmulbase;
+        pub(crate) use x86_64::adx_mux::edwards25519_scalarmuldouble;
         pub(crate) use x86_64::ghash;
         pub(crate) use x86_64::mlkem::{
             mlkem_ntt,
             mlkem_intt,
             mlkem_mulcache_compute,
-            mlkem_rej_uniform_vartime
+            mlkem_rej_uniform_vartime,
+            mlkem_basemul_k3,
+            mlkem_reduce,
+            mlkem_frombytes,
+            mlkem_tobytes,
+            mlkem_tomont,
+            mlkem_unpack,
         };
-        pub(crate) use x86_64::mlkem_basemul_k3::mlkem_basemul_k3;
-        pub(crate) use x86_64::mlkem_reduce::mlkem_reduce;
-        pub(crate) use x86_64::mlkem_frombytes::mlkem_frombytes;
-        pub(crate) use x86_64::mlkem_tobytes::mlkem_tobytes;
-        pub(crate) use x86_64::mlkem_tomont::mlkem_tomont;
-        pub(crate) use x86_64::mlkem_unpack::mlkem_unpack;
+        pub(crate) use x86_64::mont::{mont_mul, mont_sqr};
         pub(crate) use x86_64::mlkem768_sample_poly_ntt_8x::mlkem768_sample_poly_ntt_8x;
 
-        pub(crate) use x86_64::p256_montjadd::p256_montjadd;
-        pub(crate) use x86_64::p256_montjdouble::p256_montjdouble;
-        pub(crate) use x86_64::p256_montjmixadd::p256_montjmixadd;
-        pub(crate) use x86_64::p256_montjscalarmul::p256_montjscalarmul;
-        pub(crate) use x86_64::p256_scalarmulbase::p256_scalarmulbase;
-        pub(crate) use x86_64::p384_montjadd::p384_montjadd;
-        pub(crate) use x86_64::p384_montjmixadd::p384_montjmixadd;
-        pub(crate) use x86_64::p384_montjdouble::p384_montjdouble;
-        pub(crate) use x86_64::p384_montjscalarmul::p384_montjscalarmul;
-        pub(crate) use x86_64::p521_jadd::p521_jadd;
-        pub(crate) use x86_64::p521_jdouble::p521_jdouble;
-        pub(crate) use x86_64::p521_jmixadd::p521_jmixadd;
-        pub(crate) use x86_64::p521_jscalarmul::p521_jscalarmul;
+        pub(crate) use x86_64::adx_mux::p256_montjadd;
+        pub(crate) use x86_64::adx_mux::p256_montjdouble;
+        pub(crate) use x86_64::adx_mux::p256_montjmixadd;
+        pub(crate) use x86_64::adx_mux::p256_montjscalarmul;
+        pub(crate) use x86_64::adx_mux::p256_scalarmulbase;
+        pub(crate) use x86_64::adx_mux::p384_montjadd;
+        pub(crate) use x86_64::adx_mux::p384_montjmixadd;
+        pub(crate) use x86_64::adx_mux::p384_montjdouble;
+        pub(crate) use x86_64::adx_mux::p384_montjscalarmul;
+        pub(crate) use x86_64::adx_mux::p521_jadd;
+        pub(crate) use x86_64::adx_mux::p521_jdouble;
+        pub(crate) use x86_64::adx_mux::p521_jmixadd;
+        pub(crate) use x86_64::adx_mux::p521_jscalarmul;
         pub(crate) use x86_64::sha1_mux::sha1_compress_blocks;
         pub(crate) use x86_64::sha256_mux::sha256_compress_blocks;
         pub(crate) use x86_64::sha512::sha512_compress_blocks;
@@ -184,15 +183,10 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::bignum_demont_p256::bignum_demont_p256;
         pub(crate) use aarch64::bignum_demont_p384::bignum_demont_p384;
         pub(crate) use aarch64::bignum_digitsize::bignum_digitsize;
-        pub(crate) use aarch64::bignum_emontredc_8n::bignum_emontredc_8n;
         pub(crate) use aarch64::bignum_eq::bignum_eq;
         pub(crate) use aarch64::bignum_inv_p256::bignum_inv_p256;
         pub(crate) use aarch64::bignum_inv_p384::bignum_inv_p384;
         pub(crate) use aarch64::bignum_inv_p521::bignum_inv_p521;
-        pub(crate) use aarch64::bignum_kmul_16_32::bignum_kmul_16_32;
-        pub(crate) use aarch64::bignum_kmul_32_64::bignum_kmul_32_64;
-        pub(crate) use aarch64::bignum_ksqr_16_32::bignum_ksqr_16_32;
-        pub(crate) use aarch64::bignum_ksqr_32_64::bignum_ksqr_32_64;
         pub(crate) use aarch64::bignum_madd_n25519::bignum_madd_n25519;
         pub(crate) use aarch64::bignum_mod_n25519::bignum_mod_n25519;
         pub(crate) use aarch64::bignum_mod_n256::bignum_mod_n256;
@@ -206,7 +200,6 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::bignum_montmul_p256::bignum_montmul_p256;
         pub(crate) use aarch64::bignum_montmul_p384::bignum_montmul_p384;
         pub(crate) use aarch64::bignum_montredc::bignum_montredc;
-        pub(crate) use aarch64::bignum_montsqr::bignum_montsqr;
         pub(crate) use aarch64::bignum_montsqr_p256::bignum_montsqr_p256;
         pub(crate) use aarch64::bignum_montsqr_p384::bignum_montsqr_p384;
         pub(crate) use aarch64::bignum_mul::bignum_mul;
@@ -237,6 +230,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::mlkem_reduce::mlkem_reduce;
         pub(crate) use aarch64::mlkem_tobytes::mlkem_tobytes;
         pub(crate) use aarch64::mlkem_tomont::mlkem_tomont;
+        pub(crate) use aarch64::mont::{mont_mul, mont_sqr};
         pub(crate) use aarch64::ghash;
         pub(crate) use aarch64::p256_montjadd::p256_montjadd;
         pub(crate) use aarch64::p256_montjdouble::p256_montjdouble;

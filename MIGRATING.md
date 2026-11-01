@@ -200,6 +200,9 @@ ring has no `kem`.
 `PublicKey::new` refuses a compressed ECDSA point and a
 `SubjectPublicKeyInfo`, both of which aws-lc-rs takes.
 
+Every private key loader refuses bytes after the encoded key, which
+aws-lc-rs ignores and ring refuses.
+
 ## rsa
 
 rind signs and verifies with RSA through `signature`, and encrypts with none.
@@ -245,9 +248,9 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 
 ## cpu
 
-ring and aws-lc-rs detect CPU features and fall back to slower code. rind
-requires its features (see the README's Limitations), panics on a CPU
-missing one, and has no fallback.
+ring and aws-lc-rs detect CPU features and fall back to slower code, down
+to portable C. rind picks its path per CPU too, but only down to a floor (see
+the README's Limitations): it panics on a CPU below it.
 
 | aws-lc-rs | rind |
 |---|---|

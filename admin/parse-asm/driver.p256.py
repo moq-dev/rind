@@ -22,6 +22,21 @@ if __name__ == "__main__":
         parse_file(input, d)
 
     with (
+        open("../../thirdparty/s2n-bignum/x86/p256/bignum_montsqr_p256_alt.S") as input,
+        open("../../rind/src/low/x86_64/bignum_montsqr_p256_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "bignum_montsqr_p256_alt",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "x.as_ptr() => _"),
+            ],
+            rust_decl="fn bignum_montsqr_p256_alt(z: &mut [u64; 4], x: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    with (
         open("../../thirdparty/s2n-bignum/x86/p256/bignum_montmul_p256.S") as input,
         open("../../rind/src/low/x86_64/bignum_montmul_p256.rs", "w") as output,
     ):
@@ -34,6 +49,22 @@ if __name__ == "__main__":
                 ("inout", "y.as_ptr() => _"),
             ],
             rust_decl="fn bignum_montmul_p256(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    with (
+        open("../../thirdparty/s2n-bignum/x86/p256/bignum_montmul_p256_alt.S") as input,
+        open("../../rind/src/low/x86_64/bignum_montmul_p256_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "bignum_montmul_p256_alt",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "x.as_ptr() => _"),
+                ("inout", "y.as_ptr() => _"),
+            ],
+            rust_decl="fn bignum_montmul_p256_alt(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4])",
         )
         parse_file(input, d)
 
@@ -69,6 +100,21 @@ if __name__ == "__main__":
         parse_file(input, d)
 
     with (
+        open("../../thirdparty/s2n-bignum/x86/p256/bignum_demont_p256_alt.S") as input,
+        open("../../rind/src/low/x86_64/bignum_demont_p256_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "bignum_demont_p256_alt",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "x.as_ptr() => _"),
+            ],
+            rust_decl="fn bignum_demont_p256_alt(z: &mut [u64; 4], x: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    with (
         open("../../thirdparty/s2n-bignum/x86/p256/bignum_tomont_p256.S") as input,
         open("../../rind/src/low/x86_64/bignum_tomont_p256.rs", "w") as output,
     ):
@@ -80,6 +126,21 @@ if __name__ == "__main__":
                 ("inout", "x.as_ptr() => _"),
             ],
             rust_decl="fn bignum_tomont_p256(z: &mut [u64; 4], x: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    with (
+        open("../../thirdparty/s2n-bignum/x86/p256/bignum_tomont_p256_alt.S") as input,
+        open("../../rind/src/low/x86_64/bignum_tomont_p256_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "bignum_tomont_p256_alt",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "x.as_ptr() => _"),
+            ],
+            rust_decl="fn bignum_tomont_p256_alt(z: &mut [u64; 4], x: &[u64; 4])",
         )
         parse_file(input, d)
 
@@ -303,6 +364,22 @@ if __name__ == "__main__":
         parse_file(input, d)
 
     with (
+        open("../../thirdparty/s2n-bignum/x86/p256/p256_montjadd_alt.S") as input,
+        open("../../rind/src/low/x86_64/p256_montjadd_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "p256_montjadd_alt",
+            parameter_map=[
+                ("inout", "p3.as_mut_ptr() => _"),
+                ("inout", "p1.as_ptr() => _"),
+                ("inout", "p2.as_ptr() => _"),
+            ],
+            rust_decl="fn p256_montjadd_alt(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64; 12])",
+        )
+        parse_file(input, d)
+
+    with (
         open("../../thirdparty/s2n-bignum/x86/p256/p256_montjmixadd.S") as input,
         open("../../rind/src/low/x86_64/p256_montjmixadd.rs", "w") as output,
     ):
@@ -319,6 +396,22 @@ if __name__ == "__main__":
         parse_file(input, d)
 
     with (
+        open("../../thirdparty/s2n-bignum/x86/p256/p256_montjmixadd_alt.S") as input,
+        open("../../rind/src/low/x86_64/p256_montjmixadd_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "p256_montjmixadd_alt",
+            parameter_map=[
+                ("inout", "p3.as_mut_ptr() => _"),
+                ("inout", "p1.as_ptr() => _"),
+                ("inout", "p2.as_ptr() => _"),
+            ],
+            rust_decl="fn p256_montjmixadd_alt(p3: &mut [u64; 12], p1: &[u64; 12], p2: &[u64; 8])",
+        )
+        parse_file(input, d)
+
+    with (
         open("../../thirdparty/s2n-bignum/x86/p256/p256_montjdouble.S") as input,
         open("../../rind/src/low/x86_64/p256_montjdouble.rs", "w") as output,
     ):
@@ -330,6 +423,21 @@ if __name__ == "__main__":
                 ("inout", "p1.as_ptr() => _"),
             ],
             rust_decl="fn p256_montjdouble(p3: &mut [u64; 12], p1: &[u64; 12])",
+        )
+        parse_file(input, d)
+
+    with (
+        open("../../thirdparty/s2n-bignum/x86/p256/p256_montjdouble_alt.S") as input,
+        open("../../rind/src/low/x86_64/p256_montjdouble_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "p256_montjdouble_alt",
+            parameter_map=[
+                ("inout", "p3.as_mut_ptr() => _"),
+                ("inout", "p1.as_ptr() => _"),
+            ],
+            rust_decl="fn p256_montjdouble_alt(p3: &mut [u64; 12], p1: &[u64; 12])",
         )
         parse_file(input, d)
 
@@ -370,6 +478,23 @@ if __name__ == "__main__":
         parse_file(input, d)
 
     with (
+        open("../../thirdparty/s2n-bignum/x86/p256/p256_montjscalarmul_alt.S") as input,
+        open("../../rind/src/low/x86_64/p256_montjscalarmul_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "p256_montjscalarmul_alt",
+            parameter_map=[
+                ("inout", "res.as_mut_ptr() => _"),
+                ("inout", "scalar.as_ptr() => _"),
+                ("inout", "point.as_ptr() => _"),
+            ],
+            hoist=["proc", "Lp256_montjscalarmul_alt_p256_montjdouble", "ret"],
+            rust_decl="fn p256_montjscalarmul_alt(res: &mut [u64; 12], scalar: &[u64; 4], point: &[u64; 12])",
+        )
+        parse_file(input, d)
+
+    with (
         open("../../thirdparty/s2n-bignum/x86/p256/p256_scalarmulbase.S") as input,
         open("../../rind/src/low/x86_64/p256_scalarmulbase.rs", "w") as output,
     ):
@@ -384,6 +509,24 @@ if __name__ == "__main__":
             ],
             hoist=["proc", "Lp256_scalarmulbase_local_p256_montjmixadd", "ret"],
             rust_decl="fn p256_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4], table: &[[u64; 256]; 43])",
+        )
+        parse_file(input, d)
+
+    with (
+        open("../../thirdparty/s2n-bignum/x86/p256/p256_scalarmulbase_alt.S") as input,
+        open("../../rind/src/low/x86_64/p256_scalarmulbase_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "p256_scalarmulbase_alt",
+            parameter_map=[
+                ("inout", "res.as_mut_ptr() => _"),
+                ("inout", "scalar.as_ptr() => _"),
+                ("inout", "6u64 => _"),
+                ("inout", "table.as_ptr() => _"),
+            ],
+            hoist=["proc", "Lp256_scalarmulbase_alt_local_p256_montjmixadd", "ret"],
+            rust_decl="fn p256_scalarmulbase_alt(res: &mut [u64; 8], scalar: &[u64; 4], table: &[[u64; 256]; 43])",
         )
         parse_file(input, d)
 
