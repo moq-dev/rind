@@ -83,6 +83,24 @@ L$mont_sqr8x_body:
 	pxor	%xmm0,%xmm0
 .byte	102,72,15,110,207
 .byte	102,73,15,110,218
+	testq	%rdx,%rdx
+	jz	L$mont_sqr8x_nox
+
+	movdqu	%xmm0,48(%rsp,%r9,2)
+	call	{bn_sqrx8x_internal}
+
+
+
+
+	leaq	(%r8,%rcx,1),%rbx
+	movq	%rcx,%r9
+	movq	%rcx,%rdx
+.byte	102,72,15,126,207
+	sarq	$3+2,%rcx
+	jmp	L$mont_sqr8x_sub
+
+.p2align	5
+L$mont_sqr8x_nox:
 	call	{bn_sqr8x_internal}
 
 
@@ -168,7 +186,3 @@ L$mont_sqr8x_cond_copy:
 
 L$mont_sqr8x_epilogue:
 	.byte	0xf3,0xc3
-
-
-.byte	77,111,110,116,103,111,109,101,114,121,32,77,117,108,116,105,112,108,105,99,97,116,105,111,110,32,102,111,114,32,120,56,54,95,54,52,44,32,67,82,89,80,84,79,71,65,77,83,32,98,121,32,60,97,112,112,114,111,64,111,112,101,110,115,115,108,46,111,114,103,62,0
-.p2align	4

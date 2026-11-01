@@ -6,17 +6,16 @@
 //! - With BMI2 and ADX, s2n-bignum's Karatsuba routines and its 8n
 //!   reduction for 16 and 32 words.
 //! - Otherwise, from eight words, aws-lc's `bn_mul4x_mont` for a multiple of
-//!   four, by `mulx`, `adcx`, and `adox` with BMI2 and ADX, and without them
-//!   its `bn_sqr8x_mont` for squaring a multiple of eight.
+//!   four, and its `bn_sqr8x_mont` for squaring a multiple of eight; each
+//!   runs its `mulx`, `adcx`, and `adox` variant with BMI2 and ADX.
 //! - Otherwise, aws-lc's `bn_mul_mont_nohw`.
 //!
 //! These are what aws-lc's `bn_mul_mont` picks, but for the Karatsuba
-//! routines, which measured faster than `bn_mulx4x_mont`, and squaring with
-//! BMI2 and ADX: `admin/import-aws-lc` drops `bn_sqr8x_mont`'s branch for
-//! those, whose scratch memcheck cannot follow. The aws-lc routines measured
-//! 1.1 to 2.5 times as fast as s2n-bignum's generic `bignum_montmul` and
-//! `bignum_montsqr`, and `bignum_montmul` runs only below two words, which
-//! `bn_mul_mont_nohw` does not take.
+//! routines, which multiply faster than `bn_mulx4x_mont` and square level
+//! with `bn_sqr8x_mont`. The aws-lc routines measured 1.1 to 3 times as fast
+//! as s2n-bignum's generic `bignum_montmul` and `bignum_montsqr`, and
+//! `bignum_montmul` runs only below two words, which `bn_mul_mont_nohw` does
+//! not take.
 
 use super::cpu::HaveBmi2Adx;
 
@@ -38,7 +37,7 @@ pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     debug_assert!(z.len() == m.len() && x.len() == m.len());
     match (HaveBmi2Adx::check(), m.len()) {
         (Some(_), 16 | 32) => karatsuba_sqr(z, x, m, n0),
-        (None, k) if k >= 8 && k.is_multiple_of(8) => sqr8x(z, x, m, n0),
+        (adx, k) if k >= 8 && k.is_multiple_of(8) => sqr8x(z, x, m, n0, adx),
         (adx, k) if k >= 8 && k.is_multiple_of(4) => mul4x(z, x, x, m, n0, adx),
         (_, k) if k >= 2 => nohw(z, x, x, m, n0),
         _ => super::bignum_montmul::bignum_montmul(z, x, x, m),
@@ -96,13 +95,17 @@ fn mul4x(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64, adx: Option<Ha
     };
 }
 
-/// `mont_sqr` for a multiple of eight words.
-fn sqr8x(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
+/// `mont_sqr` for a multiple of eight words, by `mulx`, `adcx`, and `adox`
+/// given the proof of BMI2 and ADX.
+fn sqr8x(z: &mut [u64], x: &[u64], m: &[u64], n0: u64, adx: Option<HaveBmi2Adx>) {
     let k = m.len();
     assert!(k >= 8 && k.is_multiple_of(8) && z.len() == k && x.len() == k);
+    let mulx = adx.is_some().into();
     // SAFETY: `z`, `x`, and `m` are each `k` words, as `bn_sqr8x_mont` reads
-    // and writes for such a `k`, and it reads `n0` as one word.
-    unsafe { bn_sqr8x_mont(z.as_mut_ptr(), x.as_ptr(), 0, m.as_ptr(), &n0, k) };
+    // and writes for such a `k`, and it reads `n0` as one word. It runs
+    // `mulx`, `adcx`, and `adox` only if `mulx_adx_capable` is nonzero,
+    // which the token proves the CPU has.
+    unsafe { bn_sqr8x_mont(z.as_mut_ptr(), x.as_ptr(), mulx, m.as_ptr(), &n0, k) };
 }
 
 /// `mont_mul` for any width from two words.
@@ -140,7 +143,8 @@ unsafe extern "sysv64" fn bn_mul4x_mont(
     );
 }
 
-/// `mulx_adx_capable` selects nothing: the import drops that branch.
+/// Squares by `bn_sqrx8x_internal` if `mulx_adx_capable` is nonzero, and
+/// otherwise by `bn_sqr8x_internal`.
 #[unsafe(naked)]
 unsafe extern "sysv64" fn bn_sqr8x_mont(
     rp: *mut u64,
@@ -154,12 +158,14 @@ unsafe extern "sysv64" fn bn_sqr8x_mont(
     core::arch::naked_asm!(
         include_str!("aws_lc/bn_sqr8x_mont.linux.s"),
         bn_sqr8x_internal = sym bn_sqr8x_internal,
+        bn_sqrx8x_internal = sym bn_sqrx8x_internal,
         options(att_syntax)
     );
     #[cfg(target_vendor = "apple")]
     core::arch::naked_asm!(
         include_str!("aws_lc/bn_sqr8x_mont.apple.s"),
         bn_sqr8x_internal = sym bn_sqr8x_internal,
+        bn_sqrx8x_internal = sym bn_sqrx8x_internal,
         options(att_syntax)
     );
 }
@@ -177,6 +183,22 @@ unsafe extern "sysv64" fn bn_sqr8x_internal() {
     #[cfg(target_vendor = "apple")]
     core::arch::naked_asm!(
         include_str!("aws_lc/bn_sqr8x_internal.apple.s"),
+        options(att_syntax)
+    );
+}
+
+/// `bn_sqr8x_internal` by `mulx`, `adcx`, and `adox`, which only
+/// `bn_sqr8x_mont` calls, likewise.
+#[unsafe(naked)]
+unsafe extern "sysv64" fn bn_sqrx8x_internal() {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/bn_sqrx8x_internal.linux.s"),
+        options(att_syntax)
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/bn_sqrx8x_internal.apple.s"),
         options(att_syntax)
     );
 }
@@ -312,7 +334,10 @@ mod tests {
                     }
                 }
                 if k >= 8 && k.is_multiple_of(8) {
-                    check("sqr8x", &|z| sqr8x(z, x, m, n0));
+                    check("sqr8x", &|z| sqr8x(z, x, m, n0, None));
+                    if adx.is_some() {
+                        check("sqrx8x", &|z| sqr8x(z, x, m, n0, adx));
+                    }
                 }
                 if let (Some(_), 16 | 32) = (adx, k) {
                     check("karatsuba_sqr", &|z| karatsuba_sqr(z, x, m, n0));
