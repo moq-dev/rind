@@ -19,8 +19,8 @@
 //! 5-bit windows, after negating a scalar above n / 2 so that no addition
 //! doubles.
 //!
-//! Arithmetic on secrets wraps explicitly even where it cannot overflow,
-//! since debug builds' overflow checks would branch on it.
+//! Arithmetic on secrets wraps: the bounds rule out overflow, and a debug
+//! build's overflow check would branch on secret values.
 
 use fiat_crypto::p521_32 as fp;
 use fiat_crypto::p521_32::fiat_p521_loose_field_element as Loose;

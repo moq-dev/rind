@@ -3,8 +3,8 @@
 //! The private exponents of a generated key, derived from its primes in
 //! constant time on every backend.
 //!
-//! Arithmetic on secrets wraps explicitly even where it cannot overflow,
-//! since debug builds' overflow checks would branch on it.
+//! Arithmetic on secrets wraps: the bounds rule out overflow, and a debug
+//! build's overflow check would branch on secret values.
 //!
 //! References to FIPS186-5 are to:
 //! <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf>

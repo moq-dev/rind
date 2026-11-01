@@ -309,8 +309,8 @@ impl Drop for MillerRabinScratch {
 
 /// The number of trailing zero bits of a nonzero `x`, without revealing
 /// it: as aws-lc's `BN_count_low_zero_bits`, each word's count is kept only
-/// for the lowest nonzero word, found by halving its width. The sums wrap
-/// explicitly, as a debug build's overflow checks would branch on them.
+/// for the lowest nonzero word, found by halving its width. The sums wrap:
+/// a debug build's overflow check would branch on secret values.
 fn trailing_zeros(x: &[u64]) -> usize {
     let mut count = 0;
     let mut seen = 0;
