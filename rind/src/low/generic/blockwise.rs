@@ -50,7 +50,8 @@ impl<const N: usize> Blockwise<N> {
         }
     }
 
-    #[cfg(not(target_arch = "arm"))]
+    // Only Poly1305's tail reads it.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) fn peek_remaining(&self) -> Option<&[u8]> {
         if self.used > 0 {
             Some(&self.buffer[..self.used])

@@ -134,6 +134,15 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     Copyright (c) 2014, Google Inc.
     License: ISC.
 
+  - For x86_64 and aarch64, the chacha20_poly1305_open and _seal
+    routines, the poly_hash_ad_internal helper, and the tables of
+    chacha20_poly1305_x86_64 and chacha20_poly1305_armv8
+    (ChaCha20-Poly1305), which aws-lc takes from BoringSSL. Both are
+    pregenerated from Perl scripts written by Vlad Krasnov.
+    Copyright (c) 2015, CloudFlare Ltd.
+    Copyright (c) 2020, CloudFlare Ltd.
+    License: ISC.
+
   - For x86_64, the gcm_ghash_ssse3 routine and tables of
     ghash-ssse3-x86_64 (GHASH), which aws-lc takes from BoringSSL;
     aes_nohw.rs, which ports the encryption half of aws-lc's

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/moq-dev/rind/compare/rind-v0.1.3...rind-v0.1.4) - 2026-11-01
+
+### Fixed
+
+- constant-time in debug builds ([#189](https://github.com/moq-dev/rind/pull/189))
+- *(bench)* time forced CPU paths in release builds ([#181](https://github.com/moq-dev/rind/pull/181))
+
+### Other
+
+- aws-lc's one-pass ChaCha20-Poly1305 on x86_64 and aarch64 ([#190](https://github.com/moq-dev/rind/pull/190))
+- *(x86_64)* square by bn_sqrx8x_internal, zeroing its scratch first ([#187](https://github.com/moq-dev/rind/pull/187))
+- *(x86_64)* aws-lc's mulx and nohw Montgomery routines for RSA at every size ([#183](https://github.com/moq-dev/rind/pull/183))
+
 ## [0.1.3](https://github.com/moq-dev/rind/compare/rind-v0.1.2...rind-v0.1.3) - 2026-11-01
 
 ### Fixed

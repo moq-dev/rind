@@ -47,32 +47,19 @@ impl ChaCha20 {
     }
 }
 
-pub(crate) struct XChaCha20(ChaCha20);
-
-impl XChaCha20 {
-    pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 24]) -> Self {
-        let (nonce, suffix) = nonce.split_at(16);
-        let mut counter_nonce = [0u8; 16];
-        counter_nonce[8..].copy_from_slice(suffix);
-        let nonce = nonce.try_into().unwrap();
-        let ssse3 = HaveSsse3::check();
-        let key = match ssse3 {
-            // SAFETY: the token proves the `ssse3` cpu feature
-            Some(_) => unsafe { hchacha_ssse3(key, nonce) },
-            // SAFETY: every x86_64 CPU has SSE2
-            None => unsafe { hchacha_sse2(key, nonce) },
-        };
-        Self(ChaCha20 {
-            key,
-            counter_nonce: words(&counter_nonce),
-            avx2: HaveAvx2::check(),
-            ssse3,
-        })
+/// HChaCha20 of `key` and `nonce`, for XChaCha20's subkey.
+pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
+    let words = match HaveSsse3::check() {
+        // SAFETY: the token proves the `ssse3` cpu feature
+        Some(_) => unsafe { hchacha_ssse3(key, nonce) },
+        // SAFETY: every x86_64 CPU has SSE2
+        None => unsafe { hchacha_sse2(key, nonce) },
+    };
+    let mut out = [0u8; 32];
+    for (o, w) in out.as_chunks_mut::<4>().0.iter_mut().zip(words) {
+        *o = w.to_le_bytes();
     }
-
-    pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        self.0.cipher(buffer);
-    }
+    out
 }
 
 /// `bytes` as little-endian words.
@@ -864,7 +851,12 @@ mod tests {
             0x9c, 0x9d, 0x9e, 0x9f,
         ];
         let nonce = *b"@ABCDEFGHIJKLMNOPQRSTUVX";
-        let mut c = XChaCha20::new(&key, &nonce);
+        let mut counter_nonce = [0u8; 16];
+        counter_nonce[8..].copy_from_slice(&nonce[16..]);
+        let mut c = ChaCha20::new(
+            &hchacha20(&key, nonce[..16].try_into().unwrap()),
+            &counter_nonce,
+        );
 
         let mut buffer = [
             0x54, 0x68, 0x65, 0x20, 0x64, 0x68, 0x6f, 0x6c, 0x65, 0x20, 0x28, 0x70, 0x72, 0x6f,

@@ -53,9 +53,10 @@ jobs:
   # aarch64, the crypto extension and the SHA-512 and SHA-3 instructions, as
   # a Raspberry Pi 4 lacks them; on x86_64, what Sandy Bridge lacks: AVX2,
   # BMI1 and BMI2, ADX, the SHA extensions, AVX-512, VAES, and VPCLMULQDQ.
-  # Two more x86_64 rows time only AES: one also denies AVX, as Westmere and
-  # the Goldmont Atoms lack it, and one AES-NI and PCLMULQDQ too, as Core 2
-  # and Nehalem lack them. A last row denies SSSE3 as well, as QEMU's default
+  # Two more x86_64 rows time mostly AES: one also denies AVX, as Westmere
+  # and the Goldmont Atoms lack it, and one AES-NI, PCLMULQDQ, and SSE4.1
+  # too, as the first Core 2s lack them, which also times ChaCha20-Poly1305
+  # in separate passes. A last row denies SSSE3 as well, as QEMU's default
   # `qemu64` model and pre-Core 2 CPUs lack it, and times the primitives that
   # then run integer or SSE2 code. rind's denial takes `--cfg
   # rind_cpu_disable`, so these rows time release code, without the debug
@@ -100,7 +101,7 @@ jobs:
             personality: linux64
             portable: true
             cpu: no-aes
-            benches: --bench aes_gcm --bench cipher
+            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
@@ -168,18 +169,17 @@ jobs:
                 # ECX (AVX-512 VBMI, VBMI2, VNNI, BITALG, and VPOPCNTDQ, VAES,
                 # and VPCLMULQDQ).
                 export OPENSSL_ia32cap='~0x0:~0x5e42f02b0128'
-                # And for these rows, CPUID leaf 1's ECX: AVX, then AES-NI
-                # and PCLMULQDQ, then SSSE3 and SSE4.1, which aws-lc's
-                # stitched ChaCha20-Poly1305 needs and no CPU without SSSE3
-                # has.
+                # And for these rows, CPUID leaf 1's ECX: AVX, then AES-NI,
+                # PCLMULQDQ, and SSE4.1, which aws-lc's one-pass
+                # ChaCha20-Poly1305 needs, then SSSE3.
                 case "${{ matrix.cpu }}" in
                   no-avx)
                     export RIND_CPU_DISABLE_avx=1
                     export OPENSSL_ia32cap='~0x1000000000000000:~0x5e42f02b0128'
                     ;;
                   no-aes)
-                    export RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1
-                    export OPENSSL_ia32cap='~0x1200000200000000:~0x5e42f02b0128'
+                    export RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_sse41=1
+                    export OPENSSL_ia32cap='~0x1208000200000000:~0x5e42f02b0128'
                     ;;
                   no-ssse3)
                     export RIND_CPU_DISABLE_ssse3=1

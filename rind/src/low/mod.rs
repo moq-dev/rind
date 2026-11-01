@@ -12,6 +12,10 @@ pub mod inline_assembly_safety;
 
 mod generic {
     pub(super) mod blockwise;
+    // Where no one-pass routine runs, and in aarch64 tests to check it
+    // against.
+    #[cfg(any(target_arch = "arm", target_arch = "x86_64", test))]
+    pub(crate) mod chacha20poly1305;
     #[cfg(not(target_arch = "arm"))]
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
@@ -34,7 +38,9 @@ mod generic {
     pub(crate) mod p384;
     #[cfg(any(target_arch = "arm", test))]
     pub(crate) mod p521;
-    #[cfg(not(target_arch = "arm"))]
+    // aarch64 runs Poly1305 only in aws-lc's one-pass ChaCha20-Poly1305,
+    // whose tests check it against this.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
     pub(crate) mod poly1305;
     // armv7's SHA1 and SHA256, also built in x86_64 tests to check the vector
     // paths against.
@@ -55,7 +61,7 @@ pub(crate) use generic::blockwise::Blockwise;
 #[cfg(not(target_arch = "arm"))]
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
 pub(crate) use generic::ct_equal::ct_equal;
-#[cfg(not(target_arch = "arm"))]
+#[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", test)))]
 pub(crate) use generic::poly1305;
 pub(crate) use generic::zeroise::{Zeroable, zeroise, zeroise_value};
 #[cfg(not(target_arch = "arm"))]
@@ -71,6 +77,7 @@ cfg_if::cfg_if! {
 
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
         pub(crate) use x86_64::chacha20;
+        pub(crate) use x86_64::chacha20poly1305;
         pub(crate) use x86_64::aes::AesKey;
         pub(crate) use x86_64::aes_ctr;
         pub(crate) use x86_64::aes_gcm;
@@ -252,6 +259,7 @@ cfg_if::cfg_if! {
         pub(crate) use aarch64::sha512::sha512_compress_blocks;
 
         pub(crate) use aarch64::chacha20;
+        pub(crate) use aarch64::chacha20poly1305;
         pub(crate) use generic::mlkem::{mlkem_frombytes, mlkem_unpack};
         pub(crate) use generic::mlkem768::mlkem768_sample_poly_ntt_8x;
     } else if #[cfg(target_arch = "arm")] {
@@ -264,6 +272,7 @@ cfg_if::cfg_if! {
         pub(crate) use arm::cpu::HaveCryptoExt;
         pub(crate) use arm::ghashv8_armx::GhashTable;
         pub(crate) use arm::chacha20;
+        pub(crate) use generic::chacha20poly1305;
         pub(crate) use arm::poly1305;
         pub(crate) use arm::bignum_eq::bignum_eq;
         pub(crate) use arm::curve25519::{curve25519_x25519, curve25519_x25519base};

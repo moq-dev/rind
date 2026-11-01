@@ -3,8 +3,6 @@
 
 use super::chacha20::check_counter;
 use crate::Error;
-use crate::low::chacha20::ChaCha20;
-use crate::low::poly1305::Poly1305;
 use crate::low::{self, Entry, ct_equal, zeroise};
 
 /// A ChaCha20Poly1305 key.
@@ -43,7 +41,7 @@ impl ChaCha20Poly1305 {
         let _entry = Entry::new_secret();
         // block 0 keys Poly1305
         check_counter(1, cipher_inout.len())?;
-        self.cipher(nonce, aad, cipher_inout, tag_out, true);
+        *tag_out = low::chacha20poly1305::seal(&self.key, nonce, aad, cipher_inout);
         low::ct::public_slice(cipher_inout);
         low::ct::public_slice(tag_out);
         Ok(())
@@ -72,8 +70,7 @@ impl ChaCha20Poly1305 {
     ) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         check_counter(1, cipher_inout.len())?;
-        let mut actual_tag = [0u8; 16];
-        self.cipher(nonce, aad, cipher_inout, &mut actual_tag, false);
+        let actual_tag = low::chacha20poly1305::open(&self.key, nonce, aad, cipher_inout);
 
         if low::ct::into_public(ct_equal(&actual_tag, tag)) {
             low::ct::public_slice(cipher_inout);
@@ -83,55 +80,6 @@ impl ChaCha20Poly1305 {
             cipher_inout.fill(0x00);
             Err(Error::DecryptFailed)
         }
-    }
-
-    fn cipher(
-        &self,
-        nonce: &[u8; 12],
-        aad: &[u8],
-        cipher_inout: &mut [u8],
-        tag_out: &mut [u8; 16],
-        encrypt: bool,
-    ) {
-        let mut full_nonce = [0u8; 16];
-        full_nonce[4..16].copy_from_slice(nonce);
-
-        // First, generate the Poly1305 key by running ChaCha20 with the
-        // given key and a zero counter.  The first half of the
-        // 64-byte output is the key. */
-        let mut chacha = ChaCha20::new(&self.key, &full_nonce);
-        let mut polykey = [0u8; 32];
-        chacha.cipher(&mut polykey);
-
-        // Now initialise Poly1305
-        let mut poly = Poly1305::new(&polykey);
-
-        fn pad(poly: &mut Poly1305, len: usize) {
-            let pad_buf = [0u8; 16];
-            let pad_len = 16 - (len & 0xf);
-            if pad_len != 16 {
-                poly.add_bytes(&pad_buf[..pad_len]);
-            }
-        }
-
-        // The input to Poly1305 is:
-        // AAD || pad(AAD) || cipher || pad(cipher) || len_64(aad) || len_64(cipher) */
-        poly.add_bytes(aad);
-        pad(&mut poly, aad.len());
-
-        if encrypt {
-            chacha.cipher(cipher_inout);
-            poly.add_bytes(cipher_inout);
-        } else {
-            poly.add_bytes(cipher_inout);
-            chacha.cipher(cipher_inout);
-        }
-        pad(&mut poly, cipher_inout.len());
-
-        poly.add_bytes(&(aad.len() as u64).to_le_bytes());
-        poly.add_bytes(&(cipher_inout.len() as u64).to_le_bytes());
-
-        tag_out.copy_from_slice(&poly.finish());
     }
 }
 

@@ -77,23 +77,25 @@ jobs:
           # without BMI2 and ADX, such as Haswell; the last variables fail the
           # run that lands on the wrong path
           env RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 RIND_TEST_X86_AVX2=1 cargo test
-          # test aws-lc's SSSE3 ChaCha20, SHA-1, and SHA-256, the portable
-          # ML-KEM arithmetic, and the SSE2 selects for CPUs without AVX2,
-          # such as AMD's Bulldozer and Jaguar; x86-cpu's Sandy Bridge run
-          # covers aws-lc's AVX SHA routines, which Intel's cores run there
-          env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 cargo test
+          # test aws-lc's SSE4.1 ChaCha20-Poly1305, its SSSE3 ChaCha20, SHA-1,
+          # and SHA-256, the portable ML-KEM arithmetic, and the SSE2 selects
+          # for CPUs without AVX2, such as AMD's Bulldozer and Jaguar;
+          # x86-cpu's Sandy Bridge run covers aws-lc's AVX SHA routines, which
+          # Intel's cores run there
+          env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_SSE41=1 cargo test
           # test rind's AES-GCM and GHASH intrinsics without VEX encoding, and
           # aws-lc's AES-NI CTR, for CPUs with AES-NI but without AVX, such as
           # Westmere and the Goldmont and Tremont Atoms
           env RIND_CPU_DISABLE_avx=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AES_HARDWARE=1 cargo test
           # test aws-lc's vpaes and SSSE3 GHASH for CPUs without AES-NI or
           # PCLMULQDQ, such as Core 2 and Nehalem, where rind-rustls and
-          # rind-dimpl prefer ChaCha20-Poly1305
-          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_TEST_X86_AES_HARDWARE=0 cargo test
+          # rind-dimpl prefer ChaCha20-Poly1305, and without SSE4.1 too, as
+          # the first Core 2s lack it, ChaCha20 and Poly1305 in separate passes
+          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 RIND_TEST_X86_AES_HARDWARE=0 RIND_TEST_X86_SSE41=0 cargo test
           # test aws-lc's integer ChaCha20, SHA-1, and SHA-256, and its SSE2
           # AES and integer GHASH, for CPUs without SSSE3, such as QEMU's
           # default `qemu64` model; every faster path needs SSSE3 too
-          env RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0 cargo test
+          env RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_SSE41=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0 cargo test
 
       - name: Artificial CPU feature tests (aarch64)
         if: runner.arch == 'ARM64' || matrix.cross == 'aarch64-unknown-linux-gnu'
