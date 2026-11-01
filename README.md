@@ -112,7 +112,7 @@ or a [quest][quests] covers it. The table describes
 | ChaCha20 (header protection) | Graviola; [HACL\*]'s block function measured level for one block, so it isn't worth a libcrux dependency here | Graviola; as x86_64 | [aws-lc] (copied) ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | Graviola ⚡ | Graviola ⚡ | [aws-lc] ChaCha20 (copied) ⚡; NEON: [aws-lc] Poly1305 (copied) ⚡; otherwise: [HACL\*] Poly1305 ✓; Graviola AEAD; rind HChaCha20 over [HACL\*] rounds ✓ (copied) |
 | SHA-1 (legacy only) | rind | crypto extension: rind; otherwise: [aws-lc] scalar (copied) | crypto extension: [aws-lc] (copied); otherwise: rind |
-| SHA-256 | Graviola ⚡ | crypto extension: Graviola ⚡; otherwise: [aws-lc] scalar (copied) | crypto extension: [aws-lc] (copied) ⚡; otherwise: Graviola ⚡ |
+| SHA-256 | SHA-NI: Graviola ⚡; Intel: [aws-lc] AVX (copied) ⚡; otherwise: rind ⚡ | crypto extension: Graviola ⚡; otherwise: [aws-lc] scalar (copied) | crypto extension: [aws-lc] (copied) ⚡; otherwise: Graviola ⚡ |
 | SHA-384, SHA-512, SHA-512/256 | Intel: [aws-lc] AVX (copied) ✓; otherwise: [aws-lc] scalar (copied) ⚡ | SHA-512 instructions: [aws-lc] (copied) ✓; otherwise: [aws-lc] scalar (copied) ✓ | NEON: [aws-lc] (copied) ⚡; otherwise: [aws-lc] scalar (copied) ⚡ |
 | HMAC | Graviola ⚡ | Graviola ⚡ | Graviola ⚡ |
 | HKDF | rind ⚡ | rind ⚡ | rind ⚡ |
@@ -138,7 +138,7 @@ The tests use [Wycheproof]'s vectors.
 | [HACL\*] | dependency, through libcrux-hacl-rs, libcrux-p256, and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
 | [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
 | [libcrux-aes] | dependency for AES-GCM; copied: the block cipher | Apache-2.0 | nothing: libcrux marks it pre-verification |
-| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`, and the C that drives that Poly1305, ported to Rust. aws-lc takes its Poly1305 from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305 ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification) that its x86_64 AVX and aarch64 (with and without the SHA-512 instructions) SHA-384/512 routines compute their specified result for all inputs. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. |
+| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`, and the C that drives that Poly1305, ported to Rust. aws-lc takes its Poly1305 from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305 ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification) that its x86_64 AVX and aarch64 (with and without the SHA-512 instructions) SHA-384/512 routines compute their specified result for all inputs. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [curve25519-dalek] | dependency, with its serial 32-bit backend | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
@@ -260,8 +260,10 @@ have some different options depending on CPU features:
 ### Symmetric cryptography
 SHA1 and SHA256 have straightforward implementations using hashing intrinsics
 (aka "SHA-NI" on x86_64, "sha" extension on aarch64). Without SHA-NI, x86_64
-selects at runtime an AVX2 message schedule with scalar rounds for SHA1 and
-SHA256, as aws-lc does; aarch64 without the crypto extension runs aws-lc's
+selects at runtime an AVX2 message schedule with scalar rounds for SHA1, as
+aws-lc does. For SHA256 it runs aws-lc's AVX routine on Intel, as aws-lc
+picks, and the same AVX2 approach elsewhere, since the AVX routine rotates with
+`shrd`, which pre-Zen AMD runs slowly. aarch64 without the crypto extension runs aws-lc's
 scalar SHA1 and SHA256 assembly. 32-bit `arm` runs aws-lc's SHA1 and SHA256 assembly
 where the CPU has the crypto extension, and the pure Rust SHA1 and SHA256
 otherwise: libcrux has no SHA1, and the pure Rust SHA256 is faster than
