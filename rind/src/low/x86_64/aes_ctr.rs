@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use core::arch::x86_64::*;
-
 use super::aes::{AesKey, HwKey};
-use super::cpu::HaveAvx;
 use crate::low::generic::ctr;
 
 /// XORs AES-CTR keystream into `inout`.
@@ -11,28 +8,18 @@ use crate::low::generic::ctr;
 /// The counter blocks are `nonce` followed by the big-endian `counter`,
 /// `counter + 1`, and so on, wrapping within 32 bits.
 pub(crate) fn apply(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8]) {
-    match (key, HaveAvx::check()) {
-        (AesKey::Hw(key), Some(token)) => ctr::by8(counter, inout, |counter, chunk| {
-            apply_8_avx(key, nonce, counter, chunk, token)
-        }),
-        (AesKey::Hw(key), None) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
+    match key {
+        AesKey::Hw(key) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
             hw_ctr32(key, ivec, blocks)
         }),
-        (AesKey::Vpaes(key), _) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
+        AesKey::Vpaes(key) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
             key.ctr32(ivec, blocks)
         }),
     }
 }
 
-fn apply_8_avx(key: &HwKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128], _: HaveAvx) {
-    let (rk_first, rks, rk_last) = key.round_keys();
-    // SAFETY: only a `HaveAesHardware` token builds `key`, and the `HaveAvx`
-    // token proves AVX.
-    unsafe { _apply_8(rk_first, rks, rk_last, nonce, counter, inout) }
-}
-
 /// XORs counter-mode keystream into whole blocks with aws-lc's AES-NI
-/// routine, the fastest without AVX.
+/// routine, the fastest with or without AVX.
 ///
 /// The counter blocks are `ivec`, then `ivec` with its last four bytes, a
 /// big-endian counter, incremented with 32-bit wrapping.
@@ -74,81 +61,6 @@ unsafe extern "sysv64" fn aes_hw_ctr32_encrypt_blocks(
     );
 }
 
-#[target_feature(enable = "aes,avx")]
-fn _apply_8(
-    rk_first: __m128i,
-    rks: &[__m128i],
-    rk_last: __m128i,
-    nonce: &[u8; 12],
-    counter: u32,
-    inout: &mut [u8; 128],
-) {
-    let mut base = [0u8; 16];
-    base[..12].copy_from_slice(nonce);
-    // SAFETY: `base` is 16 bytes and readable
-    let base = unsafe { _mm_loadu_si128(base.as_ptr().cast()) };
-    // lane 3 holds bytes 12..16 little-endian, so swap to store big-endian
-    let block = |i: u32| {
-        let c = _mm_insert_epi32::<3>(base, counter.wrapping_add(i).swap_bytes() as i32);
-        _mm_xor_si128(c, rk_first)
-    };
-
-    let mut b0 = block(0);
-    let mut b1 = block(1);
-    let mut b2 = block(2);
-    let mut b3 = block(3);
-    let mut b4 = block(4);
-    let mut b5 = block(5);
-    let mut b6 = block(6);
-    let mut b7 = block(7);
-
-    for rk in rks {
-        b0 = _mm_aesenc_si128(b0, *rk);
-        b1 = _mm_aesenc_si128(b1, *rk);
-        b2 = _mm_aesenc_si128(b2, *rk);
-        b3 = _mm_aesenc_si128(b3, *rk);
-        b4 = _mm_aesenc_si128(b4, *rk);
-        b5 = _mm_aesenc_si128(b5, *rk);
-        b6 = _mm_aesenc_si128(b6, *rk);
-        b7 = _mm_aesenc_si128(b7, *rk);
-    }
-
-    let b0 = _mm_aesenclast_si128(b0, rk_last);
-    let b1 = _mm_aesenclast_si128(b1, rk_last);
-    let b2 = _mm_aesenclast_si128(b2, rk_last);
-    let b3 = _mm_aesenclast_si128(b3, rk_last);
-    let b4 = _mm_aesenclast_si128(b4, rk_last);
-    let b5 = _mm_aesenclast_si128(b5, rk_last);
-    let b6 = _mm_aesenclast_si128(b6, rk_last);
-    let b7 = _mm_aesenclast_si128(b7, rk_last);
-
-    // SAFETY: `inout` is 128 bytes and readable
-    let (p0, p1, p2, p3, p4, p5, p6, p7) = unsafe {
-        (
-            _mm_loadu_si128(inout.as_ptr().add(0).cast()),
-            _mm_loadu_si128(inout.as_ptr().add(16).cast()),
-            _mm_loadu_si128(inout.as_ptr().add(32).cast()),
-            _mm_loadu_si128(inout.as_ptr().add(48).cast()),
-            _mm_loadu_si128(inout.as_ptr().add(64).cast()),
-            _mm_loadu_si128(inout.as_ptr().add(80).cast()),
-            _mm_loadu_si128(inout.as_ptr().add(96).cast()),
-            _mm_loadu_si128(inout.as_ptr().add(112).cast()),
-        )
-    };
-
-    // SAFETY: `inout` is 128 bytes and writable
-    unsafe {
-        _mm_storeu_si128(inout.as_mut_ptr().add(0).cast(), _mm_xor_si128(b0, p0));
-        _mm_storeu_si128(inout.as_mut_ptr().add(16).cast(), _mm_xor_si128(b1, p1));
-        _mm_storeu_si128(inout.as_mut_ptr().add(32).cast(), _mm_xor_si128(b2, p2));
-        _mm_storeu_si128(inout.as_mut_ptr().add(48).cast(), _mm_xor_si128(b3, p3));
-        _mm_storeu_si128(inout.as_mut_ptr().add(64).cast(), _mm_xor_si128(b4, p4));
-        _mm_storeu_si128(inout.as_mut_ptr().add(80).cast(), _mm_xor_si128(b5, p5));
-        _mm_storeu_si128(inout.as_mut_ptr().add(96).cast(), _mm_xor_si128(b6, p6));
-        _mm_storeu_si128(inout.as_mut_ptr().add(112).cast(), _mm_xor_si128(b7, p7));
-    }
-}
-
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -156,10 +68,10 @@ mod tests {
     use crate::low::x86_64::cpu::HaveAesHardware;
     use crate::low::x86_64::vpaes_x86_64::VpaesKey;
 
-    // Every other test sees only the path the CPU picks, so the three are
-    // compared here: rind's AVX intrinsics, aws-lc's AES-NI routine, and
-    // vpaes, for each key size, across the 32-bit counter's wrap, at lengths
-    // that take aws-lc's single-block shortcut and each of its tails.
+    // Every other test sees only the path the CPU picks, so the two are
+    // compared here: aws-lc's AES-NI routine and vpaes, for each key size,
+    // across the 32-bit counter's wrap, at lengths that take aws-lc's
+    // single-block shortcut and each of its tails.
     #[test]
     fn paths_match() {
         let Some(_) = HaveAesHardware::check() else {
@@ -191,14 +103,6 @@ mod tests {
                         hw_ctr32(hw, ivec, blocks)
                     });
                     assert_eq!(got, want, "{what}");
-
-                    if let Some(token) = HaveAvx::check() {
-                        let mut got = bytes(len, counter);
-                        ctr::by8(counter, &mut got, |counter, chunk| {
-                            apply_8_avx(hw, &nonce, counter, chunk, token)
-                        });
-                        assert_eq!(got, want, "{what}");
-                    }
                 }
             }
         }
