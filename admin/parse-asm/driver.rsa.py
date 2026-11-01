@@ -343,27 +343,6 @@ if __name__ == "__main__":
 
     # aarch64
     with (
-        open("../../thirdparty/s2n-bignum/arm/generic/bignum_montsqr.S") as input,
-        open("../../rind/src/low/aarch64/bignum_montsqr.rs", "w") as output,
-    ):
-        d = RustDriver(output, Architecture_aarch64)
-        d.emit_rust_function(
-            "bignum_montsqr",
-            parameter_map=[
-                ("inout", "z.len() => _"),
-                ("inout", "z.as_mut_ptr() => _"),
-                ("inout", "x.as_ptr() => _"),
-                ("inout", "m.as_ptr() => _"),
-            ],
-            assertions=[
-                "z.len() == x.len()",
-                "z.len() == m.len()",
-            ],
-            rust_decl="fn bignum_montsqr(z: &mut [u64], x: &[u64], m: &[u64])",
-        )
-        parse_file(input, d)
-
-    with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_bitsize.S") as input,
         open("../../rind/src/low/aarch64/bignum_bitsize.rs", "w") as output,
     ):
