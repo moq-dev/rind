@@ -116,7 +116,11 @@ fn mod_exp(
     norm2red(token, m_red, m);
     norm2red(token, base, x);
     norm2red(token, r2_red, rr);
-    let rsaz = Routines { _token: token, m: m_red, n0 };
+    let rsaz = Routines {
+        _token: token,
+        m: m_red,
+        n0,
+    };
 
     // `rr` is R^2 for R = 2^1024; RSAZ's R is 2^(36 * 29) = 2^1044. This
     // takes it to 2^4096 / 2^1044 = 2^3052, then 2^3052 * 2^80 / 2^1044 =
@@ -374,7 +378,10 @@ mod tests {
             let rr = n.montifier();
             let n0 = n.mont_neg_inverse();
             let one = n.fixed_one().mont_mul(&rr, &n, n0);
-            let want = x_int.to_montgomery(&rr, &n).mont_exp(one, &e_int, &n, n0).from_montgomery(&n);
+            let want = x_int
+                .to_montgomery(&rr, &n)
+                .mont_exp(one, &e_int, &n, n0)
+                .from_montgomery(&n);
 
             let mut got = [0; 16];
             mod_exp(token, &mut got, &x, &e, &m, &words(&rr), n0);
