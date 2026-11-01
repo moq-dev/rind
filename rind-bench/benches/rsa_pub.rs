@@ -189,6 +189,18 @@ fn rsa_pkcs1_sha256_verify_sizes(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("rsa{bits}-pkcs1-sha256-verify"));
         group.throughput(Throughput::Elements(1));
 
+        group.bench_function("ring", |b| {
+            use ring::signature;
+            let peer_public_key = signature::UnparsedPublicKey::new(
+                &signature::RSA_PKCS1_2048_8192_SHA256,
+                public_key,
+            );
+
+            b.iter(|| {
+                black_box(peer_public_key.verify(message, signature)).unwrap();
+            })
+        });
+
         group.bench_function("aws-lc-rs", |b| {
             use aws_lc_rs::signature;
             let peer_public_key = signature::UnparsedPublicKey::new(

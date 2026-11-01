@@ -2920,6 +2920,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "aws-lc-rs",
+ "aws-lc-sys",
  "chacha20poly1305",
  "codspeed-criterion-compat",
  "criterion",
@@ -2938,8 +2939,10 @@ dependencies = [
  "proptest",
  "rind",
  "rind-jsonwebtoken",
+ "rind-rustls",
  "ring",
  "rsa",
+ "rustls",
  "serde",
  "serde_json",
  "sha1",

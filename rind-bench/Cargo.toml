@@ -12,6 +12,8 @@ codspeed-criterion-compat = { optional = true, version = "6" }
 [dev-dependencies]
 aes-gcm = "0.11"
 aws-lc-rs = { version = "1.16", features = ["non-fips"], default-features = false }
+# For XChaCha20-Poly1305, which aws-lc-rs does not expose.
+aws-lc-sys = "0.47"
 chacha20poly1305 = "0.11"
 criterion = "0.8"
 ed25519-dalek = { version = "3", features = ["alloc", "pkcs8", "rand_core"] }
@@ -26,7 +28,9 @@ p384 = { version = "0.14", features = ["ecdh", "getrandom"] }
 proptest = "1.5.0"
 ring = "0.17"
 rind-jsonwebtoken = { path = "../rind-jsonwebtoken" }
+rind-rustls = { path = "../rind-rustls" }
 rsa = { version = "=0.10.0-rc.19", features = ["sha2"] }
+rustls = { version = "0.23.36", default-features = false, features = ["aws-lc-rs", "ring", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.11"
@@ -116,4 +120,8 @@ harness = false
 
 [[bench]]
 name = "jsonwebtoken"
+harness = false
+
+[[bench]]
+name = "rustls"
 harness = false
