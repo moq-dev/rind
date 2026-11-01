@@ -18,6 +18,9 @@
 //! subtracts n at most once; and scalar multiplication is by Booth-recoded
 //! 5-bit windows, after negating a scalar above n / 2 so that no addition
 //! doubles.
+//!
+//! Arithmetic on secrets wraps explicitly even where it cannot overflow,
+//! since debug builds' overflow checks would branch on it.
 
 use fiat_crypto::p521_32 as fp;
 use fiat_crypto::p521_32::fiat_p521_loose_field_element as Loose;
@@ -66,9 +69,7 @@ pub(crate) fn bignum_mod_n521(z: &mut [u64; 9], x: &[u64; 9]) {
     for (shift, half) in [(0, high as u32), (1, (high >> 32) as u32)] {
         let mut carry = 0u64;
         for (i, r) in r.iter_mut().enumerate().skip(shift) {
-            let t = u64::from(*r)
-                + u64::from(half) * u64::from(c.get(i - shift).copied().unwrap_or(0))
-                + carry;
+            let t = mul_add(*r, half, c.get(i - shift).copied().unwrap_or(0), carry);
             *r = t as u32;
             carry = t >> 32;
         }
@@ -127,7 +128,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
     let mut k = [0; 9];
     bignum_mod_n521(&mut k, scalar);
     let mut p = coords(point_in);
-    let point_at_infinity = 1 - nonzero(&p[2]);
+    let point_at_infinity = nonzero(&p[2]) ^ 1;
 
     // Above n / 2, use n - k and -P, so that k is below n / 2.  Before each
     // addition, the accumulator is 32m P and the table point d P for the
@@ -152,7 +153,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
     let lookup = |digit: u8, sign: u8| {
         let mut r = [Fe([0; 19]); 3];
         for (i, entry) in (1u8..).zip(&table) {
-            let hit = 1 - nonzero_u8(i ^ digit);
+            let hit = nonzero_u8(i ^ digit) ^ 1;
             for (r, e) in r.iter_mut().zip(entry) {
                 *r = select(hit, r, e);
             }
@@ -171,7 +172,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
         }
         let term = lookup(digit, sign);
         let sum = jadd(&acc, &term);
-        let at_infinity = 1 - nonzero(&acc[2]);
+        let at_infinity = nonzero(&acc[2]) ^ 1;
         let sum = select_point(at_infinity, &sum, &term);
         acc = select_point(nonzero_u8(digit), &acc, &sum);
     }
@@ -374,24 +375,24 @@ fn mont_mul(x: &[u32; 18], y: &[u32; 18]) -> [u32; 18] {
     for yi in y {
         let mut carry = 0u64;
         for (t, x) in t.iter_mut().zip(x) {
-            let s = u64::from(*t) + u64::from(*x) * u64::from(*yi) + carry;
+            let s = mul_add(*t, *x, *yi, carry);
             *t = s as u32;
             carry = s >> 32;
         }
-        let s = u64::from(t[18]) + carry;
+        let s = u64::from(t[18]).wrapping_add(carry);
         t[18] = s as u32;
         t[19] = (s >> 32) as u32;
 
         let m = t[0].wrapping_mul(N_INV_NEG);
-        let mut carry = (u64::from(t[0]) + u64::from(m) * u64::from(n[0])) >> 32;
+        let mut carry = mul_add(t[0], m, n[0], 0) >> 32;
         for j in 1..18 {
-            let s = u64::from(t[j]) + u64::from(m) * u64::from(n[j]) + carry;
+            let s = mul_add(t[j], m, n[j], carry);
             t[j - 1] = s as u32;
             carry = s >> 32;
         }
-        let s = u64::from(t[18]) + carry;
+        let s = u64::from(t[18]).wrapping_add(carry);
         t[17] = s as u32;
-        t[18] = t[19] + (s >> 32) as u32;
+        t[18] = t[19].wrapping_add((s >> 32) as u32);
         t[19] = 0;
     }
     // Below 2n < 2^576, so t[18] is zero.
@@ -404,11 +405,20 @@ fn subtract_n_if_above(x: &[u32; 18]) -> [u32; 18] {
     select_words(opaque(borrow as u8), &diff, x)
 }
 
+/// `a + b * c + carry`, which is at most 2^64 - 1.
+fn mul_add(a: u32, b: u32, c: u32, carry: u64) -> u64 {
+    u64::from(a)
+        .wrapping_add(u64::from(b).wrapping_mul(u64::from(c)))
+        .wrapping_add(carry)
+}
+
 /// `x + y`, and the carry out.
 fn add(x: &[u32; 18], y: &[u32; 18]) -> ([u32; 18], u32) {
     let mut carry = 0u64;
     let r = core::array::from_fn(|i| {
-        let s = u64::from(x[i]) + u64::from(y[i]) + carry;
+        let s = u64::from(x[i])
+            .wrapping_add(u64::from(y[i]))
+            .wrapping_add(carry);
         carry = s >> 32;
         s as u32
     });
