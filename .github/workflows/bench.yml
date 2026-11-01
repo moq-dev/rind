@@ -123,12 +123,13 @@ jobs:
 
       # Hosted hardware can change under the same label. The personality
       # makes the kernel list the features the target's code sees, such as
-      # the crypto instructions aws-lc-rs uses.
+      # the crypto instructions aws-lc-rs uses. Arm kernels call that list
+      # `Features`, and x86 ones `flags`.
       - name: Record the CPU
         shell: bash
         run: |
           model=$(lscpu | sed -n 's/^Model name: *//p' | head -n1)
-          features=$(setarch ${{ matrix.personality }} grep -m1 '^Features' /proc/cpuinfo | cut -d: -f2)
+          features=$(setarch ${{ matrix.personality }} grep -m1 -E '^(Features|flags)' /proc/cpuinfo | cut -d: -f2)
           echo "CPU: $model; ${{ matrix.target }} features:$features" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Install OpenSSL
