@@ -831,8 +831,47 @@ mod tests {
         let der = key.to_pkcs1_der(&mut buffer).unwrap();
         assert_eq!(
             hex::encode(hash::Sha256::hash(der)),
-            "45cd51509b4deac86be0cb60faa945339c4526cce2faa489212c6b9b853b121d"
+            "5f6fd81f730c06fe0d50c356ec15df941cc89e4ad2289de9b9f2fc27a65148ca"
         );
+    }
+
+    /// Given aws-lc-rs's primes, rind derives the same key as aws-lc-rs, with
+    /// `d` reduced mod lcm(p - 1, q - 1). The primes are secret, so under
+    /// `admin/ctgrind` this also checks Miller-Rabin on them and the
+    /// derivation are constant time.
+    #[test]
+    fn key_generation_matches_aws_lc() {
+        use aws_lc_rs::encoding::AsDer;
+        use aws_lc_rs::rsa::{KeyPair, KeySize};
+
+        // rind sets each candidate's top two bits, so only primes with both
+        // set come out unchanged.
+        let theirs = core::iter::repeat_with(|| {
+            let pkcs8 = KeyPair::generate(KeySize::Rsa2048)
+                .unwrap()
+                .as_der()
+                .unwrap();
+            let key = SigningKey::from_pkcs8_der(pkcs8.as_ref()).unwrap();
+            let mut buffer = [0u8; SigningKey::MAX_PKCS1_BUFFER_LEN];
+            key.to_pkcs1_der(&mut buffer).unwrap().to_vec()
+        })
+        .find(|der| {
+            let key = Pkcs1::decode(der);
+            key.p[0] >= 0xc0 && key.q[0] >= 0xc0
+        })
+        .unwrap();
+
+        let key = Pkcs1::decode(&theirs);
+        let ours = SigningKey(
+            rsa_priv::RsaPrivateKey::generate(
+                RsaKeySize::Rsa2048,
+                &mut SliceRandomSource(&[key.p, key.q].concat()),
+                &mut HmacDrbg::<hash::Sha256>::new(b"", b"", b""),
+            )
+            .unwrap(),
+        );
+        let mut buffer = [0u8; SigningKey::MAX_PKCS1_BUFFER_LEN];
+        assert_eq!(ours.to_pkcs1_der(&mut buffer).unwrap(), &theirs[..]);
     }
 
     #[test]

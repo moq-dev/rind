@@ -11,33 +11,46 @@ fn rsa_key_generation(c: &mut Criterion) {
         return;
     }
 
-    let mut group = c.benchmark_group("rsa2048-key-generation");
-    group.throughput(Throughput::Elements(1));
+    let sizes = [
+        (
+            2048,
+            aws_lc_rs::rsa::KeySize::Rsa2048,
+            rind::signature::RsaKeySize::Rsa2048,
+        ),
+        (
+            4096,
+            aws_lc_rs::rsa::KeySize::Rsa4096,
+            rind::signature::RsaKeySize::Rsa4096,
+        ),
+    ];
+    for (bits, theirs, ours) in sizes {
+        let mut group = c.benchmark_group(format!("rsa{bits}-key-generation"));
+        group.throughput(Throughput::Elements(1));
 
-    group.bench_function("aws-lc-rs", |b| {
-        use aws_lc_rs::rsa;
+        group.bench_function("aws-lc-rs", |b| {
+            b.iter(|| {
+                black_box(aws_lc_rs::rsa::KeyPair::generate(theirs).unwrap());
+            })
+        });
 
-        b.iter(|| {
-            black_box(rsa::KeyPair::generate(rsa::KeySize::Rsa2048).unwrap());
-        })
-    });
+        group.bench_function("rind", |b| {
+            b.iter(|| {
+                black_box(rind::signature::RsaKeyPair::generate(ours).unwrap());
+            })
+        });
 
-    group.bench_function("rind", |b| {
-        use rind::signature::{RsaKeyPair, RsaKeySize};
+        // RustCrypto takes seconds per 4096-bit key.
+        if bits == 2048 {
+            group.bench_function("rustcrypto", |b| {
+                use getrandom::{SysRng, rand_core::UnwrapErr};
+                use rsa::RsaPrivateKey;
 
-        b.iter(|| {
-            black_box(RsaKeyPair::generate(RsaKeySize::Rsa2048).unwrap());
-        })
-    });
-
-    group.bench_function("rustcrypto", |b| {
-        use getrandom::{SysRng, rand_core::UnwrapErr};
-        use rsa::RsaPrivateKey;
-
-        b.iter(|| {
-            black_box(RsaPrivateKey::new(&mut UnwrapErr(SysRng), 2048).unwrap());
-        })
-    });
+                b.iter(|| {
+                    black_box(RsaPrivateKey::new(&mut UnwrapErr(SysRng), bits).unwrap());
+                })
+            });
+        }
+    }
 }
 
 criterion_group!(benches, rsa_key_generation);
