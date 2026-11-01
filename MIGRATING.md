@@ -189,7 +189,9 @@ ring has no `kem`.
 | `to_pkcs8()`, `to_pkcs8v1()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop |
 | `EcdsaKeyPair::sign(rng, m)`, `RsaKeyPair::sign(alg, rng, m, &mut sig)`, `Ed25519KeyPair::try_sign` | `sign(m)`, `sign(alg, m)`, which take no random source and return a `Signature` |
 | `rsa::KeySize`, `RsaKeyPair::generate(size)` | `RsaKeySize`, which adds `Rsa6144`, and `generate(size)` |
-| `Ed25519KeyPair::seed()`, `EcdsaKeyPair::private_key()`, `public_modulus_len()`, `algorithm()`, `generate_fips` | none |
+| `EcdsaKeyPair::private_key().as_be_bytes()` (not in ring) | `to_scalar()`, an `EcdsaScalar` wiped on drop |
+| `Ed25519KeyPair::seed()?.as_be_bytes()` (not in ring) | `to_seed()`, an `Ed25519Seed` wiped on drop |
+| `EcdsaKeyPair::private_key().as_der()`, `public_modulus_len()`, `algorithm()`, `generate_fips` | none |
 | `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
 | `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 DER |
 | `rsa::PublicKey::{modulus, exponent, modulus_len}`, `PublicKeyComponents::from(&key)` | none |
@@ -258,7 +260,7 @@ missing one, and has no fallback.
 |---|---|
 | `cmac`, `key_wrap`, `kdf` (KBKDF and SSKDF), `tls_prf` | none; [aws-lc-rs extras](quest/m3/parity/aws-lc-extras.md) |
 | `pkcs8::Document` | `signature::Pkcs8`, `signature::Spki` |
-| `encoding`'s `AsDer`, `AsBigEndian`, and `AsRawBytes` | `to_pkcs8()` and `to_spki()`; raw private keys none |
+| `encoding`'s `AsDer`, `AsBigEndian`, and `AsRawBytes` | `to_pkcs8()` and `to_spki()`; an ECDSA key pair's `to_scalar()` and an Ed25519 key pair's `to_seed()`; other raw keys none |
 | `io::Positive`, `io::der`, `iv::FixedLength`, `test`, `test_file!`, `unstable`, and ring's `deprecated_test` | none |
 | `init`, `try_fips_mode`, `fips_mode`, `try_fips_self_test`, `fips_version`, `try_fips_cpu_jitter_entropy`, `fips_cpu_jitter_entropy`, `awslc_version` | none: rind has no C library to initialize and no FIPS module |
 

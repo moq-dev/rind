@@ -115,6 +115,13 @@ impl<C: Curve> SigningKey<C> {
         }
     }
 
+    /// Encode this private key as its fixed-length big-endian scalar, still
+    /// secret, which [`Self::from_private_key_and_public_key`] loads.
+    pub(crate) fn to_scalar<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
+        let _entry = Entry::new_secret();
+        self.private_key.encode(output)
+    }
+
     /// This private key's public key, as an X9.62 uncompressed point.
     pub(crate) fn public_key_uncompressed(&self) -> &[u8] {
         &self.public_key[..self.public_key_len]
