@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! Montgomery multiplication modulo an RSA modulus or prime.
+//! Montgomery multiplication modulo an RSA modulus or prime, by the fastest
+//! routine for its width in words, as measured against each other:
 //!
-//! With BMI2 and ADX, 1024- and 2048-bit moduli run s2n-bignum's Karatsuba
-//! routines and its 8n reduction. Otherwise, moduli of a multiple of four
-//! words from eight run aws-lc's `bn_mul4x_mont`, and of a multiple of eight
-//! its `bn_sqr8x_mont` for squaring, as aws-lc's `bn_mul_mont` picks them
-//! without BMI2 and ADX; `admin/import-aws-lc` drops `bn_sqr8x_mont`'s branch
-//! for those. They measured 1.5 to 1.9 times as fast as s2n-bignum's generic
-//! `bignum_montmul` and `bignum_montsqr`, which run the other sizes.
+//! - With BMI2 and ADX, s2n-bignum's Karatsuba routines and its 8n
+//!   reduction for 16 and 32 words.
+//! - Otherwise, from eight words, aws-lc's `bn_mul4x_mont` for a multiple of
+//!   four, by `mulx`, `adcx`, and `adox` with BMI2 and ADX, and without them
+//!   its `bn_sqr8x_mont` for squaring a multiple of eight.
+//! - Otherwise, aws-lc's `bn_mul_mont_nohw`.
+//!
+//! These are what aws-lc's `bn_mul_mont` picks, but for the Karatsuba
+//! routines, which measured faster than `bn_mulx4x_mont`, and squaring with
+//! BMI2 and ADX: `admin/import-aws-lc` drops `bn_sqr8x_mont`'s branch for
+//! those, whose scratch memcheck cannot follow. The aws-lc routines measured
+//! 1.1 to 2.5 times as fast as s2n-bignum's generic `bignum_montmul` and
+//! `bignum_montsqr`, and `bignum_montmul` runs only below two words, which
+//! `bn_mul_mont_nohw` does not take.
 
 use super::cpu::HaveBmi2Adx;
 
@@ -18,7 +26,8 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
     debug_assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
     match (HaveBmi2Adx::check(), m.len()) {
         (Some(_), 16 | 32) => karatsuba_mul(z, x, y, m, n0),
-        (_, k) if k >= 8 && k.is_multiple_of(4) => mul4x(z, x, y, m, n0),
+        (adx, k) if k >= 8 && k.is_multiple_of(4) => mul4x(z, x, y, m, n0, adx),
+        (_, k) if k >= 2 => nohw(z, x, y, m, n0),
         _ => super::bignum_montmul::bignum_montmul(z, x, y, m),
     }
 }
@@ -29,9 +38,10 @@ pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     debug_assert!(z.len() == m.len() && x.len() == m.len());
     match (HaveBmi2Adx::check(), m.len()) {
         (Some(_), 16 | 32) => karatsuba_sqr(z, x, m, n0),
-        (_, k) if k >= 8 && k.is_multiple_of(8) => sqr8x(z, x, m, n0),
-        (_, k) if k >= 8 && k.is_multiple_of(4) => mul4x(z, x, x, m, n0),
-        _ => super::bignum_montsqr::bignum_montsqr(z, x, m),
+        (None, k) if k >= 8 && k.is_multiple_of(8) => sqr8x(z, x, m, n0),
+        (adx, k) if k >= 8 && k.is_multiple_of(4) => mul4x(z, x, x, m, n0, adx),
+        (_, k) if k >= 2 => nohw(z, x, x, m, n0),
+        _ => super::bignum_montmul::bignum_montmul(z, x, x, m),
     }
 }
 
@@ -69,13 +79,21 @@ fn redc_8n(z: &mut [u64], product: &mut [u64], m: &[u64], n0: u64) {
     super::bignum_optsub::bignum_optsub(z, reduced, m, carry);
 }
 
-/// `mont_mul` for a multiple of four words from eight.
-fn mul4x(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
+/// `mont_mul` for a multiple of four words from eight, by `mulx`, `adcx`,
+/// and `adox` given the proof of BMI2 and ADX.
+fn mul4x(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64, adx: Option<HaveBmi2Adx>) {
     let k = m.len();
     assert!(k >= 8 && k.is_multiple_of(4) && z.len() == k && x.len() == k && y.len() == k);
-    // SAFETY: `z`, `x`, `y`, and `m` are each `k` words, as `bn_mul4x_mont`
-    // reads and writes for such a `k`, and it reads `n0` as one word.
-    unsafe { bn_mul4x_mont(z.as_mut_ptr(), x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, k) };
+    let (z, x, y, m) = (z.as_mut_ptr(), x.as_ptr(), y.as_ptr(), m.as_ptr());
+    // SAFETY: `z`, `x`, `y`, and `m` are each `k` words, as each routine
+    // reads and writes for such a `k`, and each reads `n0` as one word. The
+    // token proves the CPU has the BMI2 and ADX `bn_mulx4x_mont` runs.
+    unsafe {
+        match adx {
+            Some(_) => bn_mulx4x_mont(z, x, y, m, &n0, k),
+            None => bn_mul4x_mont(z, x, y, m, &n0, k),
+        }
+    };
 }
 
 /// `mont_sqr` for a multiple of eight words.
@@ -87,9 +105,19 @@ fn sqr8x(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     unsafe { bn_sqr8x_mont(z.as_mut_ptr(), x.as_ptr(), 0, m.as_ptr(), &n0, k) };
 }
 
+/// `mont_mul` for any width from two words.
+fn nohw(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
+    let k = m.len();
+    assert!(k >= 2 && z.len() == k && x.len() == k && y.len() == k);
+    // SAFETY: `z`, `x`, `y`, and `m` are each `k` words, as
+    // `bn_mul_mont_nohw` reads and writes for such a `k`, and it reads `n0`
+    // as one word.
+    unsafe { bn_mul_mont_nohw(z.as_mut_ptr(), x.as_ptr(), y.as_ptr(), m.as_ptr(), &n0, k) };
+}
+
 // The routines take the System V ABI on every OS, since their text is
 // aws-lc's ELF and Mach-O flavors, which read their arguments from its
-// registers. Both return 1, which tells aws-lc's C they ran.
+// registers. Each returns 1, which tells aws-lc's C it ran.
 
 #[unsafe(naked)]
 unsafe extern "sysv64" fn bn_mul4x_mont(
@@ -153,21 +181,64 @@ unsafe extern "sysv64" fn bn_sqr8x_internal() {
     );
 }
 
+#[unsafe(naked)]
+unsafe extern "sysv64" fn bn_mulx4x_mont(
+    rp: *mut u64,
+    ap: *const u64,
+    bp: *const u64,
+    np: *const u64,
+    n0: *const u64,
+    num: usize,
+) -> i32 {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/bn_mulx4x_mont.linux.s"),
+        options(att_syntax)
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/bn_mulx4x_mont.apple.s"),
+        options(att_syntax)
+    );
+}
+
+#[unsafe(naked)]
+unsafe extern "sysv64" fn bn_mul_mont_nohw(
+    rp: *mut u64,
+    ap: *const u64,
+    bp: *const u64,
+    np: *const u64,
+    n0: *const u64,
+    num: usize,
+) -> i32 {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/bn_mul_mont_nohw.linux.s"),
+        options(att_syntax)
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/bn_mul_mont_nohw.apple.s"),
+        options(att_syntax)
+    );
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::super::adx_mux::tests::Rng;
-    use super::super::{bignum_montmul, bignum_montsqr, bignum_negmodinv};
+    use super::super::{bignum_montmul, bignum_negmodinv};
     use super::*;
 
     // Every other test runs only the routines this CPU picks, so here aws-lc's
-    // are checked against s2n-bignum's generic ones at each size they take,
-    // and so are the Karatsuba routines where the CPU has BMI2 and ADX.
+    // are checked against s2n-bignum's generic `bignum_montmul` at each width
+    // they take, with and without `mulx` where the CPU has BMI2 and ADX, and
+    // so are the Karatsuba routines there.
     #[test]
     fn matches_generic() {
-        let adx = HaveBmi2Adx::check().is_some();
+        let adx = HaveBmi2Adx::check();
         let mut rng = Rng(0x2545_f491_4f6c_dd1d);
-        for k in [8, 12, 16, 24, 32, 48, 64] {
+        for k in [2, 3, 5, 8, 9, 12, 16, 17, 18, 24, 32, 33, 36, 48, 64] {
             for case in 0..16 {
                 let mut m = rng.words::<64>(64 * k as u32);
                 let m = &mut m[..k];
@@ -207,27 +278,44 @@ mod tests {
 
                 let mut want = [0; 64];
                 let want = &mut want[..k];
+                let mut want_sqr = [0; 64];
+                let want_sqr = &mut want_sqr[..k];
+                bignum_montmul::bignum_montmul(want, x, y, m);
+                bignum_montmul::bignum_montmul(want_sqr, x, x, m);
+
                 let mut got = [0; 64];
                 let got = &mut got[..k];
-
-                bignum_montmul::bignum_montmul(want, x, y, m);
-                mul4x(got, x, y, m, n0);
-                assert_eq!(want, got, "mul4x, {k} words, case {case}");
-                if adx && (k == 16 || k == 32) {
-                    karatsuba_mul(got, x, y, m, n0);
-                    assert_eq!(want, got, "karatsuba_mul, {k} words, case {case}");
+                let mut check = |name: &str, f: &dyn Fn(&mut [u64])| {
+                    f(got);
+                    assert_eq!(want, got, "{name}, {k} words, case {case}");
+                };
+                check("nohw", &|z| nohw(z, x, y, m, n0));
+                if k >= 8 && k.is_multiple_of(4) {
+                    check("mul4x", &|z| mul4x(z, x, y, m, n0, None));
+                    if adx.is_some() {
+                        check("mulx4x", &|z| mul4x(z, x, y, m, n0, adx));
+                    }
+                }
+                if let (Some(_), 16 | 32) = (adx, k) {
+                    check("karatsuba_mul", &|z| karatsuba_mul(z, x, y, m, n0));
                 }
 
-                bignum_montsqr::bignum_montsqr(want, x, m);
-                mul4x(got, x, x, m, n0);
-                assert_eq!(want, got, "mul4x squaring, {k} words, case {case}");
-                if k.is_multiple_of(8) {
-                    sqr8x(got, x, m, n0);
-                    assert_eq!(want, got, "sqr8x, {k} words, case {case}");
+                let mut check = |name: &str, f: &dyn Fn(&mut [u64])| {
+                    f(got);
+                    assert_eq!(want_sqr, got, "{name}, {k} words, case {case}");
+                };
+                check("nohw squaring", &|z| nohw(z, x, x, m, n0));
+                if k >= 8 && k.is_multiple_of(4) {
+                    check("mul4x squaring", &|z| mul4x(z, x, x, m, n0, None));
+                    if adx.is_some() {
+                        check("mulx4x squaring", &|z| mul4x(z, x, x, m, n0, adx));
+                    }
                 }
-                if adx && (k == 16 || k == 32) {
-                    karatsuba_sqr(got, x, m, n0);
-                    assert_eq!(want, got, "karatsuba_sqr, {k} words, case {case}");
+                if k >= 8 && k.is_multiple_of(8) {
+                    check("sqr8x", &|z| sqr8x(z, x, m, n0));
+                }
+                if let (Some(_), 16 | 32) = (adx, k) {
+                    check("karatsuba_sqr", &|z| karatsuba_sqr(z, x, m, n0));
                 }
             }
         }

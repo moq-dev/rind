@@ -169,10 +169,55 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
     });
 }
 
+/// Verification at the other sizes, whose moduli take a different Montgomery
+/// multiplication from RSA-2048's on some CPUs.
+fn rsa_pkcs1_sha256_verify_sizes(c: &mut Criterion) {
+    use rind::signature::{RsaKeyPair, sign};
+
+    let keys: [(u32, &[u8]); 2] = [
+        (3072, include_bytes!("../../rind/src/high/rsa/rsa3072.der")),
+        (4096, include_bytes!("../../rind/src/high/rsa/rsa4096.der")),
+    ];
+    let message = b"hello";
+    for (bits, private_key) in keys {
+        let private_key = RsaKeyPair::from_pkcs1(private_key).unwrap();
+        let public_key = private_key.public_key(&sign::RSA_PKCS1_SHA256);
+        let public_key = public_key.as_ref();
+        let signature = private_key.sign(&sign::RSA_PKCS1_SHA256, message).unwrap();
+        let signature = signature.as_ref();
+
+        let mut group = c.benchmark_group(format!("rsa{bits}-pkcs1-sha256-verify"));
+        group.throughput(Throughput::Elements(1));
+
+        group.bench_function("aws-lc-rs", |b| {
+            use aws_lc_rs::signature;
+            let peer_public_key = signature::UnparsedPublicKey::new(
+                &signature::RSA_PKCS1_2048_8192_SHA256,
+                public_key,
+            );
+
+            b.iter(|| {
+                black_box(peer_public_key.verify(message, signature)).unwrap();
+            })
+        });
+
+        group.bench_function("rind", |b| {
+            use rind::signature::{PublicKey, verify};
+
+            b.iter(|| {
+                let peer_public_key =
+                    PublicKey::new(&verify::RSA_PKCS1_SHA256, public_key).unwrap();
+                black_box(peer_public_key.verify(message, signature)).unwrap();
+            })
+        });
+    }
+}
+
 criterion_group!(
     benches,
     rsa2048_pkcs1_sha256_verify,
     rsa1024_pkcs1_sha1_verify,
-    rsa2048_pss_sha256_verify
+    rsa2048_pss_sha256_verify,
+    rsa_pkcs1_sha256_verify_sizes
 );
 criterion_main!(benches);
