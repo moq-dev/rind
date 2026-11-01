@@ -9,4 +9,4 @@ nothing is urgent.
 
 ## Required
 
-- [Constant-time in debug builds too](/quest/m0/debug-ct.md) - debug ctgrind passes, so the nightly jobs stop failing
+- [Constant-time in armv7 debug builds too](/quest/m0/debug-ct.md) - armv7 debug ctgrind passes, finishing the sweep the nightly jobs did not cover

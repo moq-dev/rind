@@ -1,27 +1,21 @@
-# [S] Constant-time in debug builds too
+# [S] Constant-time in armv7 debug builds too
 
 ## Goal
 
-`admin/ctgrind` passes on debug builds as well as release builds on every
-backend, so the nightly debug ctgrind jobs pass and no secret path relies on
-release optimizations to stay constant-time.
+`admin/ctgrind` passes on armv7 debug builds as well as release builds, so no
+armv7 secret path relies on release optimizations to stay constant-time.
 
 ## Plan
 
-Decided by the maintainer on 2026-11-01. The aarch64 debug ctgrind job in run
-41339867326 reported secret-dependent branches in `low::generic::p521`
-(`mont_mul`, `bignum_mod_n521`, `add`; test `scalar_ops`, since #133) and in
-`mid::rsa_priv::exponents` (`divide_by_gcd`, `reduce_e`, `invert_e`,
-`divide_exact_e`; test `key_generation_known_answer`, since #182). It
-reproduces on x86_64 at main `1db7d66` with `admin/ctgrind unit --
-low::generic::p521::tests::scalar_ops high::rsa::tests::key_generation_known_answer`
-in a debug build. Release builds are clean, so the likely cause is debug
-overflow checks branching on secret values.
+#189 made rind's own secret arithmetic wrap and the x86_64 and aarch64 debug
+ctgrind jobs pass. armv7 has no debug job (#111 dropped it for wall time),
+so its debug suites ran from a throwaway branch, `tmp/debug-ct-sweep3`,
+whose `ctgrind.yml` drops `--release` from the armv7 jobs and adds
+`--no-fail-fast`; run 41349429240 is the latest. Its reports so far were
+dependencies' debug checks (curve25519-dalek, subtle, and libcrux-ml-kem),
+turned off in the workspace dev profile as fiat-crypto's were.
 
-- Confirm the cause, then fix it in the code with explicit wrapping and
-  carrying arithmetic rather than by dropping the debug jobs or adding
-  suppressions.
-- Sweep every secret-handling module for the same pattern, not just these
-  two, by running the full debug ctgrind suite on x86_64 and armv7 here and
-  dispatching the aarch64 one.
-- Keep release performance unchanged; check with the affected benches.
+- Read that run, fix what remains the same way for dependencies or by
+  wrapping arithmetic in rind's code, and rerun until all three suites pass.
+- Whether armv7 debug becomes a nightly job is the maintainer's call; it
+  took hours per suite when it last ran.
