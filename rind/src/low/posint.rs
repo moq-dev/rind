@@ -400,39 +400,21 @@ impl<const N: usize> PosInt<N> {
     /// `n0` is `n.mont_neg_inverse()`.
     #[must_use]
     pub(crate) fn mont_sqr(&self, n: &Self, n0: u64) -> Self {
-        match (self.used, n.used) {
-            (16, 16) => return self.mont_sqr_1024(n, n0),
-            (32, 32) => return self.mont_sqr_2048(n, n0),
-            _ => {}
-        }
-
-        let mut tmp = Self::zero();
-        tmp.used = n.used;
-        low::bignum_montsqr(
-            tmp.as_mut_words(),
-            self.as_words_with_len_of(n),
-            n.as_words(),
-        );
-        tmp
+        let mut r = Self::zero();
+        self.mont_sqr_into(&mut r, n, n0);
+        r
     }
 
-    /// Variant of `mont_sqr` that replaces `self` with the result
-    /// instead of creating a new object.
-    pub(crate) fn mont_sqr_in_place(&mut self, n: &Self, n0: u64) {
-        match (self.used, n.used) {
-            (16, 16) => return self.mont_sqr_1024_in_place(n, n0),
-            (32, 32) => return self.mont_sqr_2048_in_place(n, n0),
-            _ => {}
-        }
-
-        let mut tmp = Self::zero();
-        tmp.used = n.used;
-        low::bignum_montsqr(
-            tmp.as_mut_words(),
+    /// Variant of `mont_sqr` that writes the result to `out`, so a loop can
+    /// alternate between two values rather than copy each result.
+    pub(crate) fn mont_sqr_into(&self, out: &mut Self, n: &Self, n0: u64) {
+        out.used = n.used;
+        low::mont_sqr(
+            out.as_mut_words(),
             self.as_words_with_len_of(n),
             n.as_words(),
+            n0,
         );
-        *self = tmp;
     }
 
     /// Return `self` * v in montgomery domain, self * v * M^-1 mod n.
@@ -440,102 +422,22 @@ impl<const N: usize> PosInt<N> {
     /// `n0` is `n.mont_neg_inverse()`.
     #[must_use]
     pub(crate) fn mont_mul(&self, v: &Self, n: &Self, n0: u64) -> Self {
-        match (self.used, v.used, n.used) {
-            (16, 16, 16) => return self.mont_mul_1024(v, n, n0),
-            (32, 32, 32) => return self.mont_mul_2048(v, n, n0),
-            _ => {}
-        }
-        let mut tmp = Self::zero();
-        tmp.used = n.used;
-        low::bignum_montmul(
-            tmp.as_mut_words(),
+        let mut r = Self::zero();
+        self.mont_mul_into(v, &mut r, n, n0);
+        r
+    }
+
+    /// Variant of `mont_mul` that writes the result to `out`, as
+    /// `mont_sqr_into` does.
+    pub(crate) fn mont_mul_into(&self, v: &Self, out: &mut Self, n: &Self, n0: u64) {
+        out.used = n.used;
+        low::mont_mul(
+            out.as_mut_words(),
             self.as_words_with_len_of(n),
             v.as_words_with_len_of(n),
             n.as_words(),
+            n0,
         );
-        tmp
-    }
-
-    /// Specialisation of `mont_mul`, using 1024-bit karatsuba multiplier
-    fn mont_mul_1024(&self, v: &Self, n: &Self, n0: u64) -> Self {
-        let mut tmp = [0u64; 32];
-        let mut res = [0u64; 32];
-        low::bignum_kmul_16_32(&mut res, self.as_words(), v.as_words(), &mut tmp);
-
-        Self::mont_reduce8(&mut res, n, n0)
-    }
-
-    /// Specialisation of `mont_mul`, using 2048-bit karatsuba multiplier
-    fn mont_mul_2048(&self, v: &Self, n: &Self, n0: u64) -> Self {
-        let mut tmp = [0u64; 96];
-        let mut res = [0u64; 64];
-        low::bignum_kmul_32_64(&mut res, self.as_words(), v.as_words(), &mut tmp);
-
-        Self::mont_reduce8(&mut res, n, n0)
-    }
-
-    /// Specialisation of `mont_sqr`, using 1024-bit karatsuba squaring
-    fn mont_sqr_1024(&self, n: &Self, n0: u64) -> Self {
-        let mut tmp = [0u64; 24];
-        let mut res = [0u64; 32];
-        low::bignum_ksqr_16_32(&mut res, self.as_words(), &mut tmp);
-
-        Self::mont_reduce8(&mut res, n, n0)
-    }
-
-    /// Variant of `mont_sqr_1024` that replaces `self` with the result
-    /// instead of creating a new object.
-    fn mont_sqr_1024_in_place(&mut self, n: &Self, n0: u64) {
-        let mut tmp = [0u64; 24];
-        let mut res = [0u64; 32];
-        low::bignum_ksqr_16_32(&mut res, self.as_words(), &mut tmp);
-
-        self.mont_reduce8_in_place(&mut res, n, n0);
-    }
-
-    /// Specialisation of `mont_sqr`, using 2048-bit karatsuba squaring
-    fn mont_sqr_2048(&self, n: &Self, n0: u64) -> Self {
-        let mut tmp = [0u64; 72];
-        let mut res = [0u64; 64];
-        low::bignum_ksqr_32_64(&mut res, self.as_words(), &mut tmp);
-
-        Self::mont_reduce8(&mut res, n, n0)
-    }
-
-    /// Variant of `mont_sqr_2048` that replaces `self` with the result
-    /// instead of creating a new object.
-    fn mont_sqr_2048_in_place(&mut self, n: &Self, n0: u64) {
-        let mut tmp = [0u64; 72];
-        let mut res = [0u64; 64];
-        low::bignum_ksqr_32_64(&mut res, self.as_words(), &mut tmp);
-
-        self.mont_reduce8_in_place(&mut res, n, n0);
-    }
-
-    /// Full montgomery reduction, specialised for multiples of 8 word reductions.
-    ///
-    /// `n0` is `n.mont_neg_inverse()`.
-    fn mont_reduce8(product: &mut [u64], n: &Self, n0: u64) -> Self {
-        let carry = low::bignum_emontredc_8n(product, n.as_words(), n0);
-        let (_, reduced) = product.split_at(product.len() / 2);
-        let carry = carry | low::bignum_cmp_lt(n.as_words(), reduced);
-
-        let mut result = Self::zero();
-        result.used = n.used;
-        low::bignum_optsub(result.as_mut_words(), reduced, n.as_words(), carry);
-
-        result
-    }
-
-    /// Variant of `mont_reduce8` that replaces `self` with the result
-    /// instead of creating a new object.
-    fn mont_reduce8_in_place(&mut self, product: &mut [u64], n: &Self, n0: u64) {
-        let carry = low::bignum_emontredc_8n(product, n.as_words(), n0);
-        let (_, reduced) = product.split_at(product.len() / 2);
-        let carry = carry | low::bignum_cmp_lt(n.as_words(), reduced);
-
-        self.used = n.used;
-        low::bignum_optsub(self.as_mut_words(), reduced, n.as_words(), carry);
     }
 
     #[must_use]
@@ -612,7 +514,9 @@ impl<const N: usize> PosInt<N> {
     /// This is done in a side-channel-free way, with respect to the values of `self`, `e`,
     /// `n` and `n_0`.  The instruction trace depends only on `e.used` and `n.used`.
     pub(crate) fn mont_exp(&self, one_mont: Self, e: &Self, n: &Self, n_0: u64) -> Self {
-        let mut accum = one_mont;
+        // Each product goes to the other of these, then they swap roles.
+        let (mut a, mut b) = (one_mont, Self::zero());
+        let (mut accum, mut spare) = (&mut a, &mut b);
 
         // our window size is 4 bits, so precompute a table of 2**4 multiples of self
         //
@@ -690,7 +594,8 @@ impl<const N: usize> PosInt<N> {
             if first {
                 first = false;
             } else {
-                accum.mont_sqr_in_place(n, n_0);
+                accum.mont_sqr_into(spare, n, n_0);
+                core::mem::swap(&mut accum, &mut spare);
             };
 
             // accumulate exponent bits into the window.
@@ -711,14 +616,15 @@ impl<const N: usize> PosInt<N> {
                 );
 
                 // then multiply that in, mod n.
-                accum = accum.mont_mul(&term, n, n_0);
+                accum.mont_mul_into(&term, spare, n, n_0);
+                core::mem::swap(&mut accum, &mut spare);
                 wcount = 0;
                 window = 0;
             }
         }
 
         low::zeroise(&mut table);
-        accum
+        accum.clone()
     }
 
     /// Computes the multiplicative inverse of `self` mod `n`.

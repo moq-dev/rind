@@ -3,9 +3,8 @@
 //! Picks s2n-bignum's routines that use BMI2 and ADX where the CPU has them,
 //! and otherwise their `_alt` twins, which use only `mul`, `adc`, and `sbb`.
 //!
-//! The Karatsuba multipliers and `bignum_emontredc_8n` have no `_alt` twin,
-//! so CPUs without BMI2 and ADX run s2n-bignum's generic schoolbook routines
-//! in their place.
+//! The Karatsuba multipliers and `bignum_emontredc_8n` have no `_alt` twin;
+//! `super::mont` picks RSA's multiplication instead.
 
 use super::cpu::HaveBmi2Adx;
 
@@ -57,49 +56,9 @@ mux! {
     edwards25519_scalarmuldouble / edwards25519_scalarmuldouble_alt(res: &mut [u64; 8], scalar: &[u64; 4], point: &[u64; 8], bscalar: &[u64; 4]);
 }
 
-#[inline]
-pub(crate) fn bignum_kmul_16_32(z: &mut [u64], x: &[u64], y: &[u64], t: &mut [u64; 32]) {
-    match HaveBmi2Adx::check() {
-        Some(_) => super::bignum_kmul_16_32::bignum_kmul_16_32(z, x, y, t),
-        None => super::bignum_mul::bignum_mul(z, x, y),
-    }
-}
-
-#[inline]
-pub(crate) fn bignum_kmul_32_64(z: &mut [u64], x: &[u64], y: &[u64], t: &mut [u64; 96]) {
-    match HaveBmi2Adx::check() {
-        Some(_) => super::bignum_kmul_32_64::bignum_kmul_32_64(z, x, y, t),
-        None => super::bignum_mul::bignum_mul(z, x, y),
-    }
-}
-
-#[inline]
-pub(crate) fn bignum_ksqr_16_32(z: &mut [u64], x: &[u64], t: &mut [u64; 24]) {
-    match HaveBmi2Adx::check() {
-        Some(_) => super::bignum_ksqr_16_32::bignum_ksqr_16_32(z, x, t),
-        None => super::bignum_sqr::bignum_sqr(z, x),
-    }
-}
-
-#[inline]
-pub(crate) fn bignum_ksqr_32_64(z: &mut [u64], x: &[u64], t: &mut [u64; 72]) {
-    match HaveBmi2Adx::check() {
-        Some(_) => super::bignum_ksqr_32_64::bignum_ksqr_32_64(z, x, t),
-        None => super::bignum_sqr::bignum_sqr(z, x),
-    }
-}
-
-#[inline]
-pub(crate) fn bignum_emontredc_8n(z: &mut [u64], m: &[u64], w: u64) -> u64 {
-    match HaveBmi2Adx::check() {
-        Some(_) => super::bignum_emontredc_8n::bignum_emontredc_8n(z, m, w),
-        None => super::bignum_emontredc::bignum_emontredc(z, m, w),
-    }
-}
-
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
+pub(super) mod tests {
     use super::super::*;
 
     // Every other test runs only the form this CPU picks, so on a CPU with
@@ -327,49 +286,6 @@ mod tests {
         assert_eq!(want, got);
     }
 
-    // The Karatsuba routines and the 8n reduction against the schoolbook
-    // routines that replace them, at both sizes RSA uses.
-    #[test]
-    fn schoolbook_matches_karatsuba() {
-        if super::HaveBmi2Adx::check().is_none() {
-            return;
-        }
-
-        let mut rng = Rng(0x2545_f491_4f6c_dd1d);
-        for _ in 0..16 {
-            let (x, y) = (rng.words::<32>(2048), rng.words::<32>(2048));
-            let (mut want, mut got) = ([0; 64], [0; 64]);
-            bignum_kmul_32_64::bignum_kmul_32_64(&mut want, &x, &y, &mut [0; 96]);
-            bignum_mul::bignum_mul(&mut got, &x, &y);
-            assert_eq!(want, got);
-            bignum_kmul_16_32::bignum_kmul_16_32(&mut want[..32], &x[..16], &y[..16], &mut [0; 32]);
-            bignum_mul::bignum_mul(&mut got[..32], &x[..16], &y[..16]);
-            assert_eq!(want, got);
-
-            bignum_ksqr_32_64::bignum_ksqr_32_64(&mut want, &x, &mut [0; 72]);
-            bignum_sqr::bignum_sqr(&mut got, &x);
-            assert_eq!(want, got);
-            bignum_ksqr_16_32::bignum_ksqr_16_32(&mut want[..32], &x[..16], &mut [0; 24]);
-            bignum_sqr::bignum_sqr(&mut got[..32], &x[..16]);
-            assert_eq!(want, got);
-
-            let mut m = rng.words::<32>(2048);
-            m[0] |= 1;
-            let mut w = [0];
-            bignum_negmodinv::bignum_negmodinv(&mut w, &m[..1]);
-            let w = w[0];
-            let z = rng.words::<64>(4096);
-            for k in [16, 32] {
-                let (mut want, mut got) = (z, z);
-                assert_eq!(
-                    bignum_emontredc_8n::bignum_emontredc_8n(&mut want[..2 * k], &m[..k], w),
-                    bignum_emontredc::bignum_emontredc(&mut got[..2 * k], &m[..k], w)
-                );
-                assert_eq!(want, got);
-            }
-        }
-    }
-
     fn same1<const N: usize, const M: usize>(
         rng: &mut Rng,
         bits: u32,
@@ -397,10 +313,10 @@ mod tests {
     }
 
     /// splitmix64, so failures reproduce.
-    struct Rng(u64);
+    pub(in super::super) struct Rng(pub(in super::super) u64);
 
     impl Rng {
-        fn next(&mut self) -> u64 {
+        pub(in super::super) fn next(&mut self) -> u64 {
             self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
             let mut z = self.0;
             z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -409,7 +325,7 @@ mod tests {
         }
 
         /// `N` words holding a value below 2^`bits`.
-        fn words<const N: usize>(&mut self, bits: u32) -> [u64; N] {
+        pub(in super::super) fn words<const N: usize>(&mut self, bits: u32) -> [u64; N] {
             core::array::from_fn(|i| {
                 let low = 64 * i as u32;
                 match bits.saturating_sub(low) {

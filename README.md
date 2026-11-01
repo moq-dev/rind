@@ -56,8 +56,8 @@ but there is also a public API for general-purpose use.
 - `x86_64` requires `aes`, `ssse3`, `popcnt`, `avx`, `avx2`, `bmi2`, and `pclmulqdq` CPU features.
   (This is most x86_64 CPUs made since around 2013.) Without `adx`, as on
   Haswell and AMD's cores before Zen, [s2n-bignum]'s `_alt` routines replace
-  those that use it, and its schoolbook multiplication and reduction replace
-  its Karatsuba ones for RSA.
+  those that use it, and [aws-lc]'s Montgomery multiplication replaces its
+  Karatsuba routines for RSA.
 - 32-bit `arm` (tested on `armv7-unknown-linux-gnueabihf`, and built for
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [Algorithms](#algorithms)), and needs no CPU features. Where
@@ -127,7 +127,7 @@ or a [quest][quests] covers it. The table describes
 | P-384 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [fiat-crypto] field and scalar arithmetic ✓; scalar multiplication over it ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator, and Graviola other scalar multiplication; Graviola ECDSA |
 | P-521 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡, and verification's other scalar multiplication ⚡; Graviola ECDSA | [fiat-crypto] field arithmetic ✓; rind arithmetic mod the group order ⚡; scalar multiplication over them ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator; Graviola ECDSA |
 | ML-KEM-768 | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 and AVX-512 sampling ⚡ | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 ⚡ | [libcrux-ml-kem] ✓, except its SHA-3 |
-| RSA PKCS#1 v1.5 and PSS signatures, key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
+| RSA PKCS#1 v1.5 and PSS signatures, key generation | Montgomery multiplication: [s2n-bignum] Karatsuba for 1024- and 2048-bit moduli with ADX ✓, otherwise [aws-lc] (copied) ⚡ for moduli of a multiple of four words, otherwise [s2n-bignum] ✓; other [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
 
 The tests use [Wycheproof]'s vectors.
 
@@ -141,7 +141,7 @@ The tests use [Wycheproof]'s vectors.
 | [HACL\*] | dependency, through libcrux-hacl-rs, libcrux-p256, and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
 | [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
 | [libcrux-aes] | dependency for AES-GCM; copied: the block cipher | Apache-2.0 | nothing: libcrux marks it pre-verification |
-| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`, and the C that drives that Poly1305, ported to Rust. aws-lc takes its Poly1305 from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305 ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification) that its x86_64 AVX and aarch64 (with and without the SHA-512 instructions) SHA-384/512 routines compute their specified result for all inputs. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. |
+| [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-384/512, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`, and the C that drives that Poly1305, ported to Rust. aws-lc takes its Poly1305 from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305 ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification) that its x86_64 AVX and aarch64 (with and without the SHA-512 instructions) SHA-384/512 routines compute their specified result for all inputs. They check aws-lc's own build, not rind's copy, and do not cover its 32-bit ARM code. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [curve25519-dalek] | dependency, with its serial 32-bit backend | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
@@ -182,9 +182,13 @@ different one, updates this table and [LICENSE] in the same PR.
 ## Assorted technical details
 
 ### RSA
-On x86_64 and aarch64, all the arithmetic is provided by s2n-bignum, under the
-exponentiation described below; armv7 uses HACL\*'s arithmetic and
-exponentiation instead.
+On x86_64 and aarch64, the arithmetic is provided by s2n-bignum, under the
+exponentiation described below, except that x86_64 runs aws-lc's Montgomery
+multiplication (`bn_mul4x_mont` and `bn_sqr8x_mont`, as aws-lc's `bn_mul_mont`
+picks without ADX) for moduli whose width in 64-bit words is a multiple of
+four, other than 1024- and 2048-bit moduli on CPUs with ADX, where
+s2n-bignum's Karatsuba routines are faster; armv7 uses HACL\*'s arithmetic
+and exponentiation instead.
 
 The RSA private operation always uses the CRT optimisation.
 

@@ -23,9 +23,11 @@ Mach-O. The tables move to Rust statics, written as array literals beside the
 routines, which the routines reach through `sym` operands; a label inside a
 table becomes the table's operand plus the label's offset. Helpers, the local
 routines the others `bl` to, become naked functions of their own, reached the
-same way. An `inner` helper, an entry point inside a routine that falls
-through to it, gets its own copy from its label on, and the routine drops the
-label line.
+same way, as are the routines of another import that a routine `calls`. An
+`inner` label, an entry point inside a routine that falls through to it,
+does not end the routine, which drops the label line; one naming a helper
+gives that helper its own copy from the label on. An import's `cpp` defines
+drop branches rind never takes.
 """
 
 import os
@@ -165,6 +167,28 @@ IMPORTS_64 = [
         "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["K256"],
         "routines": ["sha256_block_data_order_avx"],
+    },
+    # bn_sqr8x_mont without its mulx branch, which needs BMI2 and ADX.
+    {
+        "arch": "x86_64",
+        "source": "x86_64-mont.S",
+        "tag": "mont",
+        "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont.pl",
+        "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "cpp": ["-DMY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2"],
+        "tables": [],
+        "routines": ["bn_mul4x_mont", "bn_sqr8x_mont"],
+        "calls": ["bn_sqr8x_internal"],
+    },
+    {
+        "arch": "x86_64",
+        "source": "x86_64-mont5.S",
+        "tag": "mont5",
+        "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont5.pl",
+        "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": [],
+        "routines": ["bn_sqr8x_internal"],
+        "inner": ["__bn_sqr8x_internal", "__bn_sqr8x_reduction"],
     },
     {
         "arch": "aarch64",
@@ -387,7 +411,7 @@ def import_64(aws_lc):
         stem = spec["source"].removesuffix(".S")
         for flavor, (directory, defines, prefix, local) in arch["flavors"].items():
             source = os.path.join("generated-src", directory, "crypto", "fipsmodule", spec["source"])
-            lines = preprocess(os.path.join(aws_lc, source), arch["cpp"] + defines)
+            lines = preprocess(os.path.join(aws_lc, source), arch["cpp"] + defines + spec.get("cpp", []))
 
             # A flavor names a table with or without its local prefix, and a
             # label inside it by the table's operand plus its offset.
@@ -406,6 +430,8 @@ def import_64(aws_lc):
 
             helpers = spec.get("helpers", [])
             operands |= {name: (name.lstrip("_"), 0) for name in helpers}
+            # Routines of another import that these call.
+            operands |= {prefix + name: (name, 0) for name in spec.get("calls", [])}
             entries = [(f"{prefix}{name}:", name) for name in spec["routines"]]
             entries += [(f"{name}:", name.lstrip("_")) for name in helpers]
             inner = spec.get("inner", [])

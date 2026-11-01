@@ -48,7 +48,8 @@ jobs:
       - name: Build (release)
         run: cargo build --release --tests
 
-      # Haswell lacks ADX, so s2n-bignum's `_alt` routines run.
+      # Haswell lacks ADX, so s2n-bignum's `_alt` routines and aws-lc's
+      # Montgomery multiplication run.
       - name: Check Haswell
         run: cargo test --release
         env:

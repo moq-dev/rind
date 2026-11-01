@@ -21,12 +21,13 @@ portable path.
   SHA-256 rounds and ML-KEM's rejection sampling, so it goes with `avx2`.
   Keep the current kernels as the fast path, and add a path for each missing
   group:
-  - RSA without `adx`: s2n-bignum has no `_alt` Karatsuba or 8n
-    reduction, and its generic schoolbook routines sign RSA-2048 2.3x slower
-    than aws-lc-rs on the same path (its generic `bignum_montmul` is slower
-    still). aws-lc's `bn_mul4x_mont` and `bn_sqr8x_mont` are what aws-lc-rs
-    runs there; they compute a whole Montgomery product, so `posint`'s
-    multiply-then-reduce split likely moves into `low`;
+  - RSA-2048 signing with `avx2` but without `adx`, as on Haswell: aws-lc
+    signs with `RSAZ_1024_mod_exp_avx2` (`rsaz-avx2.pl`), 1.6x faster than
+    rind's exponentiation over aws-lc's `bn_mul4x_mont` and `bn_sqr8x_mont`,
+    which already match aws-lc without AVX2 and for verification. RSAZ is its
+    own 5-bit-window exponentiation and constant-time gather over a redundant
+    representation, so adopting it replaces rind's exponentiation for
+    1024-bit primes on that path: a maintainer decision;
   - AES and GHASH without `aes`/`pclmulqdq`: aws-lc's `vpaes-x86_64` and
     `ghash-ssse3` through `admin/import-aws-lc`;
   - code that needs `avx`/`avx2` (ChaCha20, SHA, ML-KEM, intrinsic code):
