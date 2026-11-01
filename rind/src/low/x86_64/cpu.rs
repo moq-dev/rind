@@ -390,9 +390,11 @@ fn test_toggle(_id: &str, detected: bool) -> bool {
 /// with it also tests the code for one without. `--cfg rind_cpu_disable`
 /// does the same for a release build, so benches and ctgrind time and check
 /// the code that ships; only `RUSTFLAGS` sets it, never a dependent crate.
+/// The variable drops the dot from `sse4.1`, since shells drop variables
+/// whose names have one.
 #[cfg(any(debug_assertions, rind_cpu_disable))]
 fn test_toggle(id: &str, detected: bool) -> bool {
-    if std::env::var(format!("RIND_CPU_DISABLE_{id}")).is_ok() {
+    if std::env::var(format!("RIND_CPU_DISABLE_{}", id.replace('.', ""))).is_ok() {
         println!("DEBUG: denying cpuid {id:?}");
         false
     } else {

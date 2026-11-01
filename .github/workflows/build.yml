@@ -91,7 +91,7 @@ jobs:
           # PCLMULQDQ, such as Core 2 and Nehalem, where rind-rustls and
           # rind-dimpl prefer ChaCha20-Poly1305, and without SSE4.1 too, as
           # the first Core 2s lack it, ChaCha20 and Poly1305 in separate passes
-          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse4.1=1 RIND_TEST_X86_AES_HARDWARE=0 RIND_TEST_X86_SSE41=0 cargo test
+          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 RIND_TEST_X86_AES_HARDWARE=0 RIND_TEST_X86_SSE41=0 cargo test
           # test aws-lc's integer ChaCha20, SHA-1, and SHA-256, and its SSE2
           # AES and integer GHASH, for CPUs without SSSE3, such as QEMU's
           # default `qemu64` model; every faster path needs SSSE3 too

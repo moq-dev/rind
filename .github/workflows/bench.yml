@@ -147,8 +147,6 @@ jobs:
       # Only rind and aws-lc-rs, the library it is measured against.
       - name: Run benchmarks
         run: |
-          # Denials whose names `export` refuses.
-          deny=()
           if [ "${{ matrix.portable }}" = true ]; then
             export RUSTFLAGS='--cfg rind_cpu_disable'
             case "${{ matrix.target }}/${{ matrix.cpu }}" in
@@ -180,8 +178,7 @@ jobs:
                     export OPENSSL_ia32cap='~0x1000000000000000:~0x5e42f02b0128'
                     ;;
                   no-aes)
-                    export RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1
-                    deny=(RIND_CPU_DISABLE_sse4.1=1)
+                    export RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_sse41=1
                     export OPENSSL_ia32cap='~0x1208000200000000:~0x5e42f02b0128'
                     ;;
                   no-ssse3)
@@ -192,7 +189,7 @@ jobs:
                 ;;
             esac
           fi
-          env "${deny[@]}" cargo bench -p rind-bench ${{ matrix.benches }} --target ${{ matrix.target }} -- --noplot '(^|/)(rind|aws-lc-rs)(/|$)'
+          cargo bench -p rind-bench ${{ matrix.benches }} --target ${{ matrix.target }} -- --noplot '(^|/)(rind|aws-lc-rs)(/|$)'
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
