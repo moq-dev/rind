@@ -784,6 +784,7 @@ pub(crate) fn mlkem_basemul_k3(
         Q!("    vmovdqa         " "[448 + rdi], ymm7"),
         Q!("    vmovdqa         " "[480 + rdi], ymm9"),
 
+        Q!("    vzeroupper      " ),
         inout("rdi") r.as_mut_ptr() => _,
         inout("rsi") a.as_ptr() => _,
         inout("rdx") b.as_ptr() => _,
@@ -797,6 +798,7 @@ pub(crate) fn mlkem_basemul_k3(
         out("zmm12") _,
         out("zmm13") _,
         out("zmm14") _,
+        out("zmm15") _,
         out("zmm2") _,
         out("zmm3") _,
         out("zmm4") _,
