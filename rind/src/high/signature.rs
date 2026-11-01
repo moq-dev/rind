@@ -481,7 +481,8 @@ impl EcdsaKeyPair {
     }
 
     /// Loads a fixed-length big-endian private scalar, refused unless
-    /// `public_key`, an X9.62 uncompressed point, is its public key.
+    /// `public_key`, an X9.62 uncompressed or compressed point, is its public
+    /// key.
     ///
     /// This suits a JWK's `d` and `x`/`y`; prefer [`Self::from_pkcs8`] for
     /// stored keys.

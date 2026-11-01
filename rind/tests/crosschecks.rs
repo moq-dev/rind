@@ -540,7 +540,7 @@ mod aead {
 /// ECDSA and ECDH on one curve: aws-lc-rs and rind accept each other's keys,
 /// signatures, and public keys.
 macro_rules! ec_crosschecks {
-    ($curve:ident, $ecdh:ident, $fixed_signing:ident, $fixed:ident, $asn1_signing:ident, $asn1:ident) => {
+    ($curve:ident, $oid:literal, $ecdh:ident, $fixed_signing:ident, $fixed:ident, $asn1_signing:ident, $asn1:ident) => {
         mod $curve {
             use aws_lc_rs::agreement::{self, $ecdh, EphemeralPrivateKey};
             use aws_lc_rs::encoding::{AsBigEndian, AsDer};
@@ -638,13 +638,84 @@ macro_rules! ec_crosschecks {
                     .unwrap();
                     prop_assert_eq!(ours_secret.as_ref(), &theirs_secret[..]);
                 }
+
+                /// A key pair's public key loads compressed, as aws-lc-rs
+                /// takes it, but only with its own `y` parity. A hybrid point
+                /// is refused, though aws-lc-rs takes it.
+                #[test]
+                fn public_key_forms(_case in any::<u8>()) {
+                    let key = EcdsaKeyPair::generate(&$asn1_signing).unwrap();
+                    let scalar = key.private_key().as_be_bytes().unwrap();
+                    let scalar = scalar.as_ref();
+                    let public = key.public_key();
+                    let point = public.as_ref();
+                    let (x, y) = point[1..].split_at(point.len() / 2);
+                    let parity = y[y.len() - 1] & 1;
+
+                    for (encoded, ours_takes, theirs_takes) in [
+                        ([&[0x02 | parity][..], x].concat(), true, true),
+                        ([&[0x03 ^ parity][..], x].concat(), false, false),
+                        ([&[0x06 | parity][..], x, y].concat(), false, true),
+                    ] {
+                        let sec1 = crate::der(0x30, &[
+                            &[0x02, 0x01, 0x01][..],
+                            &crate::der(0x04, scalar),
+                            &crate::der(0xa0, &crate::der(0x06, &hex::decode($oid).unwrap())),
+                            &crate::der(0xa1, &crate::der(0x03, &[&[0][..], &encoded].concat())),
+                        ].concat());
+                        let pkcs8 = crate::der(0x30, &[
+                            &[0x02, 0x01, 0x00][..],
+                            &crate::der(0x30, &[
+                                &crate::der(0x06, &hex::decode("2a8648ce3d0201").unwrap())[..],
+                                &crate::der(0x06, &hex::decode($oid).unwrap()),
+                            ].concat()),
+                            &crate::der(0x04, &sec1),
+                        ].concat());
+
+                        let ours = [
+                            signature::EcdsaKeyPair::from_private_key_and_public_key(
+                                &sign::$asn1, scalar, &encoded,
+                            ),
+                            signature::EcdsaKeyPair::from_sec1(&sign::$asn1, &sec1),
+                            signature::EcdsaKeyPair::from_pkcs8(&sign::$asn1, &pkcs8),
+                        ];
+                        for ours in ours {
+                            prop_assert_eq!(ours.is_ok(), ours_takes, "{:02x?}", encoded);
+                            if let Ok(ours) = ours {
+                                let ours = ours.public_key();
+                                prop_assert_eq!(ours.as_ref(), point);
+                            }
+                        }
+                        let theirs = [
+                            EcdsaKeyPair::from_private_key_and_public_key(
+                                &$asn1_signing, scalar, &encoded,
+                            ),
+                            EcdsaKeyPair::from_private_key_der(&$asn1_signing, &sec1),
+                            EcdsaKeyPair::from_pkcs8(&$asn1_signing, &pkcs8),
+                        ];
+                        for theirs in theirs {
+                            prop_assert_eq!(theirs.is_ok(), theirs_takes, "{:02x?}", encoded);
+                        }
+                    }
+                }
             }
         }
     };
 }
 
+/// A DER element of `tag` holding `body`.
+fn der(tag: u8, body: &[u8]) -> Vec<u8> {
+    let len = match body.len() {
+        len @ 0..=0x7f => vec![len as u8],
+        len @ 0x80..=0xff => vec![0x81, len as u8],
+        len => [&[0x82][..], &u16::try_from(len).unwrap().to_be_bytes()].concat(),
+    };
+    [&[tag][..], &len, body].concat()
+}
+
 ec_crosschecks!(
     p256,
+    "2a8648ce3d030107",
     ECDH_P256,
     ECDSA_P256_SHA256_FIXED_SIGNING,
     ECDSA_P256_SHA256_FIXED,
@@ -654,6 +725,7 @@ ec_crosschecks!(
 
 ec_crosschecks!(
     p384,
+    "2b81040022",
     ECDH_P384,
     ECDSA_P384_SHA384_FIXED_SIGNING,
     ECDSA_P384_SHA384_FIXED,
@@ -663,6 +735,7 @@ ec_crosschecks!(
 
 ec_crosschecks!(
     p521,
+    "2b81040023",
     ECDH_P521,
     ECDSA_P521_SHA512_FIXED_SIGNING,
     ECDSA_P521_SHA512_FIXED,

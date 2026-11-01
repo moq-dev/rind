@@ -33,11 +33,13 @@ fuzz_target!(|data: &[u8]| {
             input,
             ours::RsaKeyPair::from_pkcs8,
             their_rsa::KeyPair::from_pkcs8,
+            v2_without_public_key(input),
         ),
         13 => rsa_private(
             input,
             ours::RsaKeyPair::from_pkcs1,
             their_rsa::KeyPair::from_der,
+            false,
         ),
         14 => rsa_public(&RSA_1024, input),
         15 => rsa_public(&RSA_2048, input),
@@ -53,12 +55,13 @@ fuzz_target!(|data: &[u8]| {
     }
 });
 
-/// One curve's algorithms on each side.
+/// One curve's algorithms on each side, and its scalar's length.
 struct Curve {
     ours: &'static ours::EcdsaSigningAlgorithm,
     ours_verify: &'static ours::VerificationAlgorithm,
     theirs: &'static theirs::EcdsaSigningAlgorithm,
     theirs_verify: &'static theirs::EcdsaVerificationAlgorithm,
+    scalar_len: usize,
 }
 
 const P256: Curve = Curve {
@@ -66,6 +69,7 @@ const P256: Curve = Curve {
     ours_verify: &verify::ECDSA_P256_SHA256_ASN1,
     theirs: &theirs::ECDSA_P256_SHA256_ASN1_SIGNING,
     theirs_verify: &theirs::ECDSA_P256_SHA256_ASN1,
+    scalar_len: 32,
 };
 
 const P384: Curve = Curve {
@@ -73,6 +77,7 @@ const P384: Curve = Curve {
     ours_verify: &verify::ECDSA_P384_SHA384_ASN1,
     theirs: &theirs::ECDSA_P384_SHA384_ASN1_SIGNING,
     theirs_verify: &theirs::ECDSA_P384_SHA384_ASN1,
+    scalar_len: 48,
 };
 
 const P521: Curve = Curve {
@@ -80,6 +85,7 @@ const P521: Curve = Curve {
     ours_verify: &verify::ECDSA_P521_SHA512_ASN1,
     theirs: &theirs::ECDSA_P521_SHA512_ASN1_SIGNING,
     theirs_verify: &theirs::ECDSA_P521_SHA512_ASN1,
+    scalar_len: 66,
 };
 
 /// An RSA verification algorithm on each side, and its smallest modulus.
@@ -118,31 +124,14 @@ enum Expect {
     Stricter,
 }
 
-/// [`Expect::Stricter`] if bytes follow the DER element starting `input`.
-///
-/// aws-lc-rs ignores them, and rind refuses them as malformed, though some of
-/// its loaders still ignore them.
-fn der(input: &[u8]) -> Expect {
-    let Some(&first) = input.get(1) else {
-        return Expect::Agree;
-    };
-    let (header, len) = match first {
-        len @ 0..=0x7f => (2, usize::from(len)),
-        0x81..=0x84 => {
-            let n = usize::from(first & 0x7f);
-            let Some(bytes) = input.get(2..2 + n) else {
-                return Expect::Agree;
-            };
-            (
-                2 + n,
-                bytes.iter().fold(0, |len, &b| len << 8 | usize::from(b)),
-            )
+impl From<bool> for Expect {
+    /// [`Expect::Refused`] if a difference by design applies, else
+    /// [`Expect::Agree`].
+    fn from(refused: bool) -> Self {
+        match refused {
+            true => Self::Refused,
+            false => Self::Agree,
         }
-        _ => return Expect::Agree,
-    };
-    match header + len < input.len() {
-        true => Expect::Stricter,
-        false => Expect::Agree,
     }
 }
 
@@ -166,16 +155,80 @@ fn agree<A, B, E: std::fmt::Debug>(
     }
 }
 
+/// The DER element starting `input`: its tag, its contents, and the bytes
+/// after it.
+fn element(input: &[u8]) -> Option<(u8, &[u8], &[u8])> {
+    let (&tag, rest) = input.split_first()?;
+    let (&first, rest) = rest.split_first()?;
+    let (len, rest) = match first {
+        0..=0x7f => (usize::from(first), rest),
+        0x81..=0x84 => {
+            let (len, rest) = rest.split_at_checked(usize::from(first & 0x7f))?;
+            let len = len.iter().fold(0, |len, &b| len << 8 | usize::from(b));
+            (len, rest)
+        }
+        _ => return None,
+    };
+    let (contents, rest) = rest.split_at_checked(len)?;
+    Some((tag, contents, rest))
+}
+
+/// The tags and contents of the DER elements in `contents`, up to the first
+/// that does not parse.
+fn elements(mut contents: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {
+    std::iter::from_fn(move || {
+        let (tag, inner, rest) = element(contents)?;
+        contents = rest;
+        Some((tag, inner))
+    })
+}
+
+/// The contents of the sequence starting `input`.
+fn sequence(input: &[u8]) -> Option<&[u8]> {
+    element(input).and_then(|(tag, contents, _)| (tag == 0x30).then_some(contents))
+}
+
+/// Whether bytes follow the DER element starting `input`, which aws-lc-rs
+/// ignores and rind refuses as malformed.
+fn trailing(input: &[u8]) -> bool {
+    element(input).is_some_and(|(_, _, rest)| !rest.is_empty())
+}
+
 /// Whether `input` is shaped like a `SubjectPublicKeyInfo`: a sequence whose
 /// first element is a sequence, the algorithm identifier. aws-lc-rs takes one
 /// wherever it takes a public key, and rind only the raw key.
 fn spki(input: &[u8]) -> bool {
-    let header = match input.get(1) {
-        Some(0..=0x7f) => 2,
-        Some(&len @ 0x81..=0x84) => 2 + usize::from(len & 0x7f),
-        _ => return false,
+    sequence(input).is_some_and(|contents| contents.first() == Some(&0x30))
+}
+
+/// Whether `input` is a PKCS#8 version 2 document without a public key, which
+/// aws-lc-rs takes. RFC 5958 sets version 2 only when the public key is
+/// present.
+fn v2_without_public_key(input: &[u8]) -> bool {
+    let Some(contents) = sequence(input) else {
+        return false;
     };
-    input.first() == Some(&0x30) && input.get(header) == Some(&0x30)
+    let mut fields = elements(contents);
+    fields.next() == Some((0x02, &[1][..])) && fields.all(|(tag, _)| tag != 0x81)
+}
+
+/// The `privateKey` of the PKCS#8 document `input`.
+fn pkcs8_private_key(input: &[u8]) -> Option<&[u8]> {
+    let (tag, private_key) = elements(sequence(input)?).nth(2)?;
+    (tag == 0x04).then_some(private_key)
+}
+
+/// The public key of the SEC1 `ECPrivateKey` `input`.
+fn sec1_public_key(input: &[u8]) -> Option<&[u8]> {
+    let (_, field) = elements(sequence(input)?).find(|(tag, _)| *tag == 0xa1)?;
+    let (tag, bits, _) = element(field)?;
+    (tag == 0x03).then_some(bits)?.strip_prefix(&[0])
+}
+
+/// Whether `point` is in X9.62's hybrid form, which aws-lc-rs takes and rind
+/// refuses everywhere: no consumer sends it.
+fn hybrid(point: &[u8]) -> bool {
+    matches!(point.first(), Some(6 | 7))
 }
 
 /// Splits `input` after a leading big-endian 16-bit length, for loaders
@@ -188,7 +241,9 @@ fn split(input: &[u8]) -> Option<(&[u8], &[u8])> {
 fn ecdsa_pkcs8(curve: &Curve, input: &[u8]) {
     let ours = ours::EcdsaKeyPair::from_pkcs8(curve.ours, input);
     let theirs = theirs::EcdsaKeyPair::from_pkcs8(curve.theirs, input);
-    agree_ecdsa(curve, ours, theirs, der(input));
+    let point = pkcs8_private_key(input).and_then(sec1_public_key);
+    let refused = trailing(input) || v2_without_public_key(input) || point.is_some_and(hybrid);
+    agree_ecdsa(curve, ours, theirs, refused.into());
 }
 
 fn ecdsa_sec1(curve: &Curve, input: &[u8]) {
@@ -197,11 +252,8 @@ fn ecdsa_sec1(curve: &Curve, input: &[u8]) {
     // aws-lc-rs's loader also takes PKCS#8; rind's caller always knows which
     // of the two it holds.
     let pkcs8 = theirs::EcdsaKeyPair::from_pkcs8(curve.theirs, input).is_ok();
-    let expect = match pkcs8 {
-        true => Expect::Refused,
-        false => der(input),
-    };
-    agree_ecdsa(curve, ours, theirs, expect);
+    let refused = pkcs8 || trailing(input) || sec1_public_key(input).is_some_and(hybrid);
+    agree_ecdsa(curve, ours, theirs, refused.into());
 }
 
 fn ecdsa_scalar(curve: &Curve, input: &[u8]) {
@@ -210,7 +262,10 @@ fn ecdsa_scalar(curve: &Curve, input: &[u8]) {
     };
     let ours = ours::EcdsaKeyPair::from_private_key_and_public_key(curve.ours, scalar, point);
     let theirs = theirs::EcdsaKeyPair::from_private_key_and_public_key(curve.theirs, scalar, point);
-    agree_ecdsa(curve, ours, theirs, Expect::Agree);
+    // aws-lc-rs takes leading zeros added or stripped, though its docs
+    // require the curve's length.
+    let refused = scalar.len() != curve.scalar_len || hybrid(point);
+    agree_ecdsa(curve, ours, theirs, refused.into());
 }
 
 fn agree_ecdsa(
@@ -242,24 +297,27 @@ fn agree_ecdsa(
         theirs.public_key().as_der().unwrap().as_ref()
     );
 
+    // The scalar loads with the point uncompressed or compressed.
     let scalar = ours.to_scalar();
-    ours::EcdsaKeyPair::from_private_key_and_public_key(curve.ours, scalar.as_ref(), point)
-        .unwrap();
-    theirs::EcdsaKeyPair::from_private_key_and_public_key(curve.theirs, scalar.as_ref(), point)
-        .unwrap();
+    let (x, y) = point[1..].split_at(point.len() / 2);
+    let compressed = [&[0x02 | (y[y.len() - 1] & 1)][..], x].concat();
+    for point in [point, &compressed] {
+        ours::EcdsaKeyPair::from_private_key_and_public_key(curve.ours, scalar.as_ref(), point)
+            .unwrap();
+        theirs::EcdsaKeyPair::from_private_key_and_public_key(curve.theirs, scalar.as_ref(), point)
+            .unwrap();
+    }
     ecdsa_public(curve, point);
 }
 
 fn ecdsa_public(curve: &Curve, input: &[u8]) {
     let ours = ours::PublicKey::new(curve.ours_verify, input);
     let theirs = theirs::ParsedPublicKey::new(curve.theirs_verify, input);
-    // rind takes only the uncompressed point: no consumer sends another form.
+    // rind takes only the uncompressed point here: no consumer sends another
+    // form, and a compressed one would cost a square root.
     let compressed = matches!(input.first(), Some(2 | 3));
-    let expect = match compressed || spki(input) {
-        true => Expect::Refused,
-        false => Expect::Agree,
-    };
-    agree(&ours, &theirs, expect);
+    let refused = compressed || hybrid(input) || spki(input);
+    agree(&ours, &theirs, refused.into());
     let Ok(ours) = ours else {
         return;
     };
@@ -272,9 +330,10 @@ fn rsa_private(
     input: &[u8],
     ours: fn(&[u8]) -> Result<ours::RsaKeyPair, rind::Error>,
     theirs: fn(&[u8]) -> Result<their_rsa::KeyPair, aws_lc_rs::error::KeyRejected>,
+    refused: bool,
 ) {
     let (ours, theirs) = (ours(input), theirs(input));
-    agree(&ours, &theirs, der(input));
+    agree(&ours, &theirs, (refused || trailing(input)).into());
     let Ok(ours) = ours else {
         return;
     };
@@ -316,11 +375,7 @@ fn their_rsa_public(rsa: &Rsa, der: &[u8]) -> Result<their_rsa::PublicKey, &'sta
 fn rsa_public(rsa: &Rsa, input: &[u8]) {
     let ours = ours::PublicKey::new(rsa.ours, input);
     let theirs = their_rsa_public(rsa, input);
-    let expect = match spki(input) {
-        true => Expect::Refused,
-        false => der(input),
-    };
-    agree(&ours, &theirs, expect);
+    agree(&ours, &theirs, (spki(input) || trailing(input)).into());
     let Ok(ours) = ours else {
         return;
     };
@@ -392,7 +447,8 @@ fn rsa_public_key_der(n: &[u8], e: &[u8]) -> Vec<u8> {
 fn ed25519_pkcs8(input: &[u8]) {
     let ours = ours::Ed25519KeyPair::from_pkcs8(input);
     let theirs = theirs::Ed25519KeyPair::from_pkcs8(input);
-    agree_ed25519(ours, theirs, der(input));
+    let refused = trailing(input) || v2_without_public_key(input);
+    agree_ed25519(ours, theirs, refused.into());
 }
 
 fn ed25519_seed(input: &[u8]) {

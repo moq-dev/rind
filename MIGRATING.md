@@ -200,8 +200,17 @@ ring has no `kem`.
 `PublicKey::new` refuses a compressed ECDSA point and a
 `SubjectPublicKeyInfo`, both of which aws-lc-rs takes.
 
+An ECDSA key pair's loaders take its public key uncompressed or compressed,
+as aws-lc-rs does, but refuse a hybrid point, which aws-lc-rs takes; ring,
+and so rind-ring, takes only the uncompressed one.
+`from_private_key_and_public_key` refuses a scalar that is not exactly the
+curve's length, as ring does, where aws-lc-rs takes leading zeros added or
+stripped.
+
 Every private key loader refuses bytes after the encoded key, which
-aws-lc-rs ignores and ring refuses.
+aws-lc-rs ignores and ring refuses. A PKCS#8 loader refuses a version 2
+document without a public key, which aws-lc-rs takes: RFC 5958 sets version
+2 only when the public key is present.
 
 ## rsa
 
