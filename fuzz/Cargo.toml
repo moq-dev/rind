@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
-aws-lc-rs = { version = "1.16", features = ["non-fips"], default-features = false }
+aws-lc-rs = { version = "1.16", features = ["non-fips", "ring-io"], default-features = false }
 
 [dependencies.rind]
 path = "../rind"
@@ -39,6 +39,13 @@ bench = false
 [[bin]]
 name = "kx"
 path = "fuzzer/kx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keys"
+path = "fuzzer/keys.rs"
 test = false
 doc = false
 bench = false
