@@ -88,6 +88,17 @@ impl<'a> Key<'a> {
         output.get(..len).ok_or(Error::WrongLength)
     }
 
+    /// Returns the `privateKey` body of a v1 document, refusing v2.
+    ///
+    /// For key types whose v2 public key the caller does not check: aws-lc-rs
+    /// and ring read ECDSA and RSA keys as v1 only.
+    pub(crate) fn v1_private_key(&self) -> Result<&'a [u8], Error> {
+        match self.public_key() {
+            Some(_) => Err(KeyFormatError::UnsupportedPkcs8Version.into()),
+            None => Ok(self.private_key()),
+        }
+    }
+
     /// Returns the slice that covers the `privateKey` `OCTET STRING` body.
     ///
     /// This can be decoded by the caller as the correct asn1 type.

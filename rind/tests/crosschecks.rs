@@ -1223,6 +1223,29 @@ mod pkcs8_attributes {
         [header, body].concat()
     }
 
+    /// ECDSA and RSA documents are v1 only, on both sides: a v2 document's
+    /// public key would go unchecked. Ed25519 checks it.
+    #[test]
+    fn ecdsa_and_rsa_refuse_v2() {
+        for key in keys() {
+            let public = (key.ours)(&key.pkcs8).unwrap();
+            let v2 = match key.v2 {
+                true => key.pkcs8.clone(),
+                false => {
+                    let field = crate::der(0x81, &[&[0][..], &public].concat());
+                    let mut v2 = insert(&key.pkcs8, 3, &field);
+                    let (header, _) = element(&v2);
+                    assert_eq!(v2[header..header + 3], [0x02, 0x01, 0x00]);
+                    v2[header + 2] = 0x01;
+                    v2
+                }
+            };
+            let expected = key.v2.then_some(&public[..]);
+            assert_eq!((key.ours)(&v2).as_deref(), expected, "{v2:02x?}");
+            assert_eq!((key.theirs)(&v2).as_deref(), expected, "{v2:02x?}");
+        }
+    }
+
     #[test]
     fn attributes() {
         // RFC 8410's example, and contents that are not DER at all.

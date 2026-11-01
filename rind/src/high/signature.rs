@@ -464,7 +464,7 @@ impl EcdsaKeyPair {
         load_ecdsa!(algorithm, generate())
     }
 
-    /// Loads a PKCS#8 `ECPrivateKey` on `algorithm`'s curve.
+    /// Loads a PKCS#8 v1 `ECPrivateKey` on `algorithm`'s curve.
     pub fn from_pkcs8(
         algorithm: &'static EcdsaSigningAlgorithm,
         der: &[u8],
@@ -766,7 +766,7 @@ impl RsaKeyPair {
         Self::new(rsa::SigningKey::generate(size)?)
     }
 
-    /// Loads a PKCS#8 `rsaEncryption` private key.
+    /// Loads a PKCS#8 v1 `rsaEncryption` private key.
     pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
         Self::new(rsa::SigningKey::from_pkcs8_der(der)?)
     }

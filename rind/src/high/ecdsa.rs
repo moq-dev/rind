@@ -49,7 +49,7 @@ impl<C: Curve> SigningKey<C> {
             &asn1::oid::id_ecPublicKey,
             Some(asn1::Any::ObjectId(C::oid())),
         )
-        .and_then(|k| Self::from_sec1_der(k.private_key()))
+        .and_then(|k| Self::from_sec1_der(k.v1_private_key()?))
     }
 
     /// Encode this private key in PKCS#8 DER format.
