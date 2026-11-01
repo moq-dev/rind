@@ -7,6 +7,7 @@ use crate::low;
 use crate::mid::rng::RandomSource;
 use crate::mid::rsa_key_size::RsaKeySize;
 
+mod exponents;
 mod generate;
 
 pub(crate) struct RsaPrivateKey {

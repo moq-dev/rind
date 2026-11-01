@@ -138,7 +138,7 @@ or a [quest][quests] covers it. The table describes
 | P-384 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [fiat-crypto] field and scalar arithmetic ✓; scalar multiplication over it ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator, and Graviola other scalar multiplication; Graviola ECDSA |
 | P-521 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡, and verification's other scalar multiplication ⚡; Graviola ECDSA | [fiat-crypto] field arithmetic ✓; rind arithmetic mod the group order ⚡; scalar multiplication over them ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator; Graviola ECDSA |
 | ML-KEM-768 | AVX2: [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 and AVX-512 sampling ⚡; otherwise: rind port of [mlkem-native] polynomial arithmetic ⚡, [s2n-bignum] Keccak-f ✓, Graviola FIPS 203 ⚡ | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 ⚡ | [libcrux-ml-kem] ✓, except its SHA-3 |
-| RSA PKCS#1 v1.5 and PSS signatures, key generation | Exponentiation: [aws-lc] RSAZ (copied) ⚡ for 1024-bit primes with AVX2 but without ADX, otherwise Graviola ⚡ over Montgomery multiplication: [s2n-bignum] Karatsuba for 1024- and 2048-bit moduli with ADX ✓, otherwise [aws-lc] (copied) ⚡; other [s2n-bignum] bignum arithmetic ✓; Graviola CRT, padding, and key generation | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and key generation | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
+| RSA PKCS#1 v1.5 and PSS signatures, key generation | Exponentiation: [aws-lc] RSAZ (copied) ⚡ for 1024-bit primes with AVX2 but without ADX, otherwise Graviola ⚡ over Montgomery multiplication: [s2n-bignum] Karatsuba for 1024- and 2048-bit moduli with ADX ✓, otherwise [aws-lc] (copied) ⚡; other [s2n-bignum] bignum arithmetic ✓; Graviola CRT, padding, and prime search; rind private exponents and Miller-Rabin | [s2n-bignum] bignum arithmetic ✓; Graviola exponentiation ⚡, CRT, padding, and prime search; rind private exponents and Miller-Rabin | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
 
 The tests use [Wycheproof]'s vectors.
 
@@ -224,9 +224,9 @@ OAEP waits on a consumer, and PKCS#1 v1.5 encryption, which invites
 padding-oracle attacks, is refused.
 
 RSA key generation is supported for five fixed key sizes between 2048-8192-bits.
-All generated keys have e = 0x10001.  Unlike other private key operations in rind,
-RSA key generation is currently not side-channel safe.  Avoid doing it in untrusted multi-tenant or
-physical environments.
+All generated keys have e = 0x10001 and, as in aws-lc, d reduced mod
+lcm(p - 1, q - 1).  Generation runs in constant time in the primes, revealing
+only which candidates it discards.
 
 ### ECC
 On x86_64 and aarch64, all ECC field and scalar arithmetic are provided by

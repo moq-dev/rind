@@ -302,24 +302,6 @@ if __name__ == "__main__":
         )
         parse_file(input, d)
 
-    with (
-        open("../../thirdparty/s2n-bignum/x86/generic/bignum_shr_small.S") as input,
-        open("../../rind/src/low/x86_64/bignum_shr_small.rs", "w") as output,
-    ):
-        d = RustDriver(output, Architecture_amd64)
-        d.emit_rust_function(
-            "bignum_shr_small",
-            parameter_map=[
-                ("inout", "z.len() => _"),
-                ("inout", "z.as_ptr() => _"),
-                ("inout", "x.len() => _"),
-                ("inout", "x.as_ptr() => _"),
-                ("inout", "(c as u64) => _"),
-            ],
-            rust_decl="fn bignum_shr_small(z: &mut [u64], x: &[u64], c: u8)",
-        )
-        parse_file(input, d)
-
     # aarch64
     with (
         open("../../thirdparty/s2n-bignum/arm/generic/bignum_montsqr.S") as input,
@@ -634,23 +616,5 @@ if __name__ == "__main__":
             assertions=["t.len() >= 2 * core::cmp::max(x.len(), y.len())"],
             return_value=("u64", "ret", "ret > 0"),
             rust_decl="fn bignum_coprime(x: &[u64], y: &[u64], t: &mut [u64]) -> bool",
-        )
-        parse_file(input, d)
-
-    with (
-        open("../../thirdparty/s2n-bignum/arm/generic/bignum_shr_small.S") as input,
-        open("../../rind/src/low/aarch64/bignum_shr_small.rs", "w") as output,
-    ):
-        d = RustDriver(output, Architecture_aarch64)
-        d.emit_rust_function(
-            "bignum_shr_small",
-            parameter_map=[
-                ("inout", "z.len() => _"),
-                ("inout", "z.as_ptr() => _"),
-                ("inout", "x.len() => _"),
-                ("inout", "x.as_ptr() => _"),
-                ("inout", "(c as u64) => _"),
-            ],
-            rust_decl="fn bignum_shr_small(z: &mut [u64], x: &[u64], c: u8)",
         )
         parse_file(input, d)
