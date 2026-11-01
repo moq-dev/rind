@@ -11,7 +11,7 @@ readme = "README.md"
 
 [dependencies]
 rcgen = { version = "0.14", default-features = false }
-rind = { version = "0.2.0", path = "../rind" }
+rind = { version = "0.1.3", path = "../rind" }
 rustls-pki-types = "1.12"
 zeroize = "1.9"
 

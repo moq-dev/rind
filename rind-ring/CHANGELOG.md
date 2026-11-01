@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.1...rind-ring-v0.2.0) - 2026-11-01
+## [0.1.2](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.1...rind-ring-v0.1.2) - 2026-11-01
 
 ### Fixed
 
-- [**breaking**] fuzz the key loaders, take compressed key pair points, refuse ECDSA and RSA PKCS#8 v2 ([#166](https://github.com/moq-dev/rind/pull/166))
+- fuzz the key loaders, take compressed key pair points, refuse ECDSA and RSA PKCS#8 v2 ([#166](https://github.com/moq-dev/rind/pull/166))
 
 ## [0.1.1](https://github.com/moq-dev/rind/compare/rind-ring-v0.1.0...rind-ring-v0.1.1) - 2026-11-01
 

@@ -10,7 +10,7 @@ rust-version.workspace = true
 readme = "README.md"
 
 [dependencies]
-rind = { version = "0.2.0", path = "../rind" }
+rind = { version = "0.1.3", path = "../rind" }
 rustls = { version = "0.23.20", default-features = false, features = ["std", "tls12"] }
 
 [dev-dependencies]
