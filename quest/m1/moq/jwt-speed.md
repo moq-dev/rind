@@ -10,6 +10,9 @@ time there either. ES256, ES384, EdDSA, and RS256 already match or beat it;
 
 ## Plan
 
+Decided by the maintainer on 2026-11-01: import aws-lc's AVX routine, the
+fastest source for this path, rather than tuning rind's own.
+
 Measured on an i7-8700 (no SHA-NI) on 2026-10-31: HS256 costs about 3% more
 per token on rind, and the gap is SHA-256's compression. rind's own AVX2
 routine runs about 3.5% slower per block than aws-lc's
