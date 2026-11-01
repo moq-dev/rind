@@ -9,7 +9,8 @@
 rind began as a fork of [Graviola](https://github.com/ctz/graviola) by Joe
 Birr-Pixton, and no longer tracks it. It adds what MoQ needs to drop C
 cryptography entirely; the plan lives in [`quest/`][quests]. Coming from
-ring or aws-lc-rs? [MIGRATING.md][migrating] maps their API to rind's.
+ring or aws-lc-rs? [MIGRATING.md][migrating] maps their API to rind's, and
+[rind-ring][] offers ring's API as is.
 
 *High quality*: rind incorporates assembler routines
 from the [s2n-bignum] project.  These have been formally proven
@@ -146,6 +147,8 @@ files Graviola wrote keep their `Written for Graviola by ...` header. The
 `rind` crate as a whole is therefore `(Apache-2.0 OR ISC OR MIT-0) AND
 (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC`. The adapter crates copy
 nothing under another license, so they stay `Apache-2.0 OR ISC OR MIT-0`.
+rind-ring runs ring's own tests, which keep ring's licenses and stay out of
+the published crate.
 
 A change that copies code from a new source, or moves an algorithm to a
 different one, updates this table and [LICENSE] in the same PR.
@@ -165,6 +168,7 @@ different one, updates this table and [LICENSE] in the same PR.
 [Wycheproof]: https://github.com/C2SP/wycheproof
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
+[rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md
 
