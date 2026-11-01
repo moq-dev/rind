@@ -1145,6 +1145,34 @@ mod tests {
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
     }
 
+    /// rind generated `d` mod (p - 1)(q - 1) before it reduced `d` mod
+    /// lcm(p - 1, q - 1), so a `d` above the lcm still loads, as in
+    /// aws-lc-rs.
+    #[test]
+    fn loads_d_above_lcm() {
+        let key = Pkcs1::decode(include_bytes!("rsa/rsa2048.der"));
+        // This key's p - 1 and q - 1 share only a factor of two, so their
+        // lcm is (p - 1)(q - 1) / 2 = (n - p - q + 1) / 2.
+        let phi = sub(&add(&key.n, &[1]), &add(&key.p, &key.q));
+        let mut carry = 0;
+        let lcm = phi
+            .iter()
+            .map(|b| {
+                let half = (carry << 7) | (b >> 1);
+                carry = b & 1;
+                half
+            })
+            .collect::<Vec<_>>();
+        let der = Pkcs1 {
+            d: add(&key.d, &lcm),
+            ..key
+        }
+        .encode();
+        aws_lc_rs::rsa::KeyPair::from_der(&der).unwrap();
+        let private_key = SigningKey::from_pkcs1_der(&der).unwrap();
+        check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
+    }
+
     /// e must be odd, above one, and at most 33 bits, as in aws-lc-rs, for
     /// public keys as components or DER, and for private keys.
     #[test]
