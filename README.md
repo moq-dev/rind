@@ -197,11 +197,11 @@ different one, updates this table and [LICENSE] in the same PR.
 ### RSA
 On x86_64 and aarch64, the arithmetic is provided by s2n-bignum, under the
 exponentiation described below, except that x86_64 runs aws-lc's Montgomery
-multiplication as aws-lc's `bn_mul_mont` picks it (`bn_mul4x_mont` for moduli
-whose width in 64-bit words is a multiple of four, `bn_sqr8x_mont` for
-squaring a multiple of eight, each by `mulx` with ADX, and `bn_mul_mont_nohw`
-for other widths), other than 1024- and 2048-bit moduli on CPUs with ADX,
-where s2n-bignum's Karatsuba routines are as fast or faster; armv7 uses
+multiplication, from those aws-lc's `bn_mul_mont` picks (`bn_mul4x_mont` for moduli
+whose width in 64-bit words is a multiple of four, by `mulx` with ADX,
+`bn_sqr8x_mont` for squaring a multiple of eight without ADX, and
+`bn_mul_mont_nohw` for other widths), other than 1024- and 2048-bit moduli
+on CPUs with ADX, where s2n-bignum's Karatsuba routines are faster; armv7 uses
 HACL\*'s arithmetic and exponentiation instead. On x86_64 CPUs with AVX2 but
 without ADX, the private operation's exponentiation modulo each 1024-bit
 prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
