@@ -128,7 +128,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
     let mut k = [0; 9];
     bignum_mod_n521(&mut k, scalar);
     let mut p = coords(point_in);
-    let point_at_infinity = nonzero(&p[2]) ^ 1;
+    let point_at_infinity = 1u8.wrapping_sub(nonzero(&p[2]));
 
     // Above n / 2, use n - k and -P, so that k is below n / 2.  Before each
     // addition, the accumulator is 32m P and the table point d P for the
@@ -153,7 +153,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
     let lookup = |digit: u8, sign: u8| {
         let mut r = [Fe([0; 19]); 3];
         for (i, entry) in (1u8..).zip(&table) {
-            let hit = nonzero_u8(i ^ digit) ^ 1;
+            let hit = 1u8.wrapping_sub(nonzero_u8(i ^ digit));
             for (r, e) in r.iter_mut().zip(entry) {
                 *r = select(hit, r, e);
             }
@@ -172,7 +172,7 @@ pub(crate) fn p521_jscalarmul(res: &mut [u64; 27], scalar: &[u64; 9], point_in: 
         }
         let term = lookup(digit, sign);
         let sum = jadd(&acc, &term);
-        let at_infinity = nonzero(&acc[2]) ^ 1;
+        let at_infinity = 1u8.wrapping_sub(nonzero(&acc[2]));
         let sum = select_point(at_infinity, &sum, &term);
         acc = select_point(nonzero_u8(digit), &acc, &sum);
     }

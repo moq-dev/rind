@@ -21,7 +21,16 @@ rust-version = "1.89"
 lto = "thin"
 debug = true
 
-# fiat-crypto's plain arithmetic is proven never to overflow, but debug builds
-# still branch on overflow flags derived from secrets, which ctgrind refuses.
+# Debug builds of these dependencies branch on secrets, which ctgrind refuses:
+# fiat-crypto's plain arithmetic is proven never to overflow but still checks
+# the flags, curve25519-dalek checks its arithmetic and asserts on scalar
+# digits, and subtle asserts that each `Choice` is 0 or 1.
 [profile.dev.package.fiat-crypto]
 overflow-checks = false
+
+[profile.dev.package.curve25519-dalek]
+debug-assertions = false
+overflow-checks = false
+
+[profile.dev.package.subtle]
+debug-assertions = false

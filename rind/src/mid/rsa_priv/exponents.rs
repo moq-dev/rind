@@ -249,8 +249,8 @@ fn divide_exact_e(x: &mut [u64]) {
     for x in x.iter_mut() {
         let (s, b) = x.overflowing_sub(borrow);
         *x = s.wrapping_mul(E_INV);
-        let high = (u128::from(*x).wrapping_mul(u128::from(E)) >> 64) as u64;
-        borrow = high.wrapping_add(u64::from(b));
+        borrow = ((u128::from(*x).wrapping_mul(u128::from(E)) >> 64) as u64)
+            .wrapping_add(u64::from(b));
     }
 }
 
