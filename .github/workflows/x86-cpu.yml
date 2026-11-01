@@ -106,8 +106,9 @@ jobs:
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
 
-      # Haswell lacks ADX, so s2n-bignum's `_alt` routines and aws-lc's
-      # Montgomery multiplication run, beside the AVX2 kernels.
+      # Haswell lacks ADX, so s2n-bignum's `_alt` routines, aws-lc's
+      # Montgomery multiplication, and its RSAZ exponentiation for RSA-2048
+      # run, beside the AVX2 kernels.
       - name: Check Haswell
         run: cargo test --release
         env:

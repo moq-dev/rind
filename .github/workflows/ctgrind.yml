@@ -42,23 +42,27 @@ jobs:
   # Valgrind hides ADX, which `admin/ctgrind`'s build switch overrides to
   # check s2n-bignum's ADX routines, so this job denies it to check what
   # CPUs without ADX run: their `_alt` twins, and aws-lc's Montgomery
-  # multiplication for RSA. It denies AVX, the SHA extensions, and the vendor
-  # too, for what CPUs such as Westmere run: aws-lc's SSSE3 ChaCha20, SHA-1,
-  # and SHA-256, the portable ML-KEM arithmetic, the SSE2 selects, rind's
-  # AES-GCM and GHASH intrinsics without VEX encoding, and aws-lc's AES-NI
-  # CTR. The `no-aes` row also denies AES-NI and PCLMULQDQ, for aws-lc's vpaes
-  # and SSSE3 GHASH, as Core 2 and Nehalem run. The denial takes debug
-  # assertions, which the optimised build then keeps.
+  # multiplication for RSA. The `no-adx` row keeps AVX2, as Haswell does, for
+  # aws-lc's RSAZ exponentiation of RSA-2048. The `no-avx` row denies AVX, the
+  # SHA extensions, and the vendor too, for what CPUs such as Westmere run:
+  # aws-lc's SSSE3 ChaCha20, SHA-1, and SHA-256, the portable ML-KEM
+  # arithmetic, the SSE2 selects, rind's AES-GCM and GHASH intrinsics without
+  # VEX encoding, and aws-lc's AES-NI CTR. The `no-aes` row also denies AES-NI
+  # and PCLMULQDQ, for aws-lc's vpaes and SSSE3 GHASH, as Core 2 and Nehalem
+  # run. The denial takes debug assertions, which the optimised build then
+  # keeps.
   x86_64-portable:
     name: x86_64-portable (${{ matrix.cpu }})
     strategy:
       fail-fast: false
       matrix:
         include:
+          - cpu: no-adx
+            deny: RIND_TEST_X86_AVX2=1
           - cpu: no-avx
-            deny: RIND_TEST_X86_AES_HARDWARE=1
+            deny: RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_sha=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=1
           - cpu: no-aes
-            deny: RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_TEST_X86_AES_HARDWARE=0
+            deny: RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,11 +89,6 @@ jobs:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
           DENY: ${{ matrix.deny }}
           RIND_CPU_DISABLE_adx: 1
-          RIND_CPU_DISABLE_avx: 1
-          RIND_CPU_DISABLE_intel: 1
-          RIND_CPU_DISABLE_sha: 1
-          RIND_TEST_X86_AVX: 0
-          RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
 
   # The arm64 runner's core has the crypto extension, so this job denies it
