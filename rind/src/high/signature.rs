@@ -306,6 +306,49 @@ impl fmt::Debug for Spki {
     }
 }
 
+/// An ECDSA private key as a big-endian scalar exactly the curve's length,
+/// wiped on drop.
+pub struct EcdsaScalar(Buffer<MAX_SCALAR_LEN>);
+
+impl AsRef<[u8]> for EcdsaScalar {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Debug for EcdsaScalar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("EcdsaScalar").finish_non_exhaustive()
+    }
+}
+
+impl Drop for EcdsaScalar {
+    fn drop(&mut self) {
+        low::zeroise_value(&mut self.0);
+    }
+}
+
+/// An Ed25519 private key as its 32-byte seed, wiped on drop.
+pub struct Ed25519Seed([u8; 32]);
+
+impl AsRef<[u8]> for Ed25519Seed {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Debug for Ed25519Seed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Ed25519Seed").finish_non_exhaustive()
+    }
+}
+
+impl Drop for Ed25519Seed {
+    fn drop(&mut self) {
+        low::zeroise(&mut self.0);
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 enum CurveId {
@@ -497,6 +540,17 @@ impl EcdsaKeyPair {
     pub fn to_pkcs8(&self) -> Pkcs8 {
         Pkcs8(Buffer::encode(|output| {
             on_ecdsa!(self, |key| key.to_pkcs8_der(output))
+        }))
+    }
+
+    /// Encodes the private key as a big-endian scalar exactly the curve's
+    /// length, as a JWK's `d` and SEC1's `privateKey` hold it.
+    ///
+    /// This is what [`Self::from_private_key_and_public_key`] loads; prefer
+    /// [`Self::to_pkcs8`] for stored keys.
+    pub fn to_scalar(&self) -> EcdsaScalar {
+        EcdsaScalar(Buffer::encode(|output| {
+            on_ecdsa!(self, |key| key.to_scalar(output))
         }))
     }
 
@@ -842,6 +896,14 @@ impl Ed25519KeyPair {
         Pkcs8(Buffer::encode(|output| self.key.to_pkcs8_der(output)))
     }
 
+    /// Returns the private key's 32-byte seed, as a JWK's `d` holds it.
+    ///
+    /// This is what [`Self::from_seed_and_public_key`] loads; prefer
+    /// [`Self::to_pkcs8`] for stored keys.
+    pub fn to_seed(&self) -> Ed25519Seed {
+        Ed25519Seed(*self.key.seed())
+    }
+
     /// Encodes the public key as a `SubjectPublicKeyInfo`.
     pub fn to_spki(&self) -> Spki {
         Spki(Buffer::encode(|output| {
@@ -1021,8 +1083,7 @@ pub(crate) mod verify {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::high::asn1::{self, Type, pkix};
-    use crate::high::pkcs8;
+    use crate::high::asn1::{Type, pkix};
 
     const ECDSA_SIGNING: [&EcdsaSigningAlgorithm; 6] = [
         &sign::ECDSA_P256_SHA256_ASN1,
@@ -1035,24 +1096,6 @@ mod tests {
 
     fn rejected(result: Result<impl fmt::Debug, Error>) -> Error {
         result.expect_err("accepted")
-    }
-
-    /// The fixed-length scalar of `pair`, read back from its PKCS#8.
-    fn ecdsa_scalar(pair: &EcdsaKeyPair) -> Vec<u8> {
-        let pkcs8 = pair.to_pkcs8();
-        let oid = match pair.algorithm.curve {
-            CurveId::P256 => P256::oid(),
-            CurveId::P384 => P384::oid(),
-            CurveId::P521 => P521::oid(),
-        };
-        let key = pkcs8::Key::decode(
-            pkcs8.as_ref(),
-            &asn1::oid::id_ecPublicKey,
-            Some(asn1::Any::ObjectId(oid)),
-        )
-        .unwrap();
-        let sec1 = pkix::EcPrivateKey::from_bytes(key.private_key()).unwrap();
-        sec1.privateKey.as_octets().to_vec()
     }
 
     #[test]
@@ -1188,18 +1231,22 @@ mod tests {
                 CurveId::P384 => 48,
                 CurveId::P521 => 66,
             };
-            let scalar = ecdsa_scalar(&pair);
+            // The scalar stays secret, so ctgrind checks the copy out and the
+            // load back in.
+            let scalar = pair.to_scalar();
+            let scalar = scalar.as_ref();
             assert_eq!(scalar.len(), len);
 
             let encoded = pair.public_key();
             let public = encoded.as_ref();
             let reloaded =
-                EcdsaKeyPair::from_private_key_and_public_key(signing, &scalar, public).unwrap();
+                EcdsaKeyPair::from_private_key_and_public_key(signing, scalar, public).unwrap();
             assert_eq!(reloaded.public_key().as_ref(), public);
+            assert_eq!(reloaded.to_pkcs8().as_ref(), pair.to_pkcs8().as_ref());
 
             // The scalar must be exactly the curve's length, even with a zero
             // byte added or removed.
-            let padded = [&[0][..], &scalar].concat();
+            let padded = [&[0][..], scalar].concat();
             assert_eq!(
                 rejected(EcdsaKeyPair::from_private_key_and_public_key(
                     signing, &padded, public
@@ -1240,7 +1287,7 @@ mod tests {
             for public in [other.as_ref(), &public[..public.len() - 1]] {
                 assert_eq!(
                     rejected(EcdsaKeyPair::from_private_key_and_public_key(
-                        signing, &scalar, public
+                        signing, scalar, public
                     )),
                     KeyFormatError::MismatchedPublicKey.into()
                 );
@@ -1399,6 +1446,18 @@ mod tests {
                 KeyFormatError::WrongLength.into()
             );
         }
+    }
+
+    #[test]
+    fn ed25519_seed_round_trips() {
+        // The seed stays secret, so ctgrind checks the copy out and the load
+        // back in.
+        let pair = Ed25519KeyPair::generate().unwrap();
+        let seed = pair.to_seed();
+        let public = pair.public_key();
+        let reloaded =
+            Ed25519KeyPair::from_seed_and_public_key(seed.as_ref(), public.as_ref()).unwrap();
+        assert_eq!(reloaded.to_pkcs8().as_ref(), pair.to_pkcs8().as_ref());
     }
 
     // The owned encodings are sized for the largest key each loader takes,
