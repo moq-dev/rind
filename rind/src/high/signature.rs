@@ -1359,7 +1359,7 @@ mod tests {
         let malformed: [(&[u8], &[u8], Error); 5] = [
             (&n0, e, KeyFormatError::LeadingZero.into()),
             (n, &e0, KeyFormatError::LeadingZero.into()),
-            (n, &[1, 0, 0, 0, 1], KeyFormatError::RsaExponent.into()),
+            (n, &[2, 0, 0, 0, 1], KeyFormatError::RsaExponent.into()),
             (&[], e, KeyFormatError::RsaModulus.into()),
             (n, &[], KeyFormatError::RsaExponent.into()),
         ];

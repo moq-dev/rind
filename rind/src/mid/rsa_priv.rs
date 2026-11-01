@@ -35,7 +35,7 @@ impl RsaPrivateKey {
         dq: RsaPosIntModP,
         iqmp: RsaPosIntModP,
         n: RsaPosIntModN,
-        e: u32,
+        e: u64,
     ) -> Result<Self, Error> {
         let (p_len, q_len) = (p.len_bytes(), q.len_bytes());
         if n.len_bits() < MIN_MODULUS_BITS {
@@ -59,7 +59,7 @@ impl RsaPrivateKey {
         let iqmp: SecretRsaPosIntModP = iqmp.into();
 
         // Each prime is still at its own width, as `reduce_even` needs.
-        let e = low::PosInt::word(e.into());
+        let e = low::PosInt::word(e);
         let exponents_agree = exponents_agree(&p, &d, &dp, &e) & exponents_agree(&q, &d, &dq, &e);
 
         // The CRT reduces `c` mod each prime by Montgomery reduction, which
@@ -137,7 +137,7 @@ impl RsaPrivateKey {
         buffer: &'a mut RsaComponentsBuffer,
     ) -> Result<RsaComponents<'a>, Error> {
         let (public_modulus, buffer) = buffer.0.split_at_mut(MAX_PUBLIC_MODULUS_BYTES + 1);
-        let (public_exponent, buffer) = buffer.split_at_mut(4);
+        let (public_exponent, buffer) = buffer.split_at_mut(8);
         let (p, buffer) = buffer.split_at_mut(MAX_PRIVATE_MODULUS_BYTES + 1);
         let (q, buffer) = buffer.split_at_mut(MAX_PRIVATE_MODULUS_BYTES + 1);
         let (d, buffer) = buffer.split_at_mut(MAX_PUBLIC_MODULUS_BYTES + 1);
@@ -267,14 +267,14 @@ impl RsaComponentsBuffer {
         // public modulus and private exponent
         (MAX_PUBLIC_MODULUS_BYTES + 1) * 2 +
             // public exponent
-            4 +
+            8 +
             // private moduli and crt components
             (MAX_PRIVATE_MODULUS_BYTES + 1) * 5;
 }
 
 impl Default for RsaComponentsBuffer {
     fn default() -> Self {
-        Self([0u8; 4619])
+        Self([0u8; Self::LEN])
     }
 }
 

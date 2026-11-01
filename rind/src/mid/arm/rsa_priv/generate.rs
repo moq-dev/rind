@@ -69,7 +69,7 @@ pub(super) fn generate_key(
             public(PosInt::from_words(&k.dq[..len])?),
             public(PosInt::from_words(&k.iqmp[..len])?),
             public(PosInt::from_words(&k.n[..len * 2])?),
-            PUBLIC_EXPONENT,
+            PUBLIC_EXPONENT.into(),
         );
     }
 }
