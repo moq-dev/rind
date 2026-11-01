@@ -57,8 +57,9 @@ jobs:
   # the Goldmont Atoms lack it, and one AES-NI and PCLMULQDQ too, as Core 2
   # and Nehalem lack them. A last row denies SSSE3 as well, as QEMU's default
   # `qemu64` model and pre-Core 2 CPUs lack it, and times the primitives that
-  # then run integer or SSE2 code. rind's denial takes debug assertions,
-  # which the optimised build then keeps.
+  # then run integer or SSE2 code. rind's denial takes `--cfg
+  # rind_cpu_disable`, so these rows time release code, without the debug
+  # assertions that would otherwise enable it.
   native:
     name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }}${{ matrix.cpu && format(', {0}', matrix.cpu) || '' }})
     strategy:
@@ -145,7 +146,7 @@ jobs:
       - name: Run benchmarks
         run: |
           if [ "${{ matrix.portable }}" = true ]; then
-            export CARGO_PROFILE_BENCH_DEBUG_ASSERTIONS=true
+            export RUSTFLAGS='--cfg rind_cpu_disable'
             case "${{ matrix.target }}/${{ matrix.cpu }}" in
               aarch64-*)
                 export RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_CPU_DISABLE_sha3=1
