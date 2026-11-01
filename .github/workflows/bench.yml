@@ -103,7 +103,7 @@ jobs:
             personality: linux64
             portable: true
             cpu: no-aes
-            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305
+            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305 --bench xchacha20poly1305
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
