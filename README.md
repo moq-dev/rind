@@ -201,12 +201,15 @@ multiplication as aws-lc's `bn_mul_mont` picks it (`bn_mul4x_mont` for moduli
 whose width in 64-bit words is a multiple of four, `bn_sqr8x_mont` for
 squaring a multiple of eight, each by `mulx` with ADX, and `bn_mul_mont_nohw`
 for other widths), other than 1024- and 2048-bit moduli on CPUs with ADX,
-where s2n-bignum's Karatsuba routines are as fast or faster; armv7 uses
-HACL\*'s arithmetic and exponentiation instead. On x86_64 CPUs with AVX2 but
-without ADX, the private operation's exponentiation modulo each 1024-bit
-prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
-products on AVX2 over 29-bit limbs, and a 5-bit fixed window whose table
-entry is gathered by masking all 32 entries.
+where s2n-bignum's Karatsuba routines are as fast or faster. aarch64 runs
+aws-lc's `bn_mul_mont`, which picks its own squaring or 4x routine by the
+width as x86_64's does, other than for 1024- and 2048-bit moduli, which run
+s2n-bignum's Karatsuba routines. armv7 uses HACL\*'s arithmetic and
+exponentiation instead. On x86_64 CPUs with AVX2 but without ADX, the
+private operation's exponentiation modulo each 1024-bit prime of RSA-2048
+runs aws-lc's RSAZ, as aws-lc does there: Montgomery products on AVX2 over
+29-bit limbs, and a 5-bit fixed window whose table entry is gathered by
+masking all 32 entries.
 
 The RSA private operation always uses the CRT optimisation.
 
