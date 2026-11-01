@@ -464,7 +464,7 @@ impl EcdsaKeyPair {
         load_ecdsa!(algorithm, generate())
     }
 
-    /// Loads a PKCS#8 `ECPrivateKey` on `algorithm`'s curve.
+    /// Loads a PKCS#8 v1 `ECPrivateKey` on `algorithm`'s curve.
     pub fn from_pkcs8(
         algorithm: &'static EcdsaSigningAlgorithm,
         der: &[u8],
@@ -481,7 +481,8 @@ impl EcdsaKeyPair {
     }
 
     /// Loads a fixed-length big-endian private scalar, refused unless
-    /// `public_key`, an X9.62 uncompressed point, is its public key.
+    /// `public_key`, an X9.62 uncompressed or compressed point, is its public
+    /// key.
     ///
     /// This suits a JWK's `d` and `x`/`y`; prefer [`Self::from_pkcs8`] for
     /// stored keys.
@@ -765,7 +766,7 @@ impl RsaKeyPair {
         Self::new(rsa::SigningKey::generate(size)?)
     }
 
-    /// Loads a PKCS#8 `rsaEncryption` private key.
+    /// Loads a PKCS#8 v1 `rsaEncryption` private key.
     pub fn from_pkcs8(der: &[u8]) -> Result<Self, Error> {
         Self::new(rsa::SigningKey::from_pkcs8_der(der)?)
     }
