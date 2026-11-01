@@ -2,7 +2,7 @@
 
 use core::arch::aarch64::*;
 
-use super::aes::{_aes128_8_blocks, _aes256_8_blocks};
+use super::aes::{_aes128_8_blocks, _aes256_8_blocks, HwKey};
 use crate::low::AesKey;
 
 /// XORs eight blocks of AES-CTR keystream into `inout`.
@@ -10,12 +10,21 @@ use crate::low::AesKey;
 /// The counter blocks are `nonce` followed by the big-endian `counter`,
 /// `counter + 1`, ... `counter + 7`, wrapping within 32 bits.
 pub(crate) fn apply_8(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128]) {
-    // SAFETY: this crate requires the `aes` & `neon` cpu features
-    unsafe { _apply_8(key, nonce, counter, inout) }
+    match key {
+        // SAFETY: only a `HaveCryptoExt` token builds `AesKey128` and
+        // `AesKey256`, and rind requires NEON.
+        AesKey::Hw(key) => unsafe { _apply_8(key, nonce, counter, inout) },
+        AesKey::Vpaes(key) => {
+            let mut ivec = [0u8; 16];
+            ivec[..12].copy_from_slice(nonce);
+            ivec[12..].copy_from_slice(&counter.to_be_bytes());
+            key.ctr32(&ivec, inout.as_chunks_mut::<16>().0);
+        }
+    }
 }
 
 #[target_feature(enable = "aes,neon")]
-fn _apply_8(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128]) {
+fn _apply_8(key: &HwKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128]) {
     let mut base = [0u8; 16];
     base[..12].copy_from_slice(nonce);
     // SAFETY: `base` is 16 bytes and readable
@@ -39,8 +48,8 @@ fn _apply_8(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u8; 128])
         block(7),
     );
     let (b0, b1, b2, b3, b4, b5, b6, b7) = match key {
-        AesKey::Aes128(a128) => _aes128_8_blocks(a128.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
-        AesKey::Aes256(a256) => _aes256_8_blocks(a256.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
+        HwKey::Aes128(a128) => _aes128_8_blocks(a128.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
+        HwKey::Aes256(a256) => _aes256_8_blocks(a256.round_keys(), b0, b1, b2, b3, b4, b5, b6, b7),
     };
 
     // SAFETY: `inout` is 128 bytes, readable and writable

@@ -78,6 +78,10 @@ jobs:
         run: |
           # test the AES-256-GCM and Keccak-f kernels for cores without SHA3
           env RIND_CPU_DISABLE_sha3=1 cargo test
+          # test vpaes, NEON GHASH, and scalar SHA-1 and SHA-256 for cores
+          # without the crypto extension, such as the Raspberry Pi 4's; the
+          # last variable fails the run that lands on the wrong path
+          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test
 
   # 32-bit ARM runs libcrux, or aws-lc's assembly for ChaCha20, NEON, and the
   # crypto extension. The recipe builds and lints Android and Linux gnueabihf,

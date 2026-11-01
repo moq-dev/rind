@@ -20,7 +20,12 @@ function. rustc then emits the symbol, section, and alignment directives for
 the object format, so aws-lc's `linux` flavor serves ELF and COFF, and its
 Apple flavor, which spells alignment and page relocations differently, serves
 Mach-O. The tables move to Rust statics, written as array literals beside the
-routines, which the routines reach through `sym` operands.
+routines, which the routines reach through `sym` operands; a label inside a
+table becomes the table's operand plus the label's offset. Helpers, the local
+routines the others `bl` to, become naked functions of their own, reached the
+same way. An `inner` helper, an entry point inside a routine that falls
+through to it, gets its own copy from its label on, and the routine drops the
+label line.
 """
 
 import os
@@ -161,6 +166,56 @@ IMPORTS_64 = [
         "tables": ["K512"],
         "routines": ["sha512_block_data_order_nohw", "sha512_block_data_order_hw"],
     },
+    # The rest are for aarch64 CPUs without the crypto extension.
+    {
+        "arch": "aarch64",
+        "source": "sha256-armv8.S",
+        "tag": "sha256",
+        "perlasm": "crypto/fipsmodule/sha/asm/sha512-armv8.pl",
+        "copyright": "Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["K256"],
+        "routines": ["sha256_block_data_order_nohw"],
+    },
+    {
+        "arch": "aarch64",
+        "source": "sha1-armv8.S",
+        "tag": "sha1",
+        "perlasm": "crypto/fipsmodule/sha/asm/sha1-armv8.pl",
+        "copyright": "Copyright 2014-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": [],
+        "routines": ["sha1_block_data_order_nohw"],
+    },
+    {
+        "arch": "aarch64",
+        "source": "ghash-neon-armv8.S",
+        "tag": "ghash",
+        "perlasm": "crypto/fipsmodule/modes/asm/ghash-neon-armv8.pl",
+        "copyright": "Copyright 2010-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["masks"],
+        "routines": ["gcm_init_neon", "gcm_ghash_neon"],
+    },
+    {
+        "arch": "aarch64",
+        "source": "vpaes-armv8.S",
+        "tag": "vpaes",
+        "perlasm": "crypto/fipsmodule/aes/asm/vpaes-armv8.pl",
+        "copyright": "Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["_vpaes_consts"],
+        "routines": ["vpaes_set_encrypt_key", "vpaes_encrypt", "vpaes_ctr32_encrypt_blocks"],
+        "helpers": [
+            "_vpaes_encrypt_preheat",
+            "_vpaes_encrypt_core",
+            "_vpaes_encrypt_2x",
+            "_vpaes_key_preheat",
+            "_vpaes_schedule_core",
+            "_vpaes_schedule_192_smear",
+            "_vpaes_schedule_round",
+            "_vpaes_schedule_low_round",
+            "_vpaes_schedule_transform",
+            "_vpaes_schedule_mangle",
+        ],
+        "inner": ["_vpaes_schedule_low_round"],
+    },
 ]
 
 
@@ -202,36 +257,49 @@ def routine(lines, name):
     return lines[start : end + 1]
 
 
-def body(lines, label):
-    """What follows `label` up to the next directive that ends a routine."""
+def body(lines, label, local, inner=()):
+    """What follows `label` up to the next directive or label that ends a
+    routine: Apple's flavor has no `.size`, so the next routine's label ends
+    one there. Labels with the `local` prefix, or in `inner`, do not."""
     start = find(lines, [label]) + 1
     end = start
-    while end < len(lines) and lines[end].split()[:1] not in (
-        [".size"],
-        [".section"],
-        [".text"],
-        [".globl"],
-    ):
+    while end < len(lines):
+        words = lines[end].split()
+        if words[:1] in ([".size"], [".section"], [".text"], [".globl"]):
+            break
+        if words and words[0].endswith(":") and not words[0].startswith(local) and words[0][:-1] not in inner:
+            break
         end += 1
-    while lines[end - 1].strip() == "":
+    # What separates it from the next routine: blank lines, comments, and
+    # the next routine's alignment.
+    while lines[end - 1].split()[:1] in ([], [".align"]) or lines[end - 1].lstrip().startswith(("//", "#")):
         end -= 1
     return lines[start:end]
 
 
-def table(lines, label):
-    """The `.quad` values from `label` up to the first line that is not one."""
+def table(lines, label, local):
+    """The values from `label` up to the first line that is not one, their
+    width in bytes, and the offset of each label within them, keyed without
+    `local`."""
     start = find(lines, [label]) + 1
-    values = []
+    widths = {".quad": 8, ".long": 4}
+    values, width, offsets = [], None, {}
     for line in lines[start:]:
         words = re.sub(r"(//|#).*", "", line).replace(",", " ").split()
         if not words:
             continue
-        if words[0] != ".quad":
+        if len(words) == 1 and words[0].startswith(local) and words[0].endswith(":"):
+            offsets[words[0][len(local) : -1]] = len(values) * width if width else 0
+            continue
+        if words[0] not in widths:
             break
+        if width not in (None, widths[words[0]]):
+            sys.exit(f"mixed widths in table: {label}")
+        width = widths[words[0]]
         values += words[1:]
     if not values:
         sys.exit(f"empty table: {label}")
-    return values
+    return values, width, offsets
 
 
 def words(names):
@@ -239,17 +307,25 @@ def words(names):
     return re.compile(r"(?<![\w.$])(" + "|".join(map(re.escape, names)) + r")(?![\w$])")
 
 
-def escape(lines, operands, local, tag):
-    """Doubles braces, writes each key of `operands` as its `{operand}`, and
-    tags each label `lines` defines with the `local` prefix."""
+def escape(lines, operands, local, tag, comment):
+    """Doubles braces, writes each key of `operands`, an `(operand, offset)`,
+    as `{operand}` plus any offset after its page modifier outside `comment`s,
+    and tags each label `lines` defines with the `local` prefix."""
     lines = list(lines)
     defined = re.compile(re.escape(local) + r"[\w$]+(?=:)")
     labels = [m[0] for m in map(defined.match, lines) if m]
-    operands_re = words(operands)
+    operands_re = re.compile(words(operands).pattern + r"(@PAGE(?:OFF)?)?") if operands else None
+
+    def operand(m):
+        name, offset = operands[m[1]]
+        return "{" + name + "}" + (m[2] or "") + (f"+{offset}" if offset else "")
+
     labels_re = words(labels) if labels else None
     for line in lines:
-        line = line.replace("{", "{{").replace("}", "}}")
-        line = operands_re.sub(lambda m: "{" + operands[m[1]] + "}", line)
+        code, leader, text = line.replace("{", "{{").replace("}", "}}").partition(comment)
+        if operands_re:
+            code = operands_re.sub(operand, code)
+        line = code + leader + text
         if labels_re:
             line = labels_re.sub(lambda m: local + tag + "_" + m[1][len(local) :], line)
         yield line
@@ -290,9 +366,9 @@ def import_arm(aws_lc):
                 text += routine(lines, name)
 
         out = os.path.join(out_dir, spec["source"].removesuffix(".S") + ".s")
-        operands = {name: name for name in spec["routines"]}
+        operands = {name: (name, 0) for name in spec["routines"]}
         local = spec.get("local", ".L")
-        write(out, header("@", spec, source) + list(escape(text, operands, local, spec["tag"])))
+        write(out, header("@", spec, source) + list(escape(text, operands, local, spec["tag"], "@")))
 
 
 def import_64(aws_lc):
@@ -304,19 +380,33 @@ def import_64(aws_lc):
             source = os.path.join("generated-src", directory, "crypto", "fipsmodule", spec["source"])
             lines = preprocess(os.path.join(aws_lc, source), arch["cpp"] + defines)
 
-            # A flavor names a table with or without its local prefix.
-            operands = {s: name for name in spec["tables"] for s in (name, local + name)}
-            for name in spec["routines"]:
-                text = escape(body(lines, f"{prefix}{name}:"), operands, local, spec["tag"])
-                write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
-
-            if flavor != "linux":
-                continue
+            # A flavor names a table with or without its local prefix, and a
+            # label inside it by the table's operand plus its offset.
+            operands = {}
             for name in spec["tables"]:
-                label = next(s for s, t in operands.items() if t == name and [s + ":"] in map(str.split, lines))
-                values = table(lines, label + ":")
-                rows = [f"    {', '.join(values[i : i + 2])}," for i in range(0, len(values), 2)]
-                write(os.path.join(out_dir, f"{stem}.{name}.rs"), header("//", spec, source) + ["["] + rows + ["]"])
+                label = next(s for s in (name, local + name) if [s + ":"] in map(str.split, lines))
+                values, width, offsets = table(lines, label + ":", local)
+                operand = name.lstrip("_")
+                operands |= {s: (operand, 0) for s in (name, local + name)}
+                operands |= {local + sub: (operand, offset) for sub, offset in offsets.items()}
+                if flavor == "linux":
+                    per_row = 16 // width
+                    rows = [f"    {', '.join(values[i : i + per_row])}," for i in range(0, len(values), per_row)]
+                    rs = os.path.join(out_dir, f"{stem}.{operand}.rs")
+                    write(rs, header("//", spec, source) + ["["] + rows + ["]"])
+
+            helpers = spec.get("helpers", [])
+            operands |= {name: (name.lstrip("_"), 0) for name in helpers}
+            entries = [(f"{prefix}{name}:", name) for name in spec["routines"]]
+            entries += [(f"{name}:", name.lstrip("_")) for name in helpers]
+            inner = spec.get("inner", [])
+            # A routine falls through these labels, which name helpers with
+            # their own copy.
+            dropped = [[f"{name}:"] for name in inner]
+            for label, name in entries:
+                text = [line for line in body(lines, label, local, inner) if line.split() not in dropped]
+                text = escape(text, operands, local, spec["tag"], arch["comment"])
+                write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
 
 
 def main():

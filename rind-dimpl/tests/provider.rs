@@ -23,10 +23,11 @@ fn certificate(algorithm: &'static rcgen::SignatureAlgorithm) -> (Vec<u8>, Vec<u
 #[test]
 fn prefers_chacha20_without_aes_hardware() {
     // CI runs armv7 on a CPU model with the crypto extension and one without,
-    // and names which, so both orders are checked.
+    // and aarch64 with it and with it denied, and names which, so both orders
+    // are checked.
     match std::env::var_os("RIND_TEST_ARM_CRYPTO_EXT") {
         Some(expected) => assert_eq!(rind::cpu::has_aes_hardware(), expected == "1"),
-        None if cfg!(not(target_arch = "arm")) => assert!(rind::cpu::has_aes_hardware()),
+        None if cfg!(target_arch = "x86_64") => assert!(rind::cpu::has_aes_hardware()),
         None => {}
     }
 
