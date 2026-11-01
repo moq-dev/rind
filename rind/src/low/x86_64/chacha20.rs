@@ -2,35 +2,46 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 // AVX2 by-8 implementation inspired by YuriMyakotin/ChaCha20-SIMD
 
+//! ChaCha20: rind's AVX2 kernels where the CPU has AVX2, and otherwise
+//! aws-lc's `chacha-x86_64` routines, imported by `admin/import-aws-lc`, at
+//! the lengths aws-lc runs each: four blocks at a time with SSSE3 above 128
+//! bytes, and integer code up to that.
+//!
+//! The aws-lc assembly is not formally verified: its correctness rests on its
+//! use and testing in OpenSSL, BoringSSL, and aws-lc, and on rind's tests of
+//! it against RFC 8439, Wycheproof, aws-lc-rs, and the AVX2 kernels.
+
 use core::arch::x86_64::*;
 
+use super::cpu::HaveAvx2;
+
 pub(crate) struct ChaCha20 {
-    z07: __m256i,
-    z8f: __m256i,
+    key: [u32; 8],
+    /// The block counter, then the 96-bit nonce.
+    counter_nonce: [u32; 4],
+    avx2: Option<HaveAvx2>,
 }
 
 impl ChaCha20 {
+    /// `nonce` is the little-endian block counter followed by the 96-bit nonce.
     pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 16]) -> Self {
-        // SAFETY: this crate requires the `avx2` and `ssse3` cpu features
-        unsafe { format_key(key, nonce) }
+        Self {
+            key: words(key),
+            counter_nonce: words(nonce),
+            avx2: HaveAvx2::check(),
+        }
     }
 
+    /// XORs the keystream into `buffer`, starting at the current block, then
+    /// moves the counter past every block it touched.
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        let (by8, remainder) = buffer.as_chunks_mut::<512>();
-
-        for block in by8 {
-            // SAFETY: this crate requires the `avx2` cpu feature
-            unsafe {
-                core_8x(self.z07, &mut self.z8f, block);
-            }
+        match self.avx2 {
+            // SAFETY: the token proves the `avx2` cpu feature
+            Some(_) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
+            None => chacha20_ctr32(&self.key, &self.counter_nonce, buffer),
         }
-
-        for block in remainder.chunks_mut(128) {
-            // SAFETY: this crate requires the `avx2` cpu feature
-            unsafe {
-                core_2x(self.z07, &mut self.z8f, block);
-            }
-        }
+        self.counter_nonce[0] =
+            self.counter_nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
     }
 }
 
@@ -38,13 +49,115 @@ pub(crate) struct XChaCha20(ChaCha20);
 
 impl XChaCha20 {
     pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 24]) -> Self {
-        // SAFETY: this crate requires the `avx2` and `ssse3` cpu features
-        unsafe { Self(hchacha(key, nonce)) }
+        let (nonce, suffix) = nonce.split_at(16);
+        let mut counter_nonce = [0u8; 16];
+        counter_nonce[8..].copy_from_slice(suffix);
+        Self(ChaCha20 {
+            // SAFETY: this crate requires the `ssse3` cpu feature
+            key: unsafe { hchacha(key, nonce.try_into().unwrap()) },
+            counter_nonce: words(&counter_nonce),
+            avx2: HaveAvx2::check(),
+        })
     }
 
     pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
         self.0.cipher(buffer);
     }
+}
+
+/// `bytes` as little-endian words.
+fn words<const B: usize, const W: usize>(bytes: &[u8; B]) -> [u32; W] {
+    const { assert!(B == 4 * W) };
+    let mut words = [0; W];
+    for (w, b) in words.iter_mut().zip(bytes.as_chunks::<4>().0) {
+        *w = u32::from_le_bytes(*b);
+    }
+    words
+}
+
+/// Below this length aws-lc runs its integer routine, which computes one
+/// block at a time.
+const SSSE3_4X_MIN_LEN: usize = 129;
+
+/// XORs the keystream for `key` and `counter_nonce` into `buffer`. The
+/// routines' 32-bit counter wraps unspecified past 2^32 blocks, which callers
+/// rule out with `mid::chacha20::check_counter`.
+fn chacha20_ctr32(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
+    let len = buffer.len();
+    let ptr = buffer.as_mut_ptr();
+    match len {
+        // Both routines require at least one byte.
+        0 => {}
+        // SAFETY: `buffer` is `len` readable and writable bytes, which the
+        // routine allows to alias exactly, and `key` and `counter_nonce` are
+        // 8 and 4 words.
+        1..SSSE3_4X_MIN_LEN => unsafe { chacha20_ctr32_nohw(ptr, ptr, len, key, counter_nonce) },
+        // SAFETY: as above, and this crate requires the `ssse3` cpu feature.
+        _ => unsafe { chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce) },
+    }
+}
+
+/// Counters, a counter increment, and four of them, as the routines load
+/// them.
+#[repr(C, align(64))]
+struct Words([u32; 32]);
+
+/// The rotate-by-16 and -24 shuffle masks, then the ChaCha20 constant, as
+/// the routines load them.
+#[repr(C, align(64))]
+struct Bytes([u8; 49]);
+
+static ZERO: Words = Words(include!("aws_lc/chacha-x86_64.zero.rs"));
+static ROT16: Bytes = Bytes(include!("aws_lc/chacha-x86_64.rot16.rs"));
+
+// Both routines take the System V ABI on every OS, since their text is
+// aws-lc's ELF and Mach-O flavors, which read their arguments from its
+// registers.
+
+#[unsafe(naked)]
+unsafe extern "sysv64" fn chacha20_ctr32_nohw(
+    out: *mut u8,
+    input: *const u8,
+    len: usize,
+    key: *const [u32; 8],
+    counter_nonce: *const [u32; 4],
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/ChaCha20_ctr32_nohw.linux.s"),
+        zero = sym ZERO,
+        options(att_syntax),
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/ChaCha20_ctr32_nohw.apple.s"),
+        zero = sym ZERO,
+        options(att_syntax),
+    );
+}
+
+#[unsafe(naked)]
+unsafe extern "sysv64" fn chacha20_ctr32_ssse3_4x(
+    out: *mut u8,
+    input: *const u8,
+    len: usize,
+    key: *const [u32; 8],
+    counter_nonce: *const [u32; 4],
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/ChaCha20_ctr32_ssse3_4x.linux.s"),
+        zero = sym ZERO,
+        rot16 = sym ROT16,
+        options(att_syntax),
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/ChaCha20_ctr32_ssse3_4x.apple.s"),
+        zero = sym ZERO,
+        rot16 = sym ROT16,
+        options(att_syntax),
+    );
 }
 
 macro_rules! rotate_left {
@@ -97,19 +210,27 @@ macro_rules! rotate_left_128 {
 }
 
 #[target_feature(enable = "ssse3,avx2")]
-fn format_key(key: &[u8; 32], nonce: &[u8; 16]) -> ChaCha20 {
-    // SAFETY: `SIGMA` `key`, and `nonce` are all readable
-    unsafe {
-        let z07 = _mm256_set_m128i(
-            _mm_lddqu_si128(SIGMA.as_ptr().cast()),
-            _mm_lddqu_si128(key[0..16].as_ptr().cast()),
-        );
-        let z8f = _mm256_set_m128i(
-            _mm_lddqu_si128(key[16..32].as_ptr().cast()),
-            _mm_lddqu_si128(nonce.as_ptr().cast()),
-        );
+fn cipher_avx2(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
+    // SAFETY: `SIGMA`, `key`, and `counter_nonce` are all readable
+    let (z07, mut z8f) = unsafe {
+        (
+            _mm256_set_m128i(
+                _mm_lddqu_si128(SIGMA.as_ptr().cast()),
+                _mm_lddqu_si128(key[0..4].as_ptr().cast()),
+            ),
+            _mm256_set_m128i(
+                _mm_lddqu_si128(key[4..8].as_ptr().cast()),
+                _mm_lddqu_si128(counter_nonce.as_ptr().cast()),
+            ),
+        )
+    };
 
-        ChaCha20 { z07, z8f }
+    let (by8, remainder) = buffer.as_chunks_mut::<512>();
+    for block in by8 {
+        core_8x(z07, &mut z8f, block);
+    }
+    for block in remainder.chunks_mut(128) {
+        core_2x(z07, &mut z8f, block);
     }
 }
 
@@ -466,8 +587,10 @@ fn core_2x(t07: __m256i, z8f: &mut __m256i, xor_out: &mut [u8]) {
     }
 }
 
-#[target_feature(enable = "ssse3,avx2")]
-fn hchacha(key: &[u8; 32], nonce: &[u8; 24]) -> ChaCha20 {
+/// HChaCha20 of `key` and `nonce`: the ChaCha20 rounds without the final
+/// addition, keeping words 0-3 and 12-15.
+#[target_feature(enable = "ssse3")]
+fn hchacha(key: &[u8; 32], nonce: &[u8; 16]) -> [u32; 8] {
     // SAFETY: `SIGMA`, `key` and `nonce` are all readable
     let (mut z03, mut z47, mut z8b, mut zcf) = unsafe {
         (
@@ -520,17 +643,13 @@ fn hchacha(key: &[u8; 32], nonce: &[u8; 24]) -> ChaCha20 {
         zcf = _mm_shuffle_epi32(zcf, 0b00_11_10_01);
     }
 
-    // SAFETY: `SIGMA` is readable.
-    let z07 = _mm256_set_m128i(unsafe { _mm_lddqu_si128(SIGMA.as_ptr().cast()) }, z03);
-
-    let mut chacha_nonce = [0u8; 16];
-    chacha_nonce[8..16].copy_from_slice(&nonce[16..24]);
-    // SAFETY: `chacha_nonce` is certainly 16 bytes and readable.
-    let z8f = _mm256_set_m128i(zcf, unsafe {
-        _mm_lddqu_si128(chacha_nonce.as_ptr().cast())
-    });
-
-    ChaCha20 { z07, z8f }
+    let mut out = [0u32; 8];
+    // SAFETY: `out` is 8 writable words
+    unsafe {
+        _mm_storeu_si128(out[0..4].as_mut_ptr().cast(), z03);
+        _mm_storeu_si128(out[4..8].as_mut_ptr().cast(), zcf);
+    }
+    out
 }
 
 const SIGMA: [u8; 16] = *b"expand 32-byte k";
@@ -539,6 +658,41 @@ const SIGMA: [u8; 16] = *b"expand 32-byte k";
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+
+    // AVX2, where present, hides aws-lc's routines from every other test, so
+    // they are checked against it directly: every length through both
+    // routines' boundaries and two four-block batches, each continued by a
+    // second call, which a whole number of blocks leaves contiguous.
+    #[test]
+    fn aws_lc_matches_avx2() {
+        if HaveAvx2::check().is_none() {
+            return;
+        }
+        let key = core::array::from_fn(|i| i as u8);
+        let nonce = core::array::from_fn(|i| (i * 7) as u8);
+        for len in 0..=600 {
+            let mut avx2 = ChaCha20::new(&key, &nonce);
+            let mut aws_lc = ChaCha20 {
+                avx2: None,
+                ..ChaCha20::new(&key, &nonce)
+            };
+            let mut want = vec![0x5a; len + 200];
+            let mut got = want.clone();
+            let (first, second) = want.split_at_mut(len);
+            avx2.cipher(first);
+            avx2.cipher(second);
+            let (first, second) = got.split_at_mut(len);
+            aws_lc.cipher(first);
+            aws_lc.cipher(second);
+            assert_eq!(got, want, "{len} bytes, then 200");
+
+            if len % 64 == 0 {
+                let mut whole = vec![0x5a; len + 200];
+                ChaCha20::new(&key, &nonce).cipher(&mut whole);
+                assert_eq!(whole, want, "{len} bytes, then 200, at once");
+            }
+        }
+    }
 
     #[test]
     fn test_vectors() {

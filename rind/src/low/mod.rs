@@ -17,10 +17,13 @@ mod generic {
     pub(super) mod ct_equal;
     #[cfg(all(test, not(target_arch = "arm")))]
     pub(crate) mod ghash;
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     pub(crate) mod mlkem;
     #[cfg(target_arch = "aarch64")]
     pub(crate) mod mlkem768;
+    // x86_64's ML-KEM arithmetic for CPUs without AVX2.
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) mod mlkem_poly;
     // armv7's group orders, picked from by modulus.
     #[cfg(target_arch = "arm")]
     pub(crate) mod order;
@@ -32,7 +35,7 @@ mod generic {
     pub(crate) mod p521;
     #[cfg(not(target_arch = "arm"))]
     pub(crate) mod poly1305;
-    // armv7's SHA1 and SHA256, also built in x86_64 tests to check the AVX2
+    // armv7's SHA1 and SHA256, also built in x86_64 tests to check the vector
     // paths against.
     #[cfg(any(target_arch = "arm", all(test, target_arch = "x86_64")))]
     pub(super) mod sha1;
@@ -126,14 +129,14 @@ cfg_if::cfg_if! {
             mlkem_ntt,
             mlkem_intt,
             mlkem_mulcache_compute,
-            mlkem_rej_uniform_vartime
+            mlkem_rej_uniform_vartime,
+            mlkem_basemul_k3,
+            mlkem_reduce,
+            mlkem_frombytes,
+            mlkem_tobytes,
+            mlkem_tomont,
+            mlkem_unpack,
         };
-        pub(crate) use x86_64::mlkem_basemul_k3::mlkem_basemul_k3;
-        pub(crate) use x86_64::mlkem_reduce::mlkem_reduce;
-        pub(crate) use x86_64::mlkem_frombytes::mlkem_frombytes;
-        pub(crate) use x86_64::mlkem_tobytes::mlkem_tobytes;
-        pub(crate) use x86_64::mlkem_tomont::mlkem_tomont;
-        pub(crate) use x86_64::mlkem_unpack::mlkem_unpack;
         pub(crate) use x86_64::mont::{mont_mul, mont_sqr};
         pub(crate) use x86_64::mlkem768_sample_poly_ntt_8x::mlkem768_sample_poly_ntt_8x;
 

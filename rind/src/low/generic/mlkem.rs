@@ -21,7 +21,7 @@ pub(crate) fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384]) {
 /// Input/output a[256] (signed 16-bit words)
 ///
 /// This reorders coefficients from their natural order into the order
-/// used by the rest of the implementation.  The x86_64 version of this
+/// used by the rest of the implementation.  The x86_64 AVX2 version of this
 /// function produces the layout required by the AVX2 NTT; this
 /// implementation (and the functions it works alongside, like
 /// [`mlkem_frombytes`]) uses the natural order, so there is nothing to do.

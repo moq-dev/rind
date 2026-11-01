@@ -88,10 +88,13 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     (SHA512), and chacha-armv4.s (ChaCha20); for aarch64 and x86_64, the
     sha512_block_data_order_* routines and the K512 tables of
     sha512-armv8 and sha512-x86_64 (SHA512); for x86_64, the
-    sha256_block_data_order_avx routine and the K256 table of
-    sha256-x86_64 (SHA256); for x86_64, the bn_mul4x_mont and
-    bn_sqr8x_mont routines of x86_64-mont and bn_sqr8x_internal of
-    x86_64-mont5 (RSA); for aarch64, the vpaes_*
+    sha256_block_data_order_avx and _ssse3 routines and the K256 table of
+    sha256-x86_64 (SHA256), the sha1_block_data_order_avx and _ssse3
+    routines and the K_XX_XX table of sha1-x86_64 (SHA1), and the
+    ChaCha20_ctr32_nohw and _ssse3_4x routines and tables of chacha-x86_64
+    (ChaCha20); the bn_mul4x_mont and bn_sqr8x_mont routines of
+    x86_64-mont and bn_sqr8x_internal of x86_64-mont5 (RSA); for aarch64,
+    the vpaes_*
     routines and table of vpaes-armv8 (AES), the gcm_*_neon routines and
     table of ghash-neon-armv8 (GHASH), and the *_block_data_order_nohw
     routines and table of sha1-armv8 (SHA1) and sha256-armv8 (SHA256). All
@@ -99,6 +102,7 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     vpaes-armv8 adapts the public domain vector permutation AES by Mike
     Hamburg.
     Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.
+    Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.
     Copyright 2007-2016 The OpenSSL Project Authors. All Rights Reserved.
     Copyright 2010-2016 The OpenSSL Project Authors. All Rights Reserved.
     Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.
@@ -118,6 +122,15 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
   aws-lc's NOTICE file reads:
     AWS-LC
     Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+mlkem-native <https://github.com/pq-code-package/mlkem-native>
+
+  What: rind/src/low/generic/mlkem_poly.rs, which ports mlkem-native's
+  portable C polynomial arithmetic (mlkem/poly.c, poly_k.c, compress.c,
+  sampling.c, and zetas.inc, as aws-lc vendors them at commit
+  91c93a8eb860e51482a871a8772cb9b1b310baea) to Rust.
+  Copyright (c) The mlkem-native project authors
+  License: Apache-2.0 OR ISC OR MIT.
 
 BoringSSL <https://boringssl.googlesource.com/boringssl>
 

@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! SHA-512 compression with aws-lc's `sha512-x86_64` routines, imported by
-//! `admin/import-aws-lc`: AVX on Intel, and scalar code elsewhere.
+//! `admin/import-aws-lc`: AVX on Intel CPUs that have it, and scalar code
+//! elsewhere.
 //!
 //! The AVX routine is the faster on Intel's cores and the slower on AMD's,
 //! so rind picks by vendor as aws-lc does. aws-lc-verification's SAW proof
 //! covers the AVX routine, as aws-lc builds it; nothing verifies the scalar
 //! one.
 
-use super::cpu::is_intel;
+use super::cpu::{HaveAvx, is_intel};
 
 pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
     debug_assert!(blocks.len().is_multiple_of(128));
@@ -18,12 +19,11 @@ pub(crate) fn sha512_compress_blocks(state: &mut [u64; 8], blocks: &[u8]) {
         return;
     }
     let (data, num) = (blocks.as_ptr(), blocks.len() / 128);
-    match is_intel() {
-        // SAFETY: `blocks` is `num` readable blocks, and rind requires AVX on
-        // x86_64.
-        true => unsafe { sha512_block_data_order_avx(state, data, num) },
+    match HaveAvx::check() {
+        // SAFETY: `blocks` is `num` readable blocks, and the token proves AVX.
+        Some(_) if is_intel() => unsafe { sha512_block_data_order_avx(state, data, num) },
         // SAFETY: `blocks` is `num` readable blocks.
-        false => unsafe { sha512_block_data_order_nohw(state, data, num) },
+        _ => unsafe { sha512_block_data_order_nohw(state, data, num) },
     }
 }
 
@@ -87,6 +87,9 @@ mod tests {
     // distinct bytes in every block.
     #[test]
     fn avx_matches_nohw() {
+        if HaveAvx::check().is_none() {
+            return;
+        }
         let blocks: Vec<u8> = (0..5 * 128u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
@@ -102,8 +105,8 @@ mod tests {
                 0x5be0cd19137e2179,
             ];
             let mut got = want;
-            // SAFETY: `blocks` holds at least `n` blocks, and rind requires
-            // AVX on x86_64.
+            // SAFETY: `blocks` holds at least `n` blocks, and the token proves
+            // AVX.
             unsafe {
                 sha512_block_data_order_nohw(&mut want, blocks.as_ptr(), n);
                 sha512_block_data_order_avx(&mut got, blocks.as_ptr(), n);

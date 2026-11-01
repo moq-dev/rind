@@ -1,11 +1,12 @@
-# [L] x86_64 without AVX2, BMI2, or AES-NI
+# [M] x86_64 without AVX or AES-NI
 
 ## Goal
 
 rind runs on any x86_64 CPU with SSSE3, choosing the fastest path the CPU
-supports once per process, so MoQ keeps running on pre-2014 Intel, pre-Zen
-AMD, Atom-class Celerons such as the J4125 and N5105, and VMs with QEMU's
-default CPU models. A 0.1.x release carries it.
+supports once per process, so MoQ keeps running on pre-2011 Intel and AMD,
+Atom-class Celerons such as the J4125 and N5105, and VMs whose QEMU CPU model
+has SSSE3. A 0.1.x release carries it. QEMU's default `qemu64` model lacks
+SSSE3; whether an SSE2-only path should cover it is the maintainer's call.
 
 ## Plan
 
@@ -14,13 +15,11 @@ support when MoQ switches. rind began as graviola, but any source is fine:
 the fastest one per path wins, verified only on a tie, as for aarch64's
 portable path.
 
-- Today `rind::cpu::check()` requires `aes`, `ssse3`, `popcnt`, `avx`,
-  `avx2`, `bmi2`, and `pclmulqdq`; bignum, ECC, and X25519 already run
-  s2n-bignum's `_alt` routines without `bmi2` and `adx`, behind
-  `low::x86_64::adx_mux`. `bmi2` stays required only for the AVX2 SHA-1 and
-  SHA-256 rounds and ML-KEM's rejection sampling, so it goes with `avx2`.
-  Keep the current kernels as the fast path, and add a path for each missing
-  group:
+- Today `rind::cpu::check()` requires `ssse3`, `aes`, `pclmulqdq`, and `avx`.
+  ChaCha20, SHA, ML-KEM, and the table selects already run without `avx2`,
+  `bmi2`, and `popcnt` behind `low::x86_64::cpu::HaveAvx2`, and bignum, ECC,
+  and X25519 without `bmi2` and `adx` behind `low::x86_64::adx_mux`. Keep the
+  current kernels as the fast path, and add a path for each missing group:
   - RSA-2048 signing with `avx2` but without `adx`, as on Haswell: aws-lc
     signs with `RSAZ_1024_mod_exp_avx2` (`rsaz-avx2.pl`), 1.6x faster than
     rind's exponentiation over aws-lc's `bn_mul4x_mont` and `bn_sqr8x_mont`,
@@ -28,14 +27,15 @@ portable path.
     own 5-bit-window exponentiation and constant-time gather over a redundant
     representation, so adopting it replaces rind's exponentiation for
     1024-bit primes on that path: a maintainer decision;
+  - AES-NI and GHASH without `avx`: rind's AES, AES-GCM, and GHASH
+    intrinsics are VEX-encoded. aws-lc's SSE `aesni-x86_64` and
+    `ghash-x86_64` routines, or the same intrinsics without AVX, whichever is
+    faster. SHA already runs aws-lc's SSSE3 and scalar routines without AVX;
   - AES and GHASH without `aes`/`pclmulqdq`: aws-lc's `vpaes-x86_64` and
-    `ghash-ssse3` through `admin/import-aws-lc`;
-  - code that needs `avx`/`avx2` (ChaCha20, SHA, ML-KEM, intrinsic code):
-    aws-lc's SSSE3 routines or rind's portable Rust, whichever is faster.
+    `ghash-ssse3` through `admin/import-aws-lc`.
 - Decide once per process, the way aarch64 and armv7 do, and make
   `has_aes_hardware()` false without AES-NI so the adapters prefer
-  ChaCha20-Poly1305. `check()` refuses only CPUs below SSSE3 (and `popcnt` if
-  a path still needs it).
+  ChaCha20-Poly1305. `check()` then refuses only CPUs below SSSE3.
 - Test every path on every x86_64 CI run by forcing each one, as aarch64
   does, and cover each in ctgrind and the benchmarks. README's Limitations
   drop the x86_64 feature list.

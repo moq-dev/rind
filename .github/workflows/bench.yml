@@ -51,8 +51,10 @@ jobs:
   #
   # A portable row denies both libraries what the slower path lacks: on
   # aarch64, the crypto extension and the SHA-512 and SHA-3 instructions, as
-  # a Raspberry Pi 4 lacks them; on x86_64, ADX. rind's denial takes
-  # debug assertions, which the optimised build then keeps.
+  # a Raspberry Pi 4 lacks them; on x86_64, what Sandy Bridge lacks: AVX2,
+  # BMI1 and BMI2, ADX, the SHA extensions, AVX-512, VAES, and VPCLMULQDQ.
+  # rind's denial takes debug assertions, which the optimised build then
+  # keeps.
   native:
     name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }})
     strategy:
@@ -123,9 +125,13 @@ jobs:
                 export OPENSSL_armcap='~0x87c'
                 ;;
               x86_64-*)
-                export RIND_CPU_DISABLE_adx=1
-                # aws-lc's ADX bit, in CPUID leaf 7's EBX.
-                export OPENSSL_ia32cap='~0x0:~0x80000'
+                # rind's AVX-512 and VAES paths also need AVX2.
+                export RIND_CPU_DISABLE_adx=1 RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_bmi2=1 RIND_CPU_DISABLE_sha=1
+                # aws-lc's bits for those, in CPUID leaf 7's EBX (BMI1, AVX2,
+                # BMI2, AVX-512 F, DQ, IFMA, CD, BW, and VL, ADX, and SHA) and
+                # ECX (AVX-512 VBMI, VBMI2, VNNI, BITALG, and VPOPCNTDQ, VAES,
+                # and VPCLMULQDQ).
+                export OPENSSL_ia32cap='~0x0:~0x5e42f02b0128'
                 ;;
             esac
           fi

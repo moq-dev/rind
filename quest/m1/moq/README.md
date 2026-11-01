@@ -39,9 +39,11 @@ Targets, refused rather than falling back:
 
 - Exactly one backend compiles per arch, never both in one binary
   (maintainer, 2026-10-26).
-- x86_64 and aarch64 run graviola's backend. x86_64 needs aes, ssse3, popcnt,
-  avx, avx2, bmi2, and pclmulqdq, and runs s2n-bignum's `_alt` routines
-  without adx; aarch64 needs neon. aarch64 CPUs
+- x86_64 and aarch64 run graviola's backend. x86_64 needs aes, ssse3, avx,
+  and pclmulqdq; it runs s2n-bignum's `_alt` routines without adx, and
+  aws-lc's SSSE3 and AVX ChaCha20 and SHA and portable ML-KEM arithmetic
+  without avx2;
+  aarch64 needs neon. aarch64 CPUs
   without the crypto extension (Raspberry Pi 4, CM4, Zero 2 W) run aws-lc's
   NEON AES and GHASH and scalar SHA-1 and SHA-256, chosen once per process,
   as ring and aws-lc-rs do (maintainer, 2026-10-31).
@@ -70,7 +72,7 @@ RustCrypto dependency.
 
 ## Required
 
-- [x86_64 without AVX2, BMI2, or AES-NI](/quest/m1/moq/x86-portable.md) - rind runs on older and Atom-class x86_64 CPUs, as ring and aws-lc-rs do
+- [x86_64 without AVX or AES-NI](/quest/m1/moq/x86-portable.md) - rind runs on older and Atom-class x86_64 CPUs, as ring and aws-lc-rs do
 - [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
 - [libcrux releases its bignum constant-time fix](/quest/m1/moq/libcrux-ct-fixes.md) - waiting on libcrux's fix, then dropping its armv7 ctgrind suppression
 - [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish
