@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/moq-dev/rind/compare/rind-v0.1.1...rind-v0.1.2) - 2026-11-01
+
+### Added
+
+- *(x86_64)* run on CPUs without SSSE3 ([#178](https://github.com/moq-dev/rind/pull/178))
+- *(x86_64)* AES and GHASH without AVX or AES-NI ([#172](https://github.com/moq-dev/rind/pull/172))
+- *(x86_64)* run on CPUs without AVX2 ([#171](https://github.com/moq-dev/rind/pull/171))
+- *(x86_64)* run on CPUs without ADX ([#169](https://github.com/moq-dev/rind/pull/169))
+
+### Fixed
+
+- refuse trailing bytes after a PKCS#8 key ([#164](https://github.com/moq-dev/rind/pull/164))
+
+### Other
+
+- *(x86_64)* aws-lc's RSAZ for RSA-2048 without ADX ([#177](https://github.com/moq-dev/rind/pull/177))
+- *(x86_64)* SSE-encoded AES-GCM and GHASH on every CPU ([#176](https://github.com/moq-dev/rind/pull/176))
+- *(x86_64)* aws-lc's AES-NI CTR with AVX too ([#173](https://github.com/moq-dev/rind/pull/173))
+- *(x86_64)* aws-lc's Montgomery multiplication for RSA without ADX ([#170](https://github.com/moq-dev/rind/pull/170))
+- *(sha256)* aws-lc's AVX routine on Intel without SHA-NI ([#165](https://github.com/moq-dev/rind/pull/165))
+
 ## [0.1.1](https://github.com/moq-dev/rind/compare/rind-v0.1.0...rind-v0.1.1) - 2026-11-01
 
 ### Added
