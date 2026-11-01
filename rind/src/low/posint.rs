@@ -66,6 +66,17 @@ impl<const N: usize> PosInt<N> {
         Ok(())
     }
 
+    /// Makes a value from little-endian `words`, `words.len()` wide.
+    pub(crate) fn from_words(words: &[u64]) -> Result<Self, Error> {
+        let mut r = Self::zero();
+        r.words
+            .get_mut(..words.len())
+            .ok_or(Error::WrongLength)?
+            .copy_from_slice(words);
+        r.used = words.len();
+        Ok(r)
+    }
+
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let mut r = Self::zero();
 
@@ -154,123 +165,14 @@ impl<const N: usize> PosInt<N> {
         self.words[0] & 1 == 0
     }
 
-    fn is_odd(&self) -> bool {
-        !self.is_even()
-    }
-
-    pub(crate) fn is_zero(&self) -> bool {
-        self.len_bits() == 0
-    }
-
     /// Return true if `gcd(self, other)` is one
     pub(crate) fn is_coprime(&self, other: &Self) -> bool {
         let mut tmp = vec![0u64; N + N];
         low::bignum_coprime(self.as_words(), other.as_words(), &mut tmp)
     }
 
-    /// Returns the multiplicative inverse of `self` mod `m`.
-    ///
-    /// Unlike `mod_inverse`, this function does not require `m` to be odd.
-    ///
-    /// Returns `None` if `self` and `m` are both even, or are zero.
-    pub(crate) fn invert_vartime(&self, m: &Self) -> Option<Self> {
-        // See https://github.com/mit-plv/fiat-crypto/blob/b4f94a230ea6d322318988724fdace4d5f0eaf69/src/Arithmetic/BinaryExtendedGCD.v
-        // for details, which describes a variation on the algorithm in HAC
-        // algorithm 14.61 <https://cacr.uwaterloo.ca/hac/about/chap14.pdf>
-
-        let x = self;
-        let y = m;
-
-        // We're not interested in handling the case where both `a` and `m` are even.
-        // (steps 1 and 2 in HAC).  This fixes `g` as 1, so is eliminated.
-        if x.is_zero() || y.is_zero() || (x.is_even() && y.is_even()) {
-            return None;
-        }
-
-        // 3. u <- a, v <- m, A <- 1, B <- 0, C <- 0, D <- 1.
-        let mut u = x.clone();
-        let mut v = y.clone();
-        let mut a = Self::one();
-        let mut b = Self::zero();
-        let mut c = Self::zero();
-        let mut d = Self::one();
-
-        a.expand(y);
-        b.expand(x);
-        c.expand(y);
-        d.expand(x);
-
-        loop {
-            if u.is_odd() && v.is_odd() {
-                if v.less_than(&u) {
-                    u = u.sub(&v);
-                    a = a.add_mod(&c, y);
-                    b = b.add_mod(&d, x);
-                } else {
-                    v = v.sub(&u);
-                    c = c.add_mod(&a, y);
-                    d = d.add_mod(&b, x);
-                }
-            }
-
-            assert!(u.is_even() || v.is_even());
-
-            if u.is_even() {
-                u = u.shift_right_1();
-
-                if a.is_odd() || b.is_odd() {
-                    a = a.add_shift_right_1(y);
-                    b = b.add_shift_right_1(x);
-                } else {
-                    a = a.shift_right_1();
-                    b = b.shift_right_1();
-                }
-            } else {
-                v = v.shift_right_1();
-
-                if c.is_odd() || d.is_odd() {
-                    c = c.add_shift_right_1(y);
-                    d = d.add_shift_right_1(x);
-                } else {
-                    c = c.shift_right_1();
-                    d = d.shift_right_1();
-                }
-            }
-
-            if v.is_zero() {
-                match u.len_bits() {
-                    1 => return Some(a),
-                    _ => return None,
-                }
-            }
-        }
-    }
-
-    /// Returns `self` >> shift.
-    ///
-    /// This leaks the value of `shift` / 64, because this affects
-    /// the number of words it reads from `self`.
-    pub(crate) fn shift_right_vartime(&self, shift: usize) -> Self {
-        debug_assert!(shift < self.len_bits());
-
-        let bits = shift & 63;
-        let words = (shift - bits) / 64;
-
-        let mut r = Self::zero();
-        r.used = self.used - words;
-        low::bignum_shr_small(r.as_mut_words(), &self.as_words()[words..], bits as u8);
-        r
-    }
-
-    /// Returns `self` >> 1.
-    pub(crate) fn shift_right_1(&self) -> Self {
-        let mut r = Self::zero();
-        r.used = self.used;
-        low::bignum_shr_small(r.as_mut_words(), self.as_words(), 1);
-        r
-    }
-
-    fn as_words(&self) -> &[u64] {
+    /// The significant words.
+    pub(crate) fn as_words(&self) -> &[u64] {
         &self.words[..self.used]
     }
 
@@ -734,38 +636,6 @@ impl<const N: usize> PosInt<N> {
         r
     }
 
-    /// Computes (`self` + `b`) >> 1
-    #[must_use]
-    pub(crate) fn add_shift_right_1(&self, b: &Self) -> Self {
-        let mut tmp = Self::zero();
-        let carry = low::bignum_add(&mut tmp.words, self.as_words(), b.as_words());
-        tmp.used = low::bignum_digitsize(&tmp.words);
-
-        let mut r = Self::zero();
-        low::bignum_shr_small(&mut r.words, tmp.as_words(), 1);
-        r.used = tmp.used;
-
-        // insert carry at top
-        r.words[r.used - 1] |= carry << 63;
-
-        r
-    }
-
-    /// Computes `self` + `b` mod `m`
-    #[must_use]
-    pub(crate) fn add_mod(&self, b: &Self, m: &Self) -> Self {
-        let mut r = Self::zero();
-        r.used = m.used;
-        low::bignum_modadd(
-            r.as_mut_words(),
-            self.as_words_with_len_of(m),
-            b.as_words_with_len_of(m),
-            m.as_words(),
-        );
-        r.used = low::bignum_digitsize(&r.words);
-        r
-    }
-
     /// Computes `self` - `b`
     #[must_use]
     pub(crate) fn sub(&self, b: &Self) -> Self {
@@ -1095,46 +965,6 @@ mod tests {
     }
 
     #[test]
-    fn test_invert_vartime() {
-        // Error cases: number to be inverted is zero, or modulus is zero.
-        let zero = PosInt::<2>::zero();
-        let one = PosInt::<2>::one();
-        assert!(zero.invert_vartime(&one).is_none());
-        assert!(one.invert_vartime(&zero).is_none());
-
-        // Unsupported case: number to be inverted and modulus are both even.
-        let two = PosInt::<2>::from_bytes(b"\x02").unwrap();
-        let four = PosInt::<2>::from_bytes(b"\x04").unwrap();
-        assert!(two.invert_vartime(&four).is_none());
-
-        // A simple case: the multiplicative inverse of 3 mod 7 should be 5.
-        let three = PosInt::<2>::from_bytes(b"\x03").unwrap();
-        let seven = PosInt::<2>::from_bytes(b"\x07").unwrap();
-        let inv = three.invert_vartime(&seven).unwrap();
-        let mut out_bytes = [0u8; 8];
-        assert!(inv.to_bytes(&mut out_bytes).is_ok());
-        assert_eq!(out_bytes, [0, 0, 0, 0, 0, 0, 0, 5]);
-
-        // A case that doesn't fit in 64 bits: (2^70 - 1) mod 2^96.
-        let x = PosInt::<2>::from_bytes(&[0x3f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
-            .unwrap();
-        let m = PosInt::<2>::from_bytes(&[
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ])
-        .unwrap();
-        let inv = x.invert_vartime(&m).unwrap();
-        let mut out_bytes = [0u8; 16];
-        assert!(inv.to_bytes(&mut out_bytes).is_ok());
-        assert_eq!(
-            out_bytes,
-            [
-                0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xbf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-                0xff, 0xff
-            ]
-        );
-    }
-
-    #[test]
     fn basics() {
         let zero = PosInt::<1>::zero();
         let one = PosInt::<1>::one();
@@ -1143,15 +973,13 @@ mod tests {
 
         assert_eq!(zero.len_bits(), 0);
         assert!(zero.is_even());
-        assert!(zero.is_zero());
         assert!(zero.equals(&zero));
         assert_eq!(zero.count_trailing_zeroes(), 0);
         assert!(zero.less_than(&one));
         assert!(!one.less_than(&zero));
 
         assert_eq!(one.len_bits(), 1);
-        assert!(one.is_odd());
-        assert!(!one.is_zero());
+        assert!(!one.is_even());
         assert_eq!(one.count_trailing_zeroes(), 0);
         assert!(one.equals(&one));
 
@@ -1161,13 +989,13 @@ mod tests {
         assert!(two.equals(&two));
 
         assert_eq!(max_one_word.len_bits(), 64);
-        assert!(max_one_word.is_odd());
+        assert!(!max_one_word.is_even());
         assert!(max_one_word.equals(&max_one_word));
         assert!(one.less_than(&max_one_word));
 
         let two_words = PosInt::<2>::from_bytes(&[0xff; 16]).unwrap();
         assert_eq!(two_words.len_bits(), 128);
-        assert!(two_words.is_odd());
+        assert!(!two_words.is_even());
         assert!(two_words.equals(&two_words));
         assert!(two_words.fixed_one().less_than(&two_words));
 
@@ -1223,26 +1051,5 @@ mod tests {
                 0x1e0a0609caf9e1d0
             ]
         );
-    }
-
-    #[test]
-    fn test_add_shift_right_1() {
-        let a = PosInt::<1> {
-            words: [0x8000_0000_0000_0021; 1],
-            used: 1,
-        };
-        let b = PosInt::<1> {
-            words: [0x8421_8421_8421_8421; 1],
-            used: 1,
-        };
-        let c = a.add_shift_right_1(&b);
-        assert_eq!(c.as_words(), &[0x8210_c210_c210_c221]);
-
-        let b = PosInt::<1> {
-            words: [0x0421_8421_8421_8421; 1],
-            used: 1,
-        };
-        let c = a.add_shift_right_1(&b);
-        assert_eq!(c.as_words(), &[0x4210_c210_c210_c221]);
     }
 }
