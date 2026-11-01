@@ -47,21 +47,23 @@ pub static PBKDF2_HMAC_SHA512: Algorithm = Algorithm {
 
 /// Fills `out` with the key derived from `secret` and `salt` over `iterations` rounds.
 ///
-/// Fails if `out` is longer than PBKDF2 allows, (2^32 - 1) hash outputs,
-/// where ring returns `()` and panics.
+/// # Panics
+///
+/// Panics if `out` is longer than PBKDF2 allows, (2^32 - 1) hash outputs, as
+/// ring does.
 pub fn derive(
     algorithm: Algorithm,
     iterations: NonZeroU32,
     salt: &[u8],
     secret: &[u8],
     out: &mut [u8],
-) -> Result<(), error::Unspecified> {
+) {
     if out.is_empty() {
-        return Ok(());
+        return;
     }
     rind::pbkdf2::Secret::new(algorithm.rind, secret)
         .derive(iterations, salt, out)
-        .map_err(|_| error::Unspecified)
+        .expect("PBKDF2 output over (2^32 - 1) hash outputs");
 }
 
 /// Checks in constant time that `previously_derived` is what [`derive`] makes for the same inputs.

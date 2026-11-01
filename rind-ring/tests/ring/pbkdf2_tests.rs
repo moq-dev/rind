@@ -58,8 +58,7 @@ pub fn pbkdf2_tests() {
 
         {
             let mut out = vec![0u8; dk.len()];
-            // rind-ring: `derive` returns an error rather than panic.
-            pbkdf2::derive(algorithm, iterations, &salt, &secret, &mut out).unwrap();
+            pbkdf2::derive(algorithm, iterations, &salt, &secret, &mut out);
             assert_eq!(dk == out, verify_expected_result.is_ok() || dk.is_empty());
         }
 

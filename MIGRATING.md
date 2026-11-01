@@ -277,9 +277,9 @@ rind-ring offers ring 0.17's API name for name, so a crate on ring swaps it
 in with `ring = { package = "rind-ring", version = "0.1" }` and no code
 changes. The rename reaches only that crate: a dependency that names ring,
 such as rustls with its `ring` feature, still builds ring, since Cargo cannot
-patch it with a crate of another name. Its
-[README](rind-ring/README.md) lists the items it leaves out and the inputs
-it refuses where ring takes them.
+patch it with a crate of another name. It panics wherever ring panics, so
+its signatures stay ring's. Its [README](rind-ring/README.md) lists the
+items it leaves out and the inputs it refuses where ring takes them.
 
 ### rind-rustls
 

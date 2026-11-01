@@ -18,7 +18,8 @@ Decided by the maintainer on 2026-10-30:
   `MIGRATING.md`, maps each ring and aws-lc-rs item to rind's name, the
   quest that adds it, or why rind refuses it, and each child updates its
   rows as it lands. Exact name-for-name compatibility lives only in
-  `rind-ring`.
+  `rind-ring`, which panics wherever ring panics so its signatures match
+  ring's (maintainer, 2026-10-31); rind itself never panics on caller input.
 - ring's algorithm set first. aws-lc-rs's extras wait for a consumer.
 - Out of reach whatever the scope: FIPS validation, and anything that
   exposes C.

@@ -15,6 +15,11 @@
 //! cannot patch a dependency's `ring` with a crate of another name, so a
 //! dependency that names ring still builds ring.
 //!
+//! rind-ring panics wherever ring panics, such as `pbkdf2::derive` on an
+//! output over (2^32 - 1) hash outputs, so its signatures match ring's
+//! exactly (maintainer, 2026-10-31). rind itself never panics on caller
+//! input.
+//!
 //! These items are not offered, so code using them fails to build:
 //!
 //! - `aead::chacha20_poly1305_openssh`: rind refuses it, having no SSH consumer.
@@ -34,10 +39,6 @@
 //!
 //! And these behave differently:
 //!
-//! - `pbkdf2::derive` returns `Result<(), error::Unspecified>`, failing for
-//!   an output over (2^32 - 1) hash outputs, where ring returns `()` and
-//!   panics. A call that ignores the result draws an `unused_must_use`
-//!   warning.
 //! - Where ring takes a [`rand::SecureRandom`] to generate a key or sign,
 //!   rind draws from the system random source itself, as
 //!   [`rand::SystemRandom`], the only `SecureRandom`, does.

@@ -188,7 +188,7 @@ proptest! {
             let mut stored = vec![0u8; len];
             theirs::pbkdf2::derive(theirs_alg, iterations, &salt, &password, &mut stored);
             let mut derived = vec![0u8; len];
-            ours::pbkdf2::derive(ours_alg, iterations, &salt, &password, &mut derived).unwrap();
+            ours::pbkdf2::derive(ours_alg, iterations, &salt, &password, &mut derived);
             prop_assert_eq!(&derived, &stored);
 
             let verify = |stored: &[u8]| {
