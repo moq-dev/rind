@@ -23,9 +23,13 @@ debug = true
 
 # Debug builds of these dependencies branch on secrets, which ctgrind refuses:
 # fiat-crypto's plain arithmetic is proven never to overflow but still checks
-# the flags, curve25519-dalek checks its arithmetic and asserts on scalar
-# digits, and subtle asserts that each `Choice` is 0 or 1.
+# the flags, as libcrux-ml-kem's portable arithmetic does, curve25519-dalek
+# checks its arithmetic and asserts on scalar digits, and subtle asserts that
+# each `Choice` is 0 or 1.
 [profile.dev.package.fiat-crypto]
+overflow-checks = false
+
+[profile.dev.package.libcrux-ml-kem]
 overflow-checks = false
 
 [profile.dev.package.curve25519-dalek]
