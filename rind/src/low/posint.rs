@@ -376,15 +376,7 @@ impl<const N: usize> PosInt<N> {
     /// Bring `self` into montgomery domain, self * M^2 * M^-1 mod n
     #[must_use]
     pub(crate) fn to_montgomery(&self, montifier: &Self, n: &Self) -> Self {
-        let mut mont = Self::zero();
-        mont.used = n.used;
-        low::bignum_montmul(
-            mont.as_mut_words(),
-            self.as_words_with_len_of(n),
-            montifier.as_words_with_len_of(n),
-            n.as_words(),
-        );
-        mont
+        self.mont_mul(montifier, n, n.mont_neg_inverse())
     }
 
     #[must_use]
@@ -472,10 +464,18 @@ impl<const N: usize> PosInt<N> {
     #[must_use]
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn from_montgomery(self, n: &Self) -> Self {
-        let mut demont = Self::zero();
-        demont.used = n.used;
-        low::bignum_demont(demont.as_mut_words(), self.as_words(), n.as_words());
-        demont
+        // On x86_64, `mont_mul` by one measured faster than s2n-bignum's
+        // generic `bignum_demont`.
+        #[cfg(target_arch = "x86_64")]
+        return self.mont_mul(&n.fixed_one(), n, n.mont_neg_inverse());
+
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let mut demont = Self::zero();
+            demont.used = n.used;
+            low::bignum_demont(demont.as_mut_words(), self.as_words(), n.as_words());
+            demont
+        }
     }
 
     /// Returns a * b
