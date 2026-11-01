@@ -96,8 +96,9 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     _ssse3, and _nohw routines and the K_XX_XX table of sha1-x86_64
     (SHA1), and the
     ChaCha20_ctr32_nohw and _ssse3_4x routines and tables of chacha-x86_64
-    (ChaCha20); the bn_mul4x_mont and bn_sqr8x_mont routines of
-    x86_64-mont and bn_sqr8x_internal of x86_64-mont5, and the rsaz_1024_*
+    (ChaCha20); the bn_mul_mont_nohw, bn_mul4x_mont, bn_mulx4x_mont, and
+    bn_sqr8x_mont routines of x86_64-mont and bn_sqr8x_internal and
+    bn_sqrx8x_internal of x86_64-mont5, and the rsaz_1024_*
     routines and tables of rsaz-avx2 (RSA); the
     aes_hw_ctr32_encrypt_blocks routine of aesni-x86_64 (AES-CTR), and the
     vpaes_* routines and table of vpaes-x86_64 (AES); for aarch64,

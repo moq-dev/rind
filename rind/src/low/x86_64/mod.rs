@@ -52,7 +52,6 @@ pub(crate) mod bignum_montmul_p256_alt;
 pub(crate) mod bignum_montmul_p384;
 pub(crate) mod bignum_montmul_p384_alt;
 pub(crate) mod bignum_montredc;
-pub(crate) mod bignum_montsqr;
 pub(crate) mod bignum_montsqr_p256;
 pub(crate) mod bignum_montsqr_p256_alt;
 pub(crate) mod bignum_montsqr_p384;

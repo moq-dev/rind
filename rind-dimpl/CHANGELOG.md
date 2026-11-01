@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.1.1...rind-dimpl-v0.1.2) - 2026-11-01
+
+### Added
+
+- *(x86_64)* AES and GHASH without AVX or AES-NI ([#172](https://github.com/moq-dev/rind/pull/172))
+
 ## [0.1.1](https://github.com/moq-dev/rind/compare/rind-dimpl-v0.1.0...rind-dimpl-v0.1.1) - 2026-11-01
 
 ### Added
