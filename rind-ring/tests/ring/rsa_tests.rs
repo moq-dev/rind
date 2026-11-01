@@ -217,23 +217,18 @@ fn test_signature_rsa_pkcs1_verify() {
             // Sanity check that we correctly DER-encoded the originally-
             // provided separate (n, e) components. When we add test vectors
             // for improperly-encoded signatures, we'll have to revisit this.
-            let (key_bits, e_fits) = untrusted::Input::from(&public_key)
+            let key_bits = untrusted::Input::from(&public_key)
                 .read_all(error::Unspecified, |input| {
                     der::nested(input, der::Tag::Sequence, error::Unspecified, |input| {
                         let n_bytes =
                             der::positive_integer(input)?.big_endian_without_leading_zero();
-                        // rind-ring: rind refuses an exponent over 32 bits,
-                        // where ring takes 33.
-                        let e_fits = der::positive_integer(input)?
-                            .big_endian_without_leading_zero()
-                            .len()
-                            <= 4;
+                        let _e = der::positive_integer(input)?;
 
                         // Because `n_bytes` has the leading zeros stripped and is big-endian, there
                         // must be less than 8 leading zero bits.
                         let n_leading_zeros = usize::try_from(n_bytes[0].leading_zeros()).unwrap();
                         assert!(n_leading_zeros < 8);
-                        Ok(((n_bytes.len() * 8) - n_leading_zeros, e_fits))
+                        Ok((n_bytes.len() * 8) - n_leading_zeros)
                     })
                 })
                 .expect("invalid DER");
@@ -245,7 +240,7 @@ fn test_signature_rsa_pkcs1_verify() {
                 let width_ok = key_bits >= min_bits;
                 let actual_result =
                     signature::UnparsedPublicKey::new(alg, &public_key).verify(&msg, &sig);
-                assert_eq!(actual_result.is_ok(), is_valid && width_ok && e_fits);
+                assert_eq!(actual_result.is_ok(), is_valid && width_ok);
             }
 
             Ok(())
@@ -318,9 +313,7 @@ fn test_signature_rsa_primitive_verification() {
             let expected = test_case.consume_string("Result");
             let public_key = signature::RsaPublicKeyComponents { n: &n, e: &e };
             let result = public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA256, &msg, &sig);
-            // rind-ring: rind refuses an exponent over 32 bits, where ring
-            // takes 33.
-            assert_eq!(result.is_ok(), expected == "Pass" && e.len() <= 4);
+            assert_eq!(result.is_ok(), expected == "Pass");
             Ok(())
         },
     )

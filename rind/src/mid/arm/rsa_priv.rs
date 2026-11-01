@@ -46,7 +46,7 @@ impl RsaPrivateKey {
         dq: RsaPosIntModP,
         iqmp: RsaPosIntModP,
         n: RsaPosIntModN,
-        e: u32,
+        e: u64,
     ) -> Result<Self, Error> {
         let p_len = p.len_bytes();
         if n.len_bits() < MIN_MODULUS_BITS {
@@ -90,7 +90,7 @@ impl RsaPrivateKey {
             dq: dq.words_at_width(width)?,
             iqmp: iqmp.words_at_width(width)?,
             n: public.n.words_at_width(width * 2)?,
-            e: u64::from(e),
+            e,
         }
         .agree(&p_mont);
         if !low::ct::into_public(agree == u64::MAX) {
@@ -139,7 +139,7 @@ impl RsaPrivateKey {
         buffer: &'a mut RsaComponentsBuffer,
     ) -> Result<RsaComponents<'a>, Error> {
         let (public_modulus, buffer) = buffer.0.split_at_mut(MAX_PUBLIC_MODULUS_BYTES + 1);
-        let (public_exponent, buffer) = buffer.split_at_mut(4);
+        let (public_exponent, buffer) = buffer.split_at_mut(8);
         let (p, buffer) = buffer.split_at_mut(MAX_PRIVATE_MODULUS_BYTES + 1);
         let (q, buffer) = buffer.split_at_mut(MAX_PRIVATE_MODULUS_BYTES + 1);
         let (d, buffer) = buffer.split_at_mut(MAX_PUBLIC_MODULUS_BYTES + 1);
@@ -456,7 +456,7 @@ impl RsaComponentsBuffer {
         // public modulus and private exponent
         (MAX_PUBLIC_MODULUS_BYTES + 1) * 2 +
             // public exponent
-            4 +
+            8 +
             // private moduli and crt components
             (MAX_PRIVATE_MODULUS_BYTES + 1) * 5;
 }
