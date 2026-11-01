@@ -290,8 +290,13 @@ mod tests {
             let mut point = [0; 8];
             edwards25519_scalarmulbase::edwards25519_scalarmulbase(&mut point, &rng.words(256));
             let mut encoded = [0u8; 32];
-            for (chunk, word) in encoded.chunks_exact_mut(8).zip(rng.words::<4>(256)) {
-                chunk.copy_from_slice(&word.to_le_bytes());
+            for (chunk, word) in encoded
+                .as_chunks_mut::<8>()
+                .0
+                .iter_mut()
+                .zip(rng.words::<4>(256))
+            {
+                *chunk = word.to_le_bytes();
             }
             let (mut want, mut got) = ([0; 8], [0; 8]);
             assert_eq!(
