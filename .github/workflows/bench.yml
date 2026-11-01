@@ -90,7 +90,7 @@ jobs:
             personality: linux64
             portable: true
             cpu: no-adx
-            benches: --bench rsa_priv --bench rsa_pub --bench rsa_gen --bench p256 --bench p384 --bench p521 --bench x25519 --bench ed25519 --bench rustls
+            benches: --bench rsa_priv --bench rsa_pub --bench rsa_gen --bench p256 --bench p384 --bench p521 --bench x25519 --bench ed25519
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64

@@ -30,14 +30,42 @@ fn bench(
     let secret = [0x5a; 32];
     let info: [&[u8]; 1] = [b"label"];
 
-    group.bench_function("extract/ring", |b| {
-        b.iter(|| black_box(ring::hkdf::Salt::new(ring, b"salt").extract(&secret)))
+    // aws-lc-rs extracts lazily, inside each expansion, so extraction is
+    // timed with one expansion after it.
+    group.bench_function("extract-expand/ring", |b| {
+        b.iter(|| {
+            let mut out = [0u8; 32];
+            ring::hkdf::Salt::new(ring, b"salt")
+                .extract(&secret)
+                .expand(&info, Len(32))
+                .unwrap()
+                .fill(&mut out)
+                .unwrap();
+            black_box(out)
+        })
     });
-    group.bench_function("extract/aws-lc-rs", |b| {
-        b.iter(|| black_box(aws_lc_rs::hkdf::Salt::new(aws, b"salt").extract(&secret)))
+    group.bench_function("extract-expand/aws-lc-rs", |b| {
+        b.iter(|| {
+            let mut out = [0u8; 32];
+            aws_lc_rs::hkdf::Salt::new(aws, b"salt")
+                .extract(&secret)
+                .expand(&info, Len(32))
+                .unwrap()
+                .fill(&mut out)
+                .unwrap();
+            black_box(out)
+        })
     });
-    group.bench_function("extract/rind", |b| {
-        b.iter(|| black_box(rind::hkdf::Salt::new(ours, b"salt").extract(&secret)))
+    group.bench_function("extract-expand/rind", |b| {
+        b.iter(|| {
+            let mut out = [0u8; 32];
+            rind::hkdf::Salt::new(ours, b"salt")
+                .extract(&secret)
+                .expand(&info, out.len())
+                .fill(&mut out)
+                .unwrap();
+            black_box(out)
+        })
     });
 
     let prk = ring::hkdf::Salt::new(ring, b"salt").extract(&secret);
@@ -49,7 +77,21 @@ fn bench(
         })
     });
 
-    let prk = aws_lc_rs::hkdf::Salt::new(aws, b"salt").extract(&secret);
+    group.bench_function("expand-aes-256-gcm-key/ring", |b| {
+        b.iter(|| {
+            black_box(ring::aead::UnboundKey::from(
+                prk.expand(&info, &ring::aead::AES_256_GCM).unwrap(),
+            ))
+        })
+    });
+
+    // aws-lc-rs's `extract` defers extraction to each expansion, so its PRK
+    // is computed here instead.
+    let prk_bytes = aws_lc_rs::hmac::sign(
+        &aws_lc_rs::hmac::Key::new(aws.hmac_algorithm(), b"salt"),
+        &secret,
+    );
+    let prk = aws_lc_rs::hkdf::Prk::new_less_safe(aws, prk_bytes.as_ref());
     group.bench_function("expand/aws-lc-rs", |b| {
         b.iter(|| {
             let mut out = [0u8; 32];
