@@ -84,6 +84,7 @@ pub(crate) mod mlkem_reduce;
 pub(crate) mod mlkem_rej_uniform_vartime;
 pub(crate) mod mlkem_tobytes;
 pub(crate) mod mlkem_tomont;
+pub(crate) mod mont;
 pub(crate) mod p256_montjadd;
 pub(crate) mod p256_montjdouble;
 pub(crate) mod p256_montjmixadd;

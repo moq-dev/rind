@@ -62,20 +62,24 @@ impl RsaPublicKey {
         // bring c into montgomery domain, c_mont = c * M^2 * M^-1 mod n
         let c_mont = c.to_montgomery(&self.montifier, &self.n);
 
-        // e's top bit is set, so the accumulator starts at c
-        let mut accum = c_mont.clone();
+        // e's top bit is set, so the accumulator starts at c. Each product
+        // goes to the other of these, then they swap roles.
+        let (mut a, mut b) = (c_mont.clone(), RsaPosInt::zero());
+        let (mut accum, mut spare) = (&mut a, &mut b);
 
         for bit in (0..self.e.ilog2()).rev() {
-            accum.mont_sqr_in_place(&self.n, self.n0);
+            accum.mont_sqr_into(spare, &self.n, self.n0);
+            core::mem::swap(&mut accum, &mut spare);
 
             let mask = 1 << bit;
             if self.e & mask == mask {
-                accum = accum.mont_mul(&c_mont, &self.n, self.n0);
+                accum.mont_mul_into(&c_mont, spare, &self.n, self.n0);
+                core::mem::swap(&mut accum, &mut spare);
             }
         }
 
         // drop accumulator out of montgomery domain
-        Ok(accum.from_montgomery(&self.n))
+        Ok(accum.clone().from_montgomery(&self.n))
     }
 }
 

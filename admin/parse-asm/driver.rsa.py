@@ -267,48 +267,6 @@ if __name__ == "__main__":
         input = assemble_and_disassemble(input, tool_prefix="x86_64-linux-gnu-")
         parse_file(input, d)
 
-    # The Karatsuba routines and `bignum_emontredc_8n` need BMI2 and ADX, and
-    # have no `_alt` twins, so CPUs without them square and reduce with these.
-    with (
-        open("../../thirdparty/s2n-bignum/x86/generic/bignum_sqr.S") as input,
-        open("../../rind/src/low/x86_64/bignum_sqr.rs", "w") as output,
-    ):
-        d = RustDriver(output, Architecture_amd64)
-        d.emit_rust_function(
-            "bignum_sqr",
-            parameter_map=[
-                ("inout", "z.len() => _"),
-                ("inout", "z.as_mut_ptr() => _"),
-                ("inout", "x.len() => _"),
-                ("inout", "x.as_ptr() => _"),
-            ],
-            assertions=[
-                "z.len() >= x.len() * 2",
-            ],
-            rust_decl="fn bignum_sqr(z: &mut [u64], x: &[u64])",
-        )
-        parse_file(input, d)
-
-    with (
-        open("../../thirdparty/s2n-bignum/x86/generic/bignum_emontredc.S") as input,
-        open("../../rind/src/low/x86_64/bignum_emontredc.rs", "w") as output,
-    ):
-        d = RustDriver(output, Architecture_amd64)
-        d.emit_rust_function(
-            "bignum_emontredc",
-            parameter_map=[
-                ("inout", "m.len() => _"),
-                ("inout", "z.as_mut_ptr() => _"),
-                ("inout", "m.as_ptr() => _"),
-                ("inout", "w => _"),
-            ],
-            return_map=("out", "ret"),
-            return_value=["u64", "ret", "ret"],
-            assertions=["z.len() == m.len() * 2"],
-            rust_decl="fn bignum_emontredc(z: &mut [u64], m: &[u64], w: u64) -> u64",
-        )
-        parse_file(input, d)
-
     with (
         open("../../thirdparty/s2n-bignum/x86/generic/bignum_optsub.S") as input,
         open("../../rind/src/low/x86_64/bignum_optsub.rs", "w") as output,
