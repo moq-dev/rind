@@ -83,6 +83,24 @@
 	pxor	%xmm0,%xmm0
 .byte	102,72,15,110,207
 .byte	102,73,15,110,218
+	testq	%rdx,%rdx
+	jz	.Lmont_sqr8x_nox
+
+	movdqu	%xmm0,48(%rsp,%r9,2)
+	call	{bn_sqrx8x_internal}
+
+
+
+
+	leaq	(%r8,%rcx,1),%rbx
+	movq	%rcx,%r9
+	movq	%rcx,%rdx
+.byte	102,72,15,126,207
+	sarq	$3+2,%rcx
+	jmp	.Lmont_sqr8x_sub
+
+.align	32
+.Lmont_sqr8x_nox:
 	call	{bn_sqr8x_internal}
 
 
