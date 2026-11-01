@@ -40,11 +40,12 @@ Targets, refused rather than falling back:
 - Exactly one backend compiles per arch, never both in one binary
   (maintainer, 2026-10-26).
 - x86_64 and aarch64 run graviola's backend. x86_64 needs aes, ssse3, popcnt,
-  avx, avx2, adx, bmi2, and pclmulqdq; aarch64 needs aes, sha2, pmull, and neon.
+  avx, avx2, adx, bmi2, and pclmulqdq; aarch64 needs neon. aarch64 CPUs
+  without the crypto extension (Raspberry Pi 4, CM4, Zero 2 W) run aws-lc's
+  NEON AES and GHASH and scalar SHA-1 and SHA-256, chosen once per process,
+  as ring and aws-lc-rs do (maintainer, 2026-10-31).
 - `rind::cpu::check()` names the missing feature, so MoQ fails at startup
-  instead of panicking on its first handshake. Hosts missing a feature are refused, as are
-  aarch64 boards without crypto extensions (Raspberry Pi 4, CM4, Zero 2 W),
-  which run the armv7 build instead.
+  instead of panicking on its first handshake. Hosts missing a feature are refused.
 - armv7 (Android and Linux gnueabihf) runs libcrux's portable Rust, with
   P-384 over fiat-crypto's arithmetic. Porting aws-lc's C was rejected as far
   more unverified code for throughput the role does not need. Only its AES,
@@ -71,5 +72,4 @@ RustCrypto dependency.
 - [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
 - [libcrux releases its bignum constant-time fix](/quest/m1/moq/libcrux-ct-fixes.md) - waiting on libcrux's fix, then dropping its armv7 ctgrind suppression
 - [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish
-- [aarch64 without the crypto extensions](/quest/m1/moq/aarch64-portable.md) - rind runs on a Pi 4's aarch64 CPU, as ring and aws-lc-rs do
 - [JWT signing as fast as aws-lc-rs](/quest/m1/moq/jwt-speed.md) - moq-auth's per-token cost does not grow on rind

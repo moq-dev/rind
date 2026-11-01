@@ -168,6 +168,7 @@ cfg_if::cfg_if! {
         pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
         pub(crate) use aarch64::aes::AesKey;
         pub(crate) use aarch64::aes_ctr;
+        pub(crate) use aarch64::cpu::HaveCryptoExt;
         pub(crate) use aarch64::aes_gcm;
         pub(crate) use aarch64::bignum_add::bignum_add;
         pub(crate) use aarch64::bignum_add_p256::bignum_add_p256;

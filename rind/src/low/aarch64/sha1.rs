@@ -1,14 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+//! SHA-1 compression with the SHA-1 instructions where the CPU has them, and
+//! aws-lc's scalar `sha1-armv8` routine otherwise, imported by
+//! `admin/import-aws-lc`. aws-lc's is not formally verified: its correctness
+//! rests on its use and testing in OpenSSL, BoringSSL, and aws-lc, and on
+//! rind's tests of it against the instructions, CAVP, and aws-lc-rs.
+
 use core::arch::aarch64::*;
 
-use crate::low::aarch64::cpu;
+use crate::low::aarch64::cpu::{self, HaveCryptoExt};
 
 pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
     debug_assert!(blocks.len().is_multiple_of(64));
-    // SAFETY: crate requires the `neon` and `sha2` cpu features, and `sha2`
-    // covers the SHA1 instructions
-    unsafe { sha1(state, blocks) }
+    match HaveCryptoExt::check() {
+        // SAFETY: the token proves the CPU has the `sha2` cpu feature, which
+        // covers the SHA1 instructions, and rind requires `neon`.
+        Some(_) => unsafe { sha1(state, blocks) },
+        // The routine runs its loop at least once, so zero blocks would read
+        // past `blocks`.
+        None if blocks.is_empty() => {}
+        // SAFETY: `blocks` is `blocks.len() / 64` readable blocks.
+        None => unsafe { sha1_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64) },
+    }
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn sha1_block_data_order_nohw(
+    state: *mut [u32; 5],
+    data: *const u8,
+    blocks: usize,
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(include_str!("aws_lc/sha1_block_data_order_nohw.linux.s"));
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(include_str!("aws_lc/sha1_block_data_order_nohw.apple.s"));
 }
 
 /// Four rounds of `$op` over message words `$w0`, binding `$e_next` for the
@@ -100,4 +125,35 @@ fn sha1(state: &mut [u32; 5], blocks: &[u8]) {
     // SAFETY: `state` is 5 words, so the first 4 are writable
     unsafe { vst1q_u32(state[0..4].as_mut_ptr(), abcd) };
     state[4] = e;
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // Every other test sees only the routine the CPU picks, so the two are
+    // checked against each other here: odd and even block counts, with
+    // distinct bytes in every block.
+    #[test]
+    fn hw_matches_nohw() {
+        if HaveCryptoExt::check().is_none() {
+            return;
+        }
+        let blocks: Vec<u8> = (0..5 * 64u32)
+            .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
+            .collect();
+        for n in 1..=5 {
+            let blocks = &blocks[..n * 64];
+            let mut want = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
+            let mut got = want;
+            // SAFETY: `blocks` is `n` blocks, and the CPU has the SHA-1
+            // instructions.
+            unsafe {
+                sha1(&mut want, blocks);
+                sha1_block_data_order_nohw(&mut got, blocks.as_ptr(), n);
+            }
+            assert_eq!(got, want, "{n} blocks");
+        }
+    }
 }

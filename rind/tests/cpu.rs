@@ -23,7 +23,7 @@ fn missing_feature_is_named() {
         "adx",
     ];
     #[cfg(target_arch = "aarch64")]
-    const REQUIRED: &[&str] = &["neon", "aes", "pmull", "sha2"];
+    const REQUIRED: &[&str] = &["neon"];
 
     // Hashing checks the CPU apart from `Entry`, so each hash family is
     // covered beside an `Entry` operation.

@@ -1,6 +1,8 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use core::sync::atomic::{AtomicU8, Ordering};
+
 pub(crate) fn enter_cpu_state() -> u32 {
     dit::maybe_enable()
 }
@@ -77,38 +79,19 @@ pub(in crate::low) unsafe fn ct_compare_bytes(a: *const u8, b: *const u8, len: u
     }
 }
 
-/// This macro interdicts is_aarch64_feature_detected to allow testability.
-macro_rules! have_cpu_feature {
-    ("neon") => {
-        crate::low::aarch64::cpu::test_toggle(
-            "neon",
-            std::arch::is_aarch64_feature_detected!("neon"),
-        )
-    };
-    ("aes") => {
-        crate::low::aarch64::cpu::test_toggle("aes", std::arch::is_aarch64_feature_detected!("aes"))
-    };
-    ("pmull") => {
-        crate::low::aarch64::cpu::test_toggle(
-            "pmull",
-            std::arch::is_aarch64_feature_detected!("pmull"),
-        )
-    };
-    ("sha2") => {
-        crate::low::aarch64::cpu::test_toggle(
-            "sha2",
-            std::arch::is_aarch64_feature_detected!("sha2"),
-        )
-    };
-    ("sha3") => {
-        crate::low::aarch64::cpu::test_toggle(
-            "sha3",
-            std::arch::is_aarch64_feature_detected!("sha3"),
-        )
-    };
-    ("dit") => {
-        crate::low::aarch64::cpu::test_toggle("dit", std::arch::is_aarch64_feature_detected!("dit"))
-    };
+/// Proof that the CPU has the crypto extension: AES, PMULL, SHA-1, and
+/// SHA-256.
+///
+/// Cores without it (such as the Raspberry Pi 4's Cortex-A72) lack all of it,
+/// so one token covers it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveCryptoExt(());
+
+impl HaveCryptoExt {
+    /// Detects the extension once, then answers from the cached result.
+    pub(crate) fn check() -> Option<Self> {
+        (features() & CRYPTO_EXT != 0).then_some(Self(()))
+    }
 }
 
 /// Token type reflecting the check for the SHA3 CPU feature
@@ -119,33 +102,54 @@ pub(crate) struct HaveSha3(());
 
 impl HaveSha3 {
     pub(crate) fn check() -> Option<Self> {
-        match have_cpu_feature!("sha3") {
-            true => Some(Self(())),
-            false => None,
-        }
+        (features() & SHA3 != 0).then_some(Self(()))
     }
 }
 
 /// Returns the first CPU feature we require unconditionally that this CPU lacks.
 pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
-    if !have_cpu_feature!("neon") {
-        return Some("neon");
+    (features() & NEON == 0).then_some("neon")
+}
+
+const NEON: u8 = 1 << 0;
+const CRYPTO_EXT: u8 = 1 << 1;
+const SHA3: u8 = 1 << 2;
+const DIT: u8 = 1 << 3;
+const DETECTED: u8 = 1 << 7;
+
+/// The detected features, read once.
+fn features() -> u8 {
+    static FEATURES: AtomicU8 = AtomicU8::new(0);
+
+    match FEATURES.load(Ordering::Relaxed) {
+        0 => {
+            let features = detect() | DETECTED;
+            FEATURES.store(features, Ordering::Relaxed);
+            features
+        }
+        features => features,
     }
-    if !have_cpu_feature!("aes") {
-        return Some("aes");
-    }
-    if !have_cpu_feature!("pmull") {
-        return Some("pmull");
-    }
-    if !have_cpu_feature!("sha2") {
-        return Some("sha2");
-    }
-    None
+}
+
+fn detect() -> u8 {
+    use std::arch::is_aarch64_feature_detected as detected;
+
+    let neon = test_toggle("neon", detected!("neon"));
+    let crypto_ext = test_toggle("aes", detected!("aes"))
+        && test_toggle("pmull", detected!("pmull"))
+        // Rust's `sha2` covers the SHA-1 instructions too.
+        && test_toggle("sha2", detected!("sha2"));
+    let sha3 = test_toggle("sha3", detected!("sha3"));
+    let dit = test_toggle("dit", detected!("dit"));
+    (if neon { NEON } else { 0 })
+        | (if crypto_ext { CRYPTO_EXT } else { 0 })
+        | (if sha3 { SHA3 } else { 0 })
+        | (if dit { DIT } else { 0 })
 }
 
 mod dit {
     pub(super) fn maybe_enable() -> u32 {
-        if have_cpu_feature!("dit") {
+        if super::features() & super::DIT != 0 {
             // SAFETY: in this branch, we verified `dit` cpu feature is supported
             match unsafe { read() } {
                 0 => {
@@ -197,12 +201,14 @@ mod dit {
 }
 
 #[cfg(not(debug_assertions))]
-pub(crate) fn test_toggle(_id: &str, detected: bool) -> bool {
+fn test_toggle(_id: &str, detected: bool) -> bool {
     detected
 }
 
+/// Lets a debug build deny a feature with `RIND_CPU_DISABLE_<id>`, so a CPU
+/// with the crypto extension also tests the code for one without.
 #[cfg(debug_assertions)]
-pub(crate) fn test_toggle(id: &str, detected: bool) -> bool {
+fn test_toggle(id: &str, detected: bool) -> bool {
     if std::env::var(format!("RIND_CPU_DISABLE_{id}")).is_ok() {
         println!("DEBUG: denying cpuid {id:?}");
         false
@@ -220,5 +226,21 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
             ptr = in(reg) ptr,
             options(readonly, nostack)
         );
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // CI runs the aarch64 suite on a CPU with the crypto extension, then
+    // again with it denied, and names which, so neither run silently tests
+    // only one path.
+    #[test]
+    fn detects_the_expected_cpu() {
+        if let Some(expected) = std::env::var_os("RIND_TEST_ARM_CRYPTO_EXT") {
+            assert_eq!(HaveCryptoExt::check().is_some(), expected == "1");
+        }
     }
 }

@@ -1,14 +1,52 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+//! SHA-256 compression with the SHA-256 instructions where the CPU has them,
+//! and aws-lc's scalar `sha256-armv8` routine otherwise, imported by
+//! `admin/import-aws-lc`. aws-lc's is not formally verified: its correctness
+//! rests on its use and testing in OpenSSL, BoringSSL, and aws-lc, and on
+//! rind's tests of it against the instructions, CAVP, and aws-lc-rs.
+
 use core::arch::aarch64::*;
 
-use crate::low::aarch64::cpu;
+use crate::low::aarch64::cpu::{self, HaveCryptoExt};
 
 pub(crate) fn sha256_compress_blocks(state: &mut [u32; 8], blocks: &[u8]) {
     debug_assert!(blocks.len().is_multiple_of(64));
-    // SAFETY: crate requires the `neon` and `sha2` cpu features
-    unsafe { sha256(state, blocks) }
+    match HaveCryptoExt::check() {
+        // SAFETY: the token proves the CPU has the `sha2` cpu feature, and
+        // rind requires `neon`.
+        Some(_) => unsafe { sha256(state, blocks) },
+        // The routine runs its loop at least once, so zero blocks would read
+        // past `blocks`.
+        None if blocks.is_empty() => {}
+        // SAFETY: `blocks` is `blocks.len() / 64` readable blocks.
+        None => unsafe { sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64) },
+    }
+}
+
+/// The round constants, then a zero that ends the scalar routine's rounds.
+#[repr(C, align(64))]
+struct Table([u32; 65]);
+
+static K256: Table = Table(include!("aws_lc/sha256-armv8.K256.rs"));
+
+#[unsafe(naked)]
+unsafe extern "C" fn sha256_block_data_order_nohw(
+    state: *mut [u32; 8],
+    data: *const u8,
+    blocks: usize,
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha256_block_data_order_nohw.linux.s"),
+        K256 = sym K256,
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha256_block_data_order_nohw.apple.s"),
+        K256 = sym K256,
+    );
 }
 
 macro_rules! k {
@@ -132,3 +170,37 @@ static K: Aligned = Aligned([
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ]);
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // Every other test sees only the routine the CPU picks, so the two are
+    // checked against each other here: odd and even block counts, with
+    // distinct bytes in every block.
+    #[test]
+    fn hw_matches_nohw() {
+        if HaveCryptoExt::check().is_none() {
+            return;
+        }
+        let blocks: Vec<u8> = (0..5 * 64u32)
+            .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
+            .collect();
+        for n in 1..=5 {
+            let blocks = &blocks[..n * 64];
+            let mut want = [
+                0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+                0x5be0cd19,
+            ];
+            let mut got = want;
+            // SAFETY: `blocks` is `n` blocks, and the CPU has the SHA-256
+            // instructions.
+            unsafe {
+                sha256(&mut want, blocks);
+                sha256_block_data_order_nohw(&mut got, blocks.as_ptr(), n);
+            }
+            assert_eq!(got, want, "{n} blocks");
+        }
+    }
+}
