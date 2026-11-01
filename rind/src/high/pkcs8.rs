@@ -17,6 +17,8 @@ impl<'a> Key<'a> {
     /// - ensures the key algorithm is `algorithm`,
     /// - ensures the parameters are `parameters`.
     ///
+    /// Any `attributes` are skipped, as aws-lc and ring do.
+    ///
     /// The caller must then  validate and process the `private_key()` value.
     ///
     /// The caller may also validate and cross-check the `public_key()`, if present,
@@ -72,6 +74,7 @@ impl<'a> Key<'a> {
                 parameters,
             },
             privateKey: asn1::OctetString::new(private_key_encoding),
+            attributes: asn1::Context::absent(),
             publicKey: public,
         })
     }
@@ -141,6 +144,65 @@ mod tests {
         let mut buffer = vec![0; bytes.len()];
         let buffer = k.encode(&mut buffer).unwrap();
         assert_eq!(buffer, bytes);
+    }
+
+    /// An Ed25519 PKCS#8 document of `version` whose fields after the
+    /// private key are `tail`, from RFC 8410's example key.
+    fn ed25519_with(version: u8, tail: &[&[u8]]) -> Vec<u8> {
+        let mut body = hex::decode(
+            "020100300506032b657004220420d4ee72dbf913584ad5b6d8f1f769f8ad3afe7c28cbf1d4fbe097a88f44755842",
+        )
+        .unwrap();
+        body[2] = version;
+        body.extend(tail.concat());
+        [&[0x30, body.len() as u8][..], &body].concat()
+    }
+
+    #[test]
+    fn skips_attributes() {
+        const ATTRIBUTE: &[u8] = &[0xa0, 0x03, 0xff, 0xff, 0xff];
+        const RFC_ATTRIBUTE: &str =
+            "a01f301d060a2a864886f70d01090914310f0c0d437572646c6520436861697273";
+        let public_key =
+            hex::decode("19bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1")
+                .unwrap();
+        let public_key_field = [&[0x81, 0x21, 0x00][..], &public_key].concat();
+
+        // Skipped, not interpreted: the contents need not be valid DER.
+        for (version, tail) in [
+            (0, vec![&[0xa0, 0x00][..]]),
+            (0, vec![ATTRIBUTE]),
+            (
+                1,
+                vec![&hex::decode(RFC_ATTRIBUTE).unwrap(), &public_key_field],
+            ),
+        ] {
+            let bytes = ed25519_with(version, &tail);
+            let k = Key::decode(&bytes, &oid::id_ed25519, None).unwrap();
+            assert_eq!(k.private_key().len(), 34);
+            assert_eq!(k.public_key(), (version == 1).then_some(&public_key[..]));
+        }
+
+        use asn1::Error::*;
+        for (version, tail, error) in [
+            (0, vec![&[0xa0, 0x04, 0x30, 0x00][..]], UnexpectedEof),
+            (0, vec![&[0xa0, 0x81, 0x01, 0x00]], NonCanonicalEncoding),
+            (0, vec![&[0x80, 0x00]], UnexpectedTrailingData),
+            (0, vec![&[0xa2, 0x00]], UnexpectedTrailingData),
+            (0, vec![ATTRIBUTE, &[0x05, 0x00]], UnexpectedTrailingData),
+            (0, vec![ATTRIBUTE, ATTRIBUTE], UnexpectedTrailingData),
+            (
+                1,
+                vec![&public_key_field, ATTRIBUTE],
+                UnexpectedTrailingData,
+            ),
+        ] {
+            assert_eq!(
+                Some(KeyFormatError::Asn1(error).into()),
+                Key::decode(&ed25519_with(version, &tail), &oid::id_ed25519, None).err(),
+                "{tail:02x?}",
+            );
+        }
     }
 
     #[test]

@@ -246,7 +246,7 @@ impl<'a, const ID: u8, const EXPLICIT: bool, T: Type<'a>> Type<'a>
             _ => return Ok(Self(None, PhantomData)),
         };
 
-        let t = if EXPLICIT || tag.constructed() {
+        let t = if EXPLICIT {
             let (_, mut sub) = p.descend(tag)?;
             let t = T::parse(&mut sub)?;
             sub.check_end()?;
@@ -263,7 +263,7 @@ impl<'a, const ID: u8, const EXPLICIT: bool, T: Type<'a>> Type<'a>
             Some(a) => a,
         };
 
-        if EXPLICIT || tag.constructed() {
+        if EXPLICIT {
             let body_len = item.encoded_len();
             let mut body = encoder.begin(tag, body_len)?;
             item.encode(&mut body)?;
@@ -279,7 +279,7 @@ impl<'a, const ID: u8, const EXPLICIT: bool, T: Type<'a>> Type<'a>
             Some(a) => a,
         };
 
-        if Self::TAG.constructed() {
+        if EXPLICIT {
             encoded_length_for(item.encoded_len())
         } else {
             item.encoded_len()
@@ -636,6 +636,31 @@ impl<'a> Type<'a> for BitString<'a> {
     const TAG: Tag = Tag(Tag::BIT_STRING);
 }
 
+/// A `SET OF` kept as its encoded elements, which rind never interprets.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SetOf<'a> {
+    elements: &'a [u8],
+}
+
+impl<'a> Type<'a> for SetOf<'a> {
+    fn parse_with_tag(p: &mut Parser<'a>, tag: Tag) -> Result<Self, Error> {
+        let (_, elements) = p.take(tag)?;
+        Ok(Self { elements })
+    }
+
+    fn encode_with_tag(&self, encoder: &mut Encoder<'_>, tag: Tag) -> Result<usize, Error> {
+        let mut body = encoder.begin(tag, self.elements.len())?;
+        body.append_slice(self.elements)?;
+        Ok(body.finish())
+    }
+
+    fn encoded_len(&self) -> usize {
+        encoded_length_for(self.elements.len())
+    }
+
+    const TAG: Tag = Tag(Tag::SET);
+}
+
 pub(crate) struct Parser<'a> {
     input: &'a [u8],
 }
@@ -858,6 +883,7 @@ impl Tag {
     const OBJECT_ID: u8 = 0x06;
 
     const SEQUENCE: u8 = 0x30;
+    const SET: u8 = 0x31;
 
     const CONSTRUCTED: u8 = 0x20;
     const CONTEXT_SPECIFIC: u8 = 0x80;
