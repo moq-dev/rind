@@ -704,6 +704,7 @@ pub(crate) fn mlkem_intt(a: &mut [i16; 256], qdata: &[i16; 624]) {
         Q!("    vmovdqa         " "[448 + rdi], ymm10"),
         Q!("    vmovdqa         " "[480 + rdi], ymm11"),
 
+        Q!("    vzeroupper      " ),
         inout("rdi") a.as_mut_ptr() => _,
         inout("rsi") qdata.as_ptr() => _,
         // clobbers

@@ -58,9 +58,7 @@ but there is also a public API for general-purpose use.
   model lacks it. Without `aes` and `pclmulqdq`, as on Core 2 and Nehalem, AES
   and GHASH run [aws-lc]'s SSSE3 assembly instead (see
   [Algorithms](#algorithms)), `rind::cpu::has_aes_hardware()` is false, and
-  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Without `avx`, as on
-  Westmere and Atom-class cores such as Goldmont and Tremont, AES-GCM and
-  GHASH run their intrinsics without VEX encoding. Without `avx2`, as on
+  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. Without `avx2`, as on
   Sandy Bridge, Ivy Bridge, and AMD's Bulldozer and Jaguar cores, ChaCha20,
   SHA1, and SHA256 run [aws-lc]'s SSSE3 assembly, or for SHA its AVX
   assembly on Intel's cores, ML-KEM's arithmetic runs a Rust port of
@@ -121,7 +119,7 @@ or a [quest][quests] covers it. The table describes
 
 | Algorithm | x86_64 | aarch64 | armv7 |
 |---|---|---|---|
-| AES-128-GCM, AES-256-GCM | VAES: [BoringSSL] interleaved AES-CTR and GHASH (copied) ⚡, on 512-bit vectors from 2 KB with AVX-512 and 256-bit vectors from 256 bytes without; otherwise, and for the key schedule, single-block AES, and GHASH of the AAD and lengths: Graviola, without VEX encoding where the CPU lacks AVX; without AES-NI and PCLMULQDQ: [aws-lc] SSSE3 AES and GHASH (copied), rind GCM | crypto extension: [s2n-bignum] CTR and GHASH of whole blocks ⚡, by-8 for AES-256 on cores with SHA3, run in place, which its proofs exclude; Graviola key schedule, H powers, single-block AES (H, the tag mask, and a final partial block), and GHASH of the AAD, final partial block, and lengths; otherwise: [aws-lc] NEON AES and GHASH (copied), rind GCM | crypto extension: [aws-lc] AES and GHASH (copied), rind GCM; otherwise: [libcrux-aes] |
+| AES-128-GCM, AES-256-GCM | VAES: [BoringSSL] interleaved AES-CTR and GHASH (copied) ⚡, on 512-bit vectors from 2 KB with AVX-512 and 256-bit vectors from 256 bytes without; otherwise, and for the key schedule, single-block AES, and GHASH of the AAD and lengths: Graviola, SSE-encoded; without AES-NI and PCLMULQDQ: [aws-lc] SSSE3 AES and GHASH (copied), rind GCM | crypto extension: [s2n-bignum] CTR and GHASH of whole blocks ⚡, by-8 for AES-256 on cores with SHA3, run in place, which its proofs exclude; Graviola key schedule, H powers, single-block AES (H, the tag mask, and a final partial block), and GHASH of the AAD, final partial block, and lengths; otherwise: [aws-lc] NEON AES and GHASH (copied), rind GCM | crypto extension: [aws-lc] AES and GHASH (copied), rind GCM; otherwise: [libcrux-aes] |
 | AES block (header protection), AES-CTR (SRTP) | AES-NI: Graviola block, [aws-lc] CTR (copied); otherwise: [aws-lc] SSSE3 block and CTR (copied) | crypto extension: Graviola block, rind CTR; otherwise: [aws-lc] NEON block and CTR (copied) | crypto extension: [aws-lc] block and CTR (copied); otherwise: [libcrux-aes] block (copied), rind CTR |
 | ChaCha20 (header protection) | AVX2: Graviola; [HACL\*]'s block function measured level for one block, so it isn't worth a libcrux dependency here; otherwise: [aws-lc] SSSE3 and integer (copied) ⚡ | Graviola; [HACL\*]'s block function measured level for one block | [aws-lc] (copied) ⚡ |
 | ChaCha20-Poly1305, XChaCha20-Poly1305 | AVX2: Graviola ⚡; otherwise: [aws-lc] ChaCha20 (copied) ⚡, Graviola Poly1305, AEAD, and HChaCha20 ⚡ | Graviola ⚡ | [aws-lc] ChaCha20 (copied) ⚡; NEON: [aws-lc] Poly1305 (copied) ⚡; otherwise: [HACL\*] Poly1305 ✓; Graviola AEAD; rind HChaCha20 over [HACL\*] rounds ✓ (copied) |
@@ -148,7 +146,7 @@ The tests use [Wycheproof]'s vectors.
 |---|---|---|---|
 | [Graviola] | copied: rind began as a copy of it, and rind-rustls of its rustls-graviola; its aarch64 ChaCha20 and its Poly1305 began as [cifra], CC0-1.0 | Apache-2.0 OR ISC OR MIT-0 | nothing |
 | rind | its own code | Apache-2.0 OR ISC OR MIT-0 | nothing |
-| [s2n-bignum] | copied: its assembly, transliterated into Rust `asm!` by `admin/parse-asm` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/main/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/main/arm/proofs)) that each routine's object code computes its specified result for all inputs. They check s2n-bignum's own build, not rind's transliteration, and do not cover memory safety. |
+| [s2n-bignum] | copied: its assembly, transliterated into Rust `asm!` by `admin/parse-asm`, which ends each x86_64 routine using 256-bit registers with `vzeroupper` | Apache-2.0 OR ISC OR MIT-0; its ML-KEM and aarch64 Keccak-f routines (from mlkem-native) Apache-2.0 OR ISC OR MIT; its x86_64 Keccak-f (from OpenSSL) Apache-2.0 | HOL Light proofs ([x86_64](https://github.com/awslabs/s2n-bignum/tree/main/x86/proofs), [aarch64](https://github.com/awslabs/s2n-bignum/tree/main/arm/proofs)) that each routine's object code computes its specified result for all inputs. They check s2n-bignum's own build, not rind's transliteration, and do not cover memory safety. |
 | [HACL\*] | dependency, through libcrux-hacl-rs, libcrux-p256, and libcrux-poly1305; copied: the ChaCha20 rounds, for HChaCha20, from libcrux-chacha20poly1305 | Apache-2.0 | [F\* proofs](https://github.com/hacl-star/hacl-star) of memory safety, functional correctness, and secret independence of the F\* source. libcrux's Rust is compiled mechanically from HACL\*'s verified C, and that step is not itself verified. |
 | [libcrux-ml-kem] | dependency | Apache-2.0 | [hax and F\* proofs](https://github.com/cryspen/libcrux/blob/main/libcrux-ml-kem/proofs/verification_status.md) of panic freedom and functional correctness for its portable arithmetic, NTT, serialization, and high-level code. Its SHA-3, from libcrux-sha3, is unverified. |
 | [mlkem-native] | ported: its portable C polynomial arithmetic (the NTT, inverse NTT, base multiplication, reductions, packing, and rejection sampling), to Rust, for x86_64 CPUs without AVX2 | Apache-2.0 OR ISC OR MIT | [CBMC proofs](https://github.com/pq-code-package/mlkem-native/tree/main/proofs/cbmc) of memory safety and coefficient bounds for its C. They do not cover rind's port. |
@@ -311,13 +309,15 @@ Without them, as on Core 2 and Nehalem, AES and AES-CTR run aws-lc's
 AES-GCM as aws-lc composes them, taking turns over 3 KB; both modes measured
 level with aws-lc's. With them, AES-CTR runs aws-lc's
 `aes_hw_ctr32_encrypt_blocks`, 1.1-2x faster than rind's by-8 intrinsics at
-every length, with or without AVX. Without AVX, as on Westmere and the
-Goldmont and Tremont Atoms, AES-GCM and GHASH run the same intrinsics as
-below without VEX encoding, which measured 1.02-1.28x faster than aws-lc's
-SSE `aesni-x86_64` and `ghash-x86_64` routines.
+every length, with or without AVX.
 
-With AVX, AES-GCM has a stitched by-8 AES-CTR and a by-8 GHASH (they are not currently
-interleaved; this is future work.)  There is also an optional AVX-512 by-16 AES-CTR
+AES-GCM has a stitched by-8 AES-CTR and a by-8 GHASH (they are not currently
+interleaved; this is future work), SSE-encoded on every CPU: VEX encoding
+measured no faster with AVX, and without it, as on Westmere and the Goldmont
+and Tremont Atoms, this is 1.02-1.28x faster than aws-lc's SSE `aesni-x86_64`
+and `ghash-x86_64` routines. Every 256- and 512-bit kernel rind runs ends with
+`vzeroupper`, so SSE code after one pays no AVX-SSE transition or false
+dependency. There is also an optional AVX-512 by-16 AES-CTR
 and GHASH.  It uses dynamic CPU feature detection, so AVX-512 is not required at runtime.
 On cores with VAES, BoringSSL's kernels, which interleave AES-CTR and GHASH, take
 long messages: its 512-bit kernel from 2 KB where the CPU has AVX-512 (the by-16

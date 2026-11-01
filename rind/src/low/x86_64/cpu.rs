@@ -32,6 +32,9 @@ pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
 
 #[target_feature(enable = "avx,avx2")]
 unsafe fn zero_bytes_avx2(ptr: *mut u8, len: usize) {
+    // Typed so rustc sees a 256-bit register written and ends the function
+    // with `vzeroupper`, sparing the SSE code that runs next a transition.
+    let _zero: __m256i;
     // SAFETY: writes to `len` bytes at `ptr`, which the caller guarantees
     unsafe {
         core::arch::asm!(
@@ -54,8 +57,7 @@ unsafe fn zero_bytes_avx2(ptr: *mut u8, len: usize) {
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,
 
-            // clobbers
-            zero = out(ymm_reg) _,
+            zero = out(ymm_reg) _zero,
         )
     }
 }
