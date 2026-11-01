@@ -7,5 +7,4 @@ does not block it.
 
 ## Required
 
-- [Bench forced paths in release builds](/quest/m2/bench-forced-paths.md) - the slower-path bench rows without debug assertions
-- [Combined ChaCha20-Poly1305 assembly](/quest/m2/chacha-poly-stitched.md) - aws-lc's interleaved routine, closing the 1.3-1.5x gap
+- [Fastest at every algorithm](/quest/m2/speed/README.md) - every algorithm on every path as fast as any permissive source
