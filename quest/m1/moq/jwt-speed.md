@@ -1,26 +1,23 @@
-# [M] JWT signing as fast as aws-lc-rs
+# [S] HS256 as fast as aws-lc-rs on x86_64 without SHA-NI
 
 ## Goal
 
-rind-jsonwebtoken signs and verifies each algorithm moq-auth uses (HS256,
-ES256, ES384, EdDSA, RS256) at least as fast as jsonwebtoken's aws-lc-rs
-backend, measured per token on a quiet host, so moq-auth's switch to rind
-costs no per-token time.
+rind-jsonwebtoken signs and verifies HS256 at least as fast per token as
+jsonwebtoken's aws-lc-rs backend on x86_64 CPUs without the SHA extensions
+(Intel before Ice Lake), so moq-auth's switch to rind costs no per-token
+time there either. ES256, ES384, EdDSA, and RS256 already match or beat it;
+`rind-bench`'s `jsonwebtoken` bench measures all five.
 
 ## Plan
 
-Decided by the maintainer on 2026-10-31, from moq-auth's migration bench
-(medians on a loaded 4-core host, so rough): HS256 sign 4.5 µs on rind
-against 2.0 µs, HS256 verify 9.4 against 4.6, EdDSA sign 38 against 20,
-EdDSA verify 61 against 47, ES256 sign 73 against 52, RS256 verify 41
-against 29. ES256 verify and RS256 sign were already faster on rind.
+Measured on an i7-8700 (no SHA-NI) on 2026-10-31: HS256 costs about 3% more
+per token on rind, and the gap is SHA-256's compression. rind's own AVX2
+routine runs about 3.5% slower per block than aws-lc's
+`sha256_block_data_order_avx`, which aws-lc picks on Intel without SHA-NI;
+the HMAC and adapter overhead around it already matches.
 
-- jsonwebtoken loads the key on every call, so measure that load apart from
-  the operation first; a guess, unverified, is that each `from_pkcs8`
-  re-derives the public key. Fix the cause in rind or rind-jsonwebtoken,
-  whichever owns it.
-- Add the per-token comparison to rind-bench so a regression shows up, and
-  record before and after numbers in the PR.
-- If a gap is in a primitive rather than the adapter (for example Ed25519
-  signing), fix it in rind on every backend, per AGENTS.md's performance
-  rules.
+- Pick the fastest SHA-256 source for this path per AGENTS.md, for example
+  importing aws-lc's AVX routine with `admin/import-aws-lc` as SHA-512's was,
+  and check every message size and both vendors against aws-lc-rs.
+- Hosts with SHA-NI, and every other backend, are out of scope unless a
+  measurement there shows a gap.

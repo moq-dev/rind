@@ -18,12 +18,14 @@ ed25519-dalek = { version = "3", features = ["alloc", "pkcs8", "rand_core"] }
 getrandom = { version = "0.4", features = ["sys_rng"] }
 hex = { version = "0.4", features = ["serde"] }
 hmac = "0.13"
+jsonwebtoken = { version = "11.1", default-features = false, features = ["aws_lc_rs"] }
 libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["mlkem768", "alloc"] }
 ml-kem = { version = "0.3", features = ["getrandom"] }
 p256 = { version = "0.14", features = ["ecdh", "getrandom"] }
 p384 = { version = "0.14", features = ["ecdh", "getrandom"] }
 proptest = "1.5.0"
 ring = "0.17"
+rind-jsonwebtoken = { path = "../rind-jsonwebtoken" }
 rsa = { version = "=0.10.0-rc.19", features = ["sha2"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -110,4 +112,8 @@ harness = false
 
 [[bench]]
 name = "pbkdf2"
+harness = false
+
+[[bench]]
+name = "jsonwebtoken"
 harness = false
