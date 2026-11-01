@@ -1,6 +1,8 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
+use super::SetOf;
+
 asn1_struct! {
     RSAPublicKey ::= SEQUENCE {
         modulus           INTEGER,
@@ -32,7 +34,8 @@ asn1_struct! {
         version                   Pkcs8Version,
         privateKeyAlgorithm       AlgorithmIdentifier REF,
         privateKey                OCTET STRING,
-        // no attributes accepted
+        // skipped, as aws-lc does
+        attributes [0]            SetOf REF,
         publicKey [1]             BIT STRING
     }
 }
@@ -159,6 +162,26 @@ mod tests {
 
         truncation_check::<OctetString<'_>>(key.privateKey.octets);
         roundtrip_check::<OctetString<'_>>(key.privateKey.octets);
+    }
+
+    #[test]
+    fn parse_pkcs8_v2_key_with_attributes() {
+        // RFC 8410's example.
+        let data = hex::decode(
+            "3072020101300506032b657004220420d4ee72dbf913584ad5b6d8f1f769f8ad3afe7c28cbf1d4fbe097a8\
+             8f44755842a01f301d060a2a864886f70d01090914310f0c0d437572646c652043686169727381210019bf\
+             44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1",
+        )
+        .unwrap();
+        truncation_check::<OneAsymmetricKey<'_>>(&data);
+        roundtrip_check::<OneAsymmetricKey<'_>>(&data);
+
+        let key = OneAsymmetricKey::from_bytes(&data).unwrap();
+        assert!(key.attributes.inner().is_some());
+        assert_eq!(
+            key.publicKey.inner().as_ref().unwrap().as_octets().len(),
+            32
+        );
     }
 
     #[test]

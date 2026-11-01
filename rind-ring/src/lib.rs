@@ -30,12 +30,6 @@
 //!   test harness, which are no cryptography. `test::rand`'s fixed random
 //!   sources could not work, since rind draws its own randomness.
 //!
-//! These inputs ring takes are refused with an error:
-//!
-//! - An ECDSA or RSA PKCS#8 document carrying attributes, which rind's parser
-//!   refuses. An Ed25519 one loads as in ring, as does one whose public key
-//!   has the `[1] EXPLICIT` tag early ring versions wrote.
-//!
 //! And these behave differently:
 //!
 //! - Where ring takes a [`rand::SecureRandom`] to generate a key or sign,
