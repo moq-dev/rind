@@ -73,4 +73,4 @@ RustCrypto dependency.
 - [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish
 - [aarch64 without the crypto extensions](/quest/m1/moq/aarch64-portable.md) - rind runs on a Pi 4's aarch64 CPU, as ring and aws-lc-rs do
 - [Raw private-key export](/quest/m1/moq/raw-export.md) - ECDSA scalars and Ed25519 seeds for moq-auth's JWKs
-- [JWT signing as fast as aws-lc-rs](/quest/m1/moq/jwt-speed.md) - moq-auth's per-token cost does not grow on rind
+- [HS256 as fast as aws-lc-rs on x86_64 without SHA-NI](/quest/m1/moq/jwt-speed.md) - the last per-token gap for moq-auth, in SHA-256

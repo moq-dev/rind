@@ -16,14 +16,29 @@ use crate::mid::rng::{RandomSource, SystemRandom};
 pub(crate) struct SigningKey<C: Curve> {
     // Private, so the scalar cannot be reused for ECDH.
     private_key: C::PrivateKey,
+    // Deriving the public key costs a scalar multiplication, so it is done
+    // once, when the key is made.
+    public_key: [u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN],
+    public_key_len: usize,
 }
 
 impl<C: Curve> SigningKey<C> {
+    fn new(private_key: C::PrivateKey) -> Result<Self, Error> {
+        let mut public_key = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
+        let public_key_len = private_key
+            .public_key_encode_uncompressed(&mut public_key)?
+            .len();
+        Ok(Self {
+            private_key,
+            public_key,
+            public_key_len,
+        })
+    }
+
     /// Generate a new random key.
     pub(crate) fn generate() -> Result<Self, Error> {
         let _entry = Entry::new_secret();
-        let private_key = C::generate_random_key(&mut SystemRandom)?;
-        Ok(Self { private_key })
+        Self::new(C::generate_random_key(&mut SystemRandom)?)
     }
 
     /// Load an ECDSA private key in PKCS#8 format.
@@ -71,12 +86,10 @@ impl<C: Curve> SigningKey<C> {
             _ => return Err(KeyFormatError::MismatchedSec1Curve.into()),
         }
 
-        let key = Self {
-            private_key: C::PrivateKey::from_bytes(ecpk.privateKey.as_octets())?,
-        };
+        let key = Self::new(C::PrivateKey::from_bytes(ecpk.privateKey.as_octets())?)?;
 
         if let Some(expected_public_key) = ecpk.publicKey.inner()
-            && !key.has_public_key(expected_public_key.as_octets())?
+            && key.public_key_uncompressed() != expected_public_key.as_octets()
         {
             return Err(KeyFormatError::MismatchedSec1PublicKey.into());
         }
@@ -95,27 +108,16 @@ impl<C: Curve> SigningKey<C> {
             return Err(KeyFormatError::WrongLength.into());
         }
 
-        let key = Self {
-            private_key: C::PrivateKey::from_bytes(private_key)?,
-        };
-        match key.has_public_key(public_key)? {
+        let key = Self::new(C::PrivateKey::from_bytes(private_key)?)?;
+        match key.public_key_uncompressed() == public_key {
             true => Ok(key),
             false => Err(KeyFormatError::MismatchedPublicKey.into()),
         }
     }
 
-    fn has_public_key(&self, public_key: &[u8]) -> Result<bool, Error> {
-        let mut encoded = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
-        Ok(self.public_key_uncompressed(&mut encoded)? == public_key)
-    }
-
-    /// Encode this private key's public key as an X9.62 uncompressed point.
-    pub(crate) fn public_key_uncompressed<'a>(
-        &self,
-        output: &'a mut [u8],
-    ) -> Result<&'a [u8], Error> {
-        let _entry = Entry::new_secret();
-        self.private_key.public_key_encode_uncompressed(output)
+    /// This private key's public key, as an X9.62 uncompressed point.
+    pub(crate) fn public_key_uncompressed(&self) -> &[u8] {
+        &self.public_key[..self.public_key_len]
     }
 
     fn to_sec1_der_detail<'a>(
@@ -126,11 +128,6 @@ impl<C: Curve> SigningKey<C> {
         let mut encoded_private_key_buf = [0u8; MAX_SCALAR_LEN];
         let encoded_private_key = self.private_key.encode(&mut encoded_private_key_buf)?;
 
-        let mut encoded_public_key_buf = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
-        let encoded_public_key = self
-            .private_key
-            .public_key_encode_uncompressed(&mut encoded_public_key_buf)?;
-
         let ecpk = asn1::pkix::EcPrivateKey {
             version: asn1::pkix::EcPrivateKeyVer::ecPrivkeyVer1,
             privateKey: asn1::OctetString::new(encoded_private_key),
@@ -138,7 +135,7 @@ impl<C: Curve> SigningKey<C> {
                 Some(x) => x.into(),
                 None => asn1::Context::absent(),
             },
-            publicKey: asn1::BitString::new(encoded_public_key).into(),
+            publicKey: asn1::BitString::new(self.public_key_uncompressed()).into(),
         };
 
         let used = ecpk
@@ -157,18 +154,12 @@ impl<C: Curve> SigningKey<C> {
     /// returned.  [`Error::WrongLength`] is returned if `output` is not sufficient
     /// to contain the full encoding.
     pub(crate) fn to_spki_der<'a>(&self, output: &'a mut [u8]) -> Result<&'a [u8], Error> {
-        let _entry = Entry::new_secret();
-        let mut pub_key_buffer = [0u8; MAX_UNCOMPRESSED_PUBLIC_KEY_LEN];
-        let pub_key_buffer = self
-            .private_key
-            .public_key_encode_uncompressed(&mut pub_key_buffer)?;
-
         let spki = asn1::pkix::SubjectPublicKeyInfo {
             algorithm: asn1::pkix::AlgorithmIdentifier {
                 algorithm: asn1::oid::id_ecPublicKey.clone(),
                 parameters: Some(asn1::Any::ObjectId(C::oid())),
             },
-            subjectPublicKey: asn1::BitString::new(pub_key_buffer),
+            subjectPublicKey: asn1::BitString::new(self.public_key_uncompressed()),
         };
 
         let len = spki
@@ -486,7 +477,7 @@ mod tests {
         let public_key = private_key
             .public_key_encode_uncompressed(&mut public_key)
             .unwrap();
-        let sk = SigningKey::<C> { private_key };
+        let sk = SigningKey::<C>::new(private_key).unwrap();
         let vk = VerifyingKey::<C> {
             public_key: C::PublicKey::from_x962_uncompressed(public_key).unwrap(),
         };
@@ -609,7 +600,7 @@ mod tests {
         let public_key = private_key
             .public_key_encode_uncompressed(&mut public_key)
             .unwrap();
-        let k = SigningKey::<curve::P256> { private_key };
+        let k = SigningKey::<curve::P256>::new(private_key).unwrap();
         let v = VerifyingKey::<curve::P256> {
             public_key: <curve::P256 as curve::Curve>::PublicKey::from_x962_uncompressed(
                 public_key,
@@ -725,7 +716,7 @@ mod tests {
             )
             .unwrap(),
         };
-        let k = SigningKey::<curve::P521> { private_key };
+        let k = SigningKey::<curve::P521>::new(private_key).unwrap();
         let mut signature = [0u8; 132];
 
         k.rfc6979_sign_with_random::<hash::Sha256>(b"sample", &[], &mut signature)

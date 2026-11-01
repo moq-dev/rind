@@ -336,6 +336,43 @@ impl<const N: usize> PosInt<N> {
         montifier
     }
 
+    /// Returns [`Self::montifier`] for a public `self` with a nonzero top
+    /// word, faster: it runs in variable time. A zero top word gives zero.
+    ///
+    /// This divides as aws-lc does: from 2^(64 * (width - 1)), which is below
+    /// `self`, each of width + 1 steps of long division multiplies by 2^64,
+    /// ending at M^2 mod `self`.
+    #[must_use]
+    pub(crate) fn pub_montifier(&self) -> Self {
+        let k = self.used;
+        let Some(&top) = self.as_words().last().filter(|top| **top != 0) else {
+            return Self::zero();
+        };
+
+        // Shift both so the divisor's top bit is set, as `mul_word_mod` needs.
+        let shift = top.leading_zeros();
+        let mut d = Self::zero();
+        d.used = k;
+        for i in 0..k {
+            let below = i.checked_sub(1).map_or(0, |i| self.words[i]);
+            d.words[i] = self.words[i] << shift | below.checked_shr(64 - shift).unwrap_or(0);
+        }
+        let mut r = Self::zero();
+        r.used = k;
+        r.words[k - 1] = 1 << shift;
+
+        for _ in 0..=k {
+            mul_word_mod(r.as_mut_words(), d.as_words());
+        }
+
+        for i in 0..k {
+            let above = r.words.get(i + 1).copied().filter(|_| i + 1 < k);
+            r.words[i] = r.words[i] >> shift
+                | above.map_or(0, |above| above.checked_shl(64 - shift).unwrap_or(0));
+        }
+        r
+    }
+
     /// Bring `self` into montgomery domain, self * M^2 * M^-1 mod n
     #[must_use]
     pub(crate) fn to_montgomery(&self, montifier: &Self, n: &Self) -> Self {
@@ -352,10 +389,10 @@ impl<const N: usize> PosInt<N> {
 
     #[must_use]
     pub(crate) fn mont_neg_inverse(&self) -> u64 {
-        let mut tmp = Self::zero();
-        tmp.used = self.used;
-        low::bignum_negmodinv(tmp.as_mut_words(), self.as_words());
-        tmp.words[0]
+        // The inverse's low word depends only on the low word.
+        let mut n0 = [0];
+        low::bignum_negmodinv(&mut n0, &self.words[..1]);
+        n0[0]
     }
 
     /// Return `self` ^ 2 in montgomery domain, self ^ 2 * M^-1 mod n.
@@ -913,10 +950,100 @@ fn trim_leading_zeroes(mut bytes: &[u8]) -> &[u8] {
     bytes
 }
 
+/// Replaces `u` with `u * 2^64 mod d`, in variable time.
+///
+/// This is one step of Knuth's algorithm D (TAOCP 4.3.1). `d`'s top bit must
+/// be set, `u` must be below `d`, and both must be as wide.
+fn mul_word_mod(u: &mut [u64], d: &[u64]) {
+    let k = d.len();
+    let (Some(&d1), Some(&u2)) = (d.last(), u.last()) else {
+        return;
+    };
+    let d0 = k.checked_sub(2).map_or(0, |i| d[i]);
+    let u1 = k.checked_sub(2).map_or(0, |i| u[i]);
+    let u0 = k.checked_sub(3).map_or(0, |i| u[i]);
+    u.copy_within(..k - 1, 1);
+    u[0] = 0;
+
+    // Estimate the quotient word from the top words, then refine it with
+    // the next, after which it is at most one too large. `u` is below `d`,
+    // so u2 <= d1.
+    let num = u128::from(u2) << 64 | u128::from(u1);
+    let mut q = match u2 < d1 {
+        true => num / u128::from(d1),
+        false => u128::from(u64::MAX),
+    };
+    let mut rem = num - q * u128::from(d1);
+    while rem >> 64 == 0 && q * u128::from(d0) > (rem << 64 | u128::from(u0)) {
+        q -= 1;
+        rem += u128::from(d1);
+    }
+
+    // (u2, u) -= q * d, then add d back if that went negative.
+    let mut carry = 0u64;
+    let mut borrow = false;
+    for (u, d) in u.iter_mut().zip(d) {
+        let product = q * u128::from(*d) + u128::from(carry);
+        carry = (product >> 64) as u64;
+        let (diff, b1) = u.overflowing_sub(product as u64);
+        let (diff, b2) = diff.overflowing_sub(u64::from(borrow));
+        *u = diff;
+        borrow = b1 | b2;
+    }
+    if u2 < carry || (u2 == carry && borrow) {
+        let mut carry = false;
+        for (u, d) in u.iter_mut().zip(d) {
+            let (sum, c1) = u.overflowing_add(*d);
+            let (sum, c2) = sum.overflowing_add(u64::from(carry));
+            *u = sum;
+            carry = c1 | c2;
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+
+    /// Against the constant-time montifier, at the extremes of each width,
+    /// including a top word of one.
+    #[test]
+    fn pub_montifier() {
+        for bits in [1024usize, 1025, 2047, 2048, 2049, 3072, 4095, 8192] {
+            let len = bits.div_ceil(64);
+            let mut low = PosInt::<128>::zero();
+            low.used = len;
+            low.words[0] = 1;
+            low.words[(bits - 1) / 64] |= 1 << ((bits - 1) % 64);
+            let mut high = PosInt::<128>::zero();
+            high.used = len;
+            high.words[..len].fill(u64::MAX);
+            high.words[len - 1] >>= 64 * len - bits;
+
+            for n in [low, high] {
+                assert!(n.pub_montifier().pub_equals(&n.montifier()), "{bits} bits");
+            }
+        }
+    }
+
+    /// The rare quotient estimates `pub_montifier`'s moduli never reach.
+    #[test]
+    fn mul_word_mod() {
+        const TOP: u64 = 1 << 63;
+        for (d, want, why) in [
+            // 2^192 mod 2^191 + 1: the estimate 2 survives refinement, so
+            // the remainder goes negative and d is added back.
+            ([1, 0, TOP], [u64::MAX, u64::MAX, TOP - 1], "added back"),
+            // 2^192 mod 2^191 + 2^128 - 2^64: the second word refines the
+            // estimate 2 down to 1.
+            ([0, u64::MAX, TOP], [0, 1, TOP - 1], "refined"),
+        ] {
+            let mut u = [0, 0, 1];
+            super::mul_word_mod(&mut u, &d);
+            assert_eq!(u, want, "{why}");
+        }
+    }
 
     #[test]
     fn from_bytes() {

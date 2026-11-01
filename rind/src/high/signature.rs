@@ -458,7 +458,7 @@ impl EcdsaKeyPair {
         key: ecdsa::SigningKey<C>,
         variant: fn(ecdsa::SigningKey<C>, ecdsa::VerifyingKey<C>) -> EcdsaKey,
     ) -> Result<Self, Error> {
-        let point = Buffer::write(|output| key.public_key_uncompressed(output))?;
+        let point = Buffer::copy_from(key.public_key_uncompressed())?;
         let public = ecdsa::VerifyingKey::from_x962_uncompressed(point.as_ref())?;
         Ok(Self {
             key: variant(key, public),

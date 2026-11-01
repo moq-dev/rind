@@ -62,13 +62,7 @@ impl VerifyingKey {
         let lhs = JacobianMontPoint::public_base_multiply(&u1);
         let rhs = JacobianMontPoint::multiply_w5::<false>(&u2, &self.precomp_w5);
 
-        // nb. if lhs == rhs, then we need a doubling rather than addition
-        // (because `p384_montjadd` doesn't handle P + P.)
-        let point = if lhs.public_eq(&rhs) {
-            lhs.double()
-        } else {
-            JacobianMontPoint::add(&lhs, &rhs)
-        };
+        let point = JacobianMontPoint::public_add(&lhs, &rhs);
 
         if point.public_is_infinity() {
             return Err(Error::BadSignature);
@@ -76,10 +70,8 @@ impl VerifyingKey {
 
         // 6. Convert the field element xR to an integer xR using the conversion routine specified in Section 2.3.9.
         // 7. Set v = xR mod n.
-        let v = point.x_scalar();
-
         // 8. Compare v and r — if v = r, output "valid", and if v != r, output "invalid".
-        match v.public_eq(r) {
+        match point.public_x_is(r) {
             true => Ok(()),
             false => Err(Error::BadSignature),
         }
@@ -576,28 +568,45 @@ impl JacobianMontPoint {
         AffineMontPoint::from_xy(x, y)
     }
 
-    fn public_eq(&self, other: &Self) -> bool {
-        // we can't compare these directly, because they could be
-        // the same point but with different z factors.  instead,
-        // convert one to affine, and then bring it back into
-        // jacobian using other's z factors.
-        let a = self.as_affine();
+    /// `a + b`, for any points, including at infinity, equal, or opposite,
+    /// which `p384_montjadd` does not handle.
+    fn public_add(a: &Self, b: &Self) -> Self {
+        if a.public_is_infinity() {
+            return *b;
+        }
+        if b.public_is_infinity() {
+            return *a;
+        }
 
-        let b_z2 = other.z().mont_sqr();
-        let b_z3 = other.z().mont_mul(&b_z2);
-
-        let a_x_b_z2 = a.x().mont_mul(&b_z2);
-        let a_y_b_z3 = a.y().mont_mul(&b_z3);
-
-        a_x_b_z2.public_eq(&other.x()) && a_y_b_z3.public_eq(&other.y())
+        // Both points scaled to the product of their z's.
+        let (az2, bz2) = (a.z().mont_sqr(), b.z().mont_sqr());
+        let same_x = a.x().mont_mul(&bz2).public_eq(&b.x().mont_mul(&az2));
+        if !same_x {
+            return a.add(b);
+        }
+        let ay = a.y().mont_mul(&bz2.mont_mul(&b.z()));
+        let by = b.y().mont_mul(&az2.mont_mul(&a.z()));
+        match ay.public_eq(&by) {
+            true => a.double(),
+            false => Self::infinity(),
+        }
     }
 
-    fn x_scalar(&self) -> Scalar {
-        // this is a faster version of `as_affine().x_scalar()`
+    /// Whether this point's x, reduced mod n, is `r`, for a point not at
+    /// infinity.
+    ///
+    /// x = X / z², so this checks X = r * z², and (r + n) * z² when that is
+    /// below p, the only other x that reduces to `r`. Unlike computing x,
+    /// that needs no inversion.
+    fn public_x_is(&self, r: &Scalar) -> bool {
         let z2 = self.z().mont_sqr();
-        let z2_inv = z2.demont().inv().as_mont();
-        let x = self.x().mont_mul(&z2_inv).demont();
-        Scalar::from_bytes_reduced(&util::u64x6_to_big_endian(&x.0)).unwrap()
+        let is = |x: [u64; 6]| FieldElement(x).as_mont().mont_mul(&z2).public_eq(&self.x());
+        if is(r.0) {
+            return true;
+        }
+        let mut r_plus_n = [0; 6];
+        let carry = low::bignum_add(&mut r_plus_n, &r.0, &CURVE_ORDER);
+        carry == 0 && low::bignum_cmp_lt(&r_plus_n, &CURVE_PRIME) != 0 && is(r_plus_n)
     }
 
     #[must_use]
@@ -812,11 +821,6 @@ impl Scalar {
 
     /// Private equality
     fn private_eq(&self, other: &Self) -> bool {
-        low::bignum_eq(&self.0, &other.0)
-    }
-
-    /// Public equality
-    fn public_eq(&self, other: &Self) -> bool {
         low::bignum_eq(&self.0, &other.0)
     }
 
