@@ -1,6 +1,6 @@
 [package]
 name = "rind-rcgen"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "Apache-2.0 OR ISC OR MIT-0"
@@ -11,7 +11,7 @@ readme = "README.md"
 
 [dependencies]
 rcgen = { version = "0.14", default-features = false }
-rind = { version = "0.1.0", path = "../rind" }
+rind = { version = "0.1.1", path = "../rind" }
 rustls-pki-types = "1.12"
 zeroize = "1.9"
 
