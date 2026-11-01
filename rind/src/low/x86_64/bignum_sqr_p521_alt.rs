@@ -335,6 +335,7 @@ pub(crate) fn bignum_sqr_p521_alt(z: &mut [u64; 9], x: &[u64; 9]) {
         out("r8") _,
         out("r9") _,
         out("rax") _,
+        out("rcx") _,
         out("rdx") _,
             )
     };
