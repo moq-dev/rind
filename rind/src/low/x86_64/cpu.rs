@@ -310,6 +310,10 @@ pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
     if !has(AVX2) {
         return Some("avx2");
     }
+    // the AVX2 SHA-1 and SHA-256 rounds, and ML-KEM rejection sampling
+    if !has(BMI2) {
+        return Some("bmi2");
+    }
     None
 }
 

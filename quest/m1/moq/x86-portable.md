@@ -1,4 +1,4 @@
-# [L] x86_64 without AVX2 or AES-NI
+# [L] x86_64 without AVX2, BMI2, or AES-NI
 
 ## Goal
 
@@ -15,11 +15,13 @@ the fastest one per path wins, verified only on a tie, as for aarch64's
 portable path.
 
 - Today `rind::cpu::check()` requires `aes`, `ssse3`, `popcnt`, `avx`,
-  `avx2`, and `pclmulqdq`; bignum, ECC, and X25519 already run s2n-bignum's
-  `_alt` routines without `bmi2` and `adx`, behind `low::x86_64::adx_mux`.
+  `avx2`, `bmi2`, and `pclmulqdq`; bignum, ECC, and X25519 already run
+  s2n-bignum's `_alt` routines without `bmi2` and `adx`, behind
+  `low::x86_64::adx_mux`. `bmi2` stays required only for the AVX2 SHA-1 and
+  SHA-256 rounds and ML-KEM's rejection sampling, so it goes with `avx2`.
   Keep the current kernels as the fast path, and add a path for each missing
   group:
-  - RSA without `bmi2`/`adx`: s2n-bignum has no `_alt` Karatsuba or 8n
+  - RSA without `adx`: s2n-bignum has no `_alt` Karatsuba or 8n
     reduction, and its generic schoolbook routines sign RSA-2048 2.3x slower
     than aws-lc-rs on the same path (its generic `bignum_montmul` is slower
     still). aws-lc's `bn_mul4x_mont` and `bn_sqr8x_mont` are what aws-lc-rs

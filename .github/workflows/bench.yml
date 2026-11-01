@@ -51,7 +51,7 @@ jobs:
   #
   # A portable row denies both libraries what the slower path lacks: on
   # aarch64, the crypto extension and the SHA-512 and SHA-3 instructions, as
-  # a Raspberry Pi 4 lacks them; on x86_64, BMI2 and ADX. rind's denial takes
+  # a Raspberry Pi 4 lacks them; on x86_64, ADX. rind's denial takes
   # debug assertions, which the optimised build then keeps.
   native:
     name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }})
@@ -124,8 +124,8 @@ jobs:
                 ;;
               x86_64-*)
                 export RIND_CPU_DISABLE_adx=1
-                # aws-lc's BMI2 and ADX bits, in CPUID leaf 7's EBX.
-                export OPENSSL_ia32cap='~0x0:~0x80100'
+                # aws-lc's ADX bit, in CPUID leaf 7's EBX.
+                export OPENSSL_ia32cap='~0x0:~0x80000'
                 ;;
             esac
           fi
