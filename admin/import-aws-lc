@@ -158,6 +158,15 @@ IMPORTS_64 = [
         "routines": ["sha512_block_data_order_avx", "sha512_block_data_order_nohw"],
     },
     {
+        "arch": "x86_64",
+        "source": "sha256-x86_64.S",
+        "tag": "sha256",
+        "perlasm": "crypto/fipsmodule/sha/asm/sha512-x86_64.pl",
+        "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["K256"],
+        "routines": ["sha256_block_data_order_avx"],
+    },
+    {
         "arch": "aarch64",
         "source": "sha512-armv8.S",
         "tag": "sha512",

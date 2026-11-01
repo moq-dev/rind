@@ -87,7 +87,9 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     sha1-armv4-large.s (SHA1), sha256-armv4.s (SHA256), sha512-armv4.s
     (SHA512), and chacha-armv4.s (ChaCha20); for aarch64 and x86_64, the
     sha512_block_data_order_* routines and the K512 tables of
-    sha512-armv8 and sha512-x86_64 (SHA512); for aarch64, the vpaes_*
+    sha512-armv8 and sha512-x86_64 (SHA512); for x86_64, the
+    sha256_block_data_order_avx routine and the K256 table of
+    sha256-x86_64 (SHA256); for aarch64, the vpaes_*
     routines and table of vpaes-armv8 (AES), the gcm_*_neon routines and
     table of ghash-neon-armv8 (GHASH), and the *_block_data_order_nohw
     routines and table of sha1-armv8 (SHA1) and sha256-armv8 (SHA256). All
