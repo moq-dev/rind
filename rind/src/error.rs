@@ -89,7 +89,7 @@ impl core::fmt::Display for KeyRejected {
             KeyFormatError::RsaExponent => {
                 write!(
                     f,
-                    "an RSA public exponent that is even, one, or over 32 bits"
+                    "an RSA public exponent that is even, one, or over 33 bits"
                 )
             }
             KeyFormatError::RsaPrimes => write!(f, "unsupported RSA primes"),

@@ -67,8 +67,8 @@ pub(crate) struct Ed25519Pkcs8<'a> {
 }
 
 /// Reads an Ed25519 PKCS#8 document as ring does, which rind's stricter
-/// parser does not: attributes are skipped, and a v2 public key may be
-/// tagged `[1] EXPLICIT`, as early ring versions wrote it.
+/// parser does not: a v2 public key may be tagged `[1] EXPLICIT`, as early
+/// ring versions wrote it.
 ///
 /// `v1` says whether a v1 document, which carries no public key, is taken.
 /// The seed is only sliced out, never branched on.

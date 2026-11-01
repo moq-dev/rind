@@ -24,6 +24,15 @@ pub(crate) const MAX_SPKI_LEN: usize = MAX_PUBLIC_KEY_LEN + 32;
 /// after its version and algorithm identifier.
 pub(crate) const MAX_PKCS8_LEN: usize = SigningKey::MAX_PKCS1_BUFFER_LEN + 64;
 
+/// Reads a big-endian public exponent for `RsaPublicKey::new` to bound; one
+/// too wide for a `u64` is far past that bound.
+fn public_exponent(e: &[u8]) -> Result<u64, Error> {
+    if e.len() > size_of::<u64>() {
+        return Err(KeyFormatError::RsaExponent.into());
+    }
+    Ok(e.iter().fold(0, |e, byte| e << 8 | u64::from(*byte)))
+}
+
 /// An RSA verification public key.
 ///
 /// Keys supported by this library have public moduli between
@@ -42,12 +51,7 @@ impl VerifyingKey {
         }
 
         let n = PosInt::from_bytes(n).map_err(|_| KeyFormatError::RsaModulus)?;
-        if e.len() > 4 {
-            return Err(KeyFormatError::RsaExponent.into());
-        }
-        let e = e.iter().fold(0, |e, byte| e << 8 | u32::from(*byte));
-
-        Ok(Self(rsa_pub::RsaPublicKey::new(n, e)?))
+        Ok(Self(rsa_pub::RsaPublicKey::new(n, public_exponent(e)?)?))
     }
 
     /// Decodes an RSA public verification key from PKCS#1 DER format.
@@ -62,15 +66,13 @@ impl VerifyingKey {
         if decoded.modulus.is_negative() {
             return Err(KeyFormatError::RsaModulus.into());
         }
+        if decoded.publicExponent.is_negative() {
+            return Err(KeyFormatError::RsaExponent.into());
+        }
 
         let n =
             PosInt::from_bytes(decoded.modulus.as_ref()).map_err(|_| KeyFormatError::RsaModulus)?;
-        let e = decoded
-            .publicExponent
-            .as_usize()
-            .map_err(KeyFormatError::Asn1)?;
-        let e = e.try_into().map_err(|_| KeyFormatError::RsaExponent)?;
-
+        let e = public_exponent(decoded.publicExponent.as_ref())?;
         let pub_key = rsa_pub::RsaPublicKey::new(n, e)?;
 
         Ok(Self(pub_key))
@@ -331,14 +333,13 @@ impl SigningKey {
         if decoded.modulus.is_negative() {
             return Err(KeyFormatError::RsaModulus.into());
         }
+        if decoded.publicExponent.is_negative() {
+            return Err(KeyFormatError::RsaExponent.into());
+        }
 
         let n =
             PosInt::from_bytes(decoded.modulus.as_ref()).map_err(|_| KeyFormatError::RsaModulus)?;
-        let e = decoded
-            .publicExponent
-            .as_usize()
-            .map_err(KeyFormatError::Asn1)?;
-        let e = e.try_into().map_err(|_| KeyFormatError::RsaExponent)?;
+        let e = public_exponent(decoded.publicExponent.as_ref())?;
 
         let prime = |x: &asn1::Integer<'_>| {
             PosInt::from_bytes(x.as_ref()).map_err(|_| KeyFormatError::RsaPrimes)
@@ -1105,10 +1106,10 @@ mod tests {
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
     }
 
-    /// e must be odd and above one, as in aws-lc-rs, for public keys as
-    /// components or DER, and for private keys.
+    /// e must be odd, above one, and at most 33 bits, as in aws-lc-rs, for
+    /// public keys as components or DER, and for private keys.
     #[test]
-    fn refuses_even_or_unit_exponent() {
+    fn refuses_even_unit_or_wide_exponent() {
         let key = Pkcs1::decode(include_bytes!("rsa/rsa2048.der"));
         let n = [&[0][..], &key.n].concat();
         for (e, ok) in [
@@ -1118,23 +1119,30 @@ mod tests {
             (&[1, 0, 0], false),
             (&[3], true),
             (&[1, 0, 1], true),
+            (&[0x80, 0, 0, 1], true),
+            (&[1, 0, 0, 0, 1], true),
+            (&[1, 0xff, 0xff, 0xff, 0xff], true),
+            (&[2, 0, 0, 0, 1], false),
+            // Too wide for a `u64`, where a wrapping read would give 3.
+            (&[1, 0, 0, 0, 0, 0, 0, 0, 3], false),
         ] {
             let mut der = [0u8; 512];
             let len = pkix::RSAPublicKey {
                 modulus: asn1::Integer::new(&n),
-                publicExponent: asn1::Integer::new(e),
+                publicExponent: asn1::Integer::new(&[&[0][..], e].concat()),
             }
             .encode(&mut asn1::Encoder::new(&mut der))
             .unwrap();
+            let der = &der[..len];
             let want = match ok {
                 true => Ok(()),
                 false => Err(KeyFormatError::RsaExponent.into()),
             };
-            assert_eq!(
-                VerifyingKey::from_pkcs1_der(&der[..len]).map(|_| ()),
-                want,
-                "{e:?}"
-            );
+            match VerifyingKey::from_pkcs1_der(der) {
+                // It encodes as it was read, whatever its top bit.
+                Ok(key) => assert_eq!(key.to_pkcs1_der(&mut [0; 512]), Ok(der), "{e:?}"),
+                Err(err) => assert_eq!(Err(err), want, "{e:?}"),
+            }
             assert_eq!(
                 VerifyingKey::from_components(&key.n, e).map(|_| ()),
                 want,
@@ -1158,6 +1166,19 @@ mod tests {
                 _ => assert_eq!(ours, Some(KeyFormatError::RsaExponent.into()), "{e:?}"),
             }
         }
+
+        // A negative exponent, whose bytes alone would read as 129.
+        let mut der = [0u8; 512];
+        let len = pkix::RSAPublicKey {
+            modulus: asn1::Integer::new(&n),
+            publicExponent: asn1::Integer::new(&[0x81]),
+        }
+        .encode(&mut asn1::Encoder::new(&mut der))
+        .unwrap();
+        assert_eq!(
+            VerifyingKey::from_pkcs1_der(&der[..len]).map(|_| ()),
+            Err(KeyFormatError::RsaExponent.into())
+        );
 
         // With e = 1 a signature is its own encoded message, so anyone could
         // forge one.
