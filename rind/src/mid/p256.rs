@@ -557,8 +557,14 @@ impl JacobianMontPoint {
             return true;
         }
         let mut r_plus_n = [0; 4];
-        let carry = low::bignum_add(&mut r_plus_n, &r.0, &CURVE_ORDER);
-        carry == 0 && low::bignum_cmp_lt(&r_plus_n, &CURVE_PRIME) != 0 && is(r_plus_n)
+        let mut carry = false;
+        for (sum, (r, n)) in r_plus_n.iter_mut().zip(r.0.iter().zip(CURVE_ORDER)) {
+            let (s, c1) = r.overflowing_add(n);
+            let (s, c2) = s.overflowing_add(u64::from(carry));
+            *sum = s;
+            carry = c1 | c2;
+        }
+        !carry && r_plus_n.iter().rev().lt(CURVE_PRIME.iter().rev()) && is(r_plus_n)
     }
 
     #[must_use]
