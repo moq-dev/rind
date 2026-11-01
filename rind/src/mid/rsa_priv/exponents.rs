@@ -126,7 +126,7 @@ fn divide_by_gcd(x: &[u64], y: &[u64], out: &mut [u64]) {
 
     // Each iteration halves at least one of u and v until one is zero, so
     // their combined width bounds the iterations.
-    let mut shift = 0;
+    let mut shift = 0usize;
     for _ in 0..len * 128 {
         // If both are odd, subtract the smaller from the larger.
         let both_odd = mask(u[0] & v[0] & 1);
