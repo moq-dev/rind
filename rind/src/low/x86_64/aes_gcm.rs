@@ -64,21 +64,14 @@ fn cipher<const ENC: bool>(
         }
         GhashTable::Clmul(table)
         | GhashTable::VaesAvx2(table, _)
-        | GhashTable::Avx512(GhashTableAvx512 { avx: table, .. }) => table,
+        | GhashTable::Avx512(GhashTableAvx512 { clmul: table, .. }) => table,
         GhashTable::Ssse3(_) => {
             return composed::<ENC>(key, ghash, initial_counter, aad, cipher_inout);
         }
     };
-    match table.avx {
-        // SAFETY: only a `HaveAesHardware` token builds `hw_key` and `table`,
-        // proving AES-NI, PCLMULQDQ, and SSSE3, and the `HaveAvx` token AVX.
-        Some(_) => unsafe {
-            by8_avx::<ENC>(hw_key, table, ghash, initial_counter, aad, cipher_inout)
-        },
-        // SAFETY: only a `HaveAesHardware` token builds `hw_key` and `table`,
-        // proving AES-NI, PCLMULQDQ, and SSSE3.
-        None => unsafe { by8_sse::<ENC>(hw_key, table, ghash, initial_counter, aad, cipher_inout) },
-    }
+    // SAFETY: only a `HaveAesHardware` token builds `hw_key` and `table`,
+    // proving AES-NI, PCLMULQDQ, and SSSE3.
+    unsafe { by8::<ENC>(hw_key, table, ghash, initial_counter, aad, cipher_inout) }
 }
 
 /// AES-CTR and GHASH in separate passes, for a key without AES-NI, as aws-lc
@@ -119,188 +112,184 @@ fn composed<const ENC: bool>(
     }
 }
 
-/// Defines `$name`, which encrypts (if `ENC`) or decrypts eight blocks at a
-/// time with AES-CTR and GHASH stitched, for the target features given: one
-/// copy runs VEX-encoded, one without AVX.
-macro_rules! by8 {
-    ($name:ident, $features:literal) => {
-        #[target_feature(enable = $features)]
-        fn $name<const ENC: bool>(
-            key: &HwKey,
-            table: &ClmulTable,
-            ghash: &mut Ghash<'_>,
-            initial_counter: &[u8; 16],
-            aad: &[u8],
-            cipher_inout: &mut [u8],
-        ) {
-            ghash.add(aad);
+/// Encrypts (if `ENC`) or decrypts eight blocks at a time with AES-CTR and
+/// GHASH stitched.
+///
+/// It is SSE-encoded on every CPU: VEX encoding measured no faster where the
+/// CPU has AVX, and the 256- and 512-bit kernels that may run before it leave
+/// the upper vector state clean.
+#[target_feature(enable = "aes,ssse3,pclmulqdq")]
+fn by8<const ENC: bool>(
+    key: &HwKey,
+    table: &ClmulTable,
+    ghash: &mut Ghash<'_>,
+    initial_counter: &[u8; 16],
+    aad: &[u8],
+    cipher_inout: &mut [u8],
+) {
+    ghash.add(aad);
 
-            let (rk_first, rks, rk_last) = key.round_keys();
+    let (rk_first, rks, rk_last) = key.round_keys();
 
-            let mut counter = Counter::new(initial_counter);
-            let (by8_iter, remainder) = cipher_inout.as_chunks_mut::<128>();
+    let mut counter = Counter::new(initial_counter);
+    let (by8_iter, remainder) = cipher_inout.as_chunks_mut::<128>();
 
-            for blocks in by8_iter {
-                // prefetch to avoid any stall later
-                super::cpu::prefetch(blocks, 64);
+    for blocks in by8_iter {
+        // prefetch to avoid any stall later
+        super::cpu::prefetch(blocks, 64);
 
-                let c1 = counter.next();
-                let c2 = counter.next();
-                let c3 = counter.next();
-                let c4 = counter.next();
-                let c5 = counter.next();
-                let c6 = counter.next();
-                let c7 = counter.next();
-                let c8 = counter.next();
+        let c1 = counter.next();
+        let c2 = counter.next();
+        let c3 = counter.next();
+        let c4 = counter.next();
+        let c5 = counter.next();
+        let c6 = counter.next();
+        let c7 = counter.next();
+        let c8 = counter.next();
 
-                let mut c1 = _mm_xor_si128(c1, rk_first);
-                let mut c2 = _mm_xor_si128(c2, rk_first);
-                let mut c3 = _mm_xor_si128(c3, rk_first);
-                let mut c4 = _mm_xor_si128(c4, rk_first);
-                let mut c5 = _mm_xor_si128(c5, rk_first);
-                let mut c6 = _mm_xor_si128(c6, rk_first);
-                let mut c7 = _mm_xor_si128(c7, rk_first);
-                let mut c8 = _mm_xor_si128(c8, rk_first);
+        let mut c1 = _mm_xor_si128(c1, rk_first);
+        let mut c2 = _mm_xor_si128(c2, rk_first);
+        let mut c3 = _mm_xor_si128(c3, rk_first);
+        let mut c4 = _mm_xor_si128(c4, rk_first);
+        let mut c5 = _mm_xor_si128(c5, rk_first);
+        let mut c6 = _mm_xor_si128(c6, rk_first);
+        let mut c7 = _mm_xor_si128(c7, rk_first);
+        let mut c8 = _mm_xor_si128(c8, rk_first);
 
-                for rk in rks {
-                    c1 = _mm_aesenc_si128(c1, *rk);
-                    c2 = _mm_aesenc_si128(c2, *rk);
-                    c3 = _mm_aesenc_si128(c3, *rk);
-                    c4 = _mm_aesenc_si128(c4, *rk);
-                    c5 = _mm_aesenc_si128(c5, *rk);
-                    c6 = _mm_aesenc_si128(c6, *rk);
-                    c7 = _mm_aesenc_si128(c7, *rk);
-                    c8 = _mm_aesenc_si128(c8, *rk);
-                }
-
-                let c1 = _mm_aesenclast_si128(c1, rk_last);
-                let c2 = _mm_aesenclast_si128(c2, rk_last);
-                let c3 = _mm_aesenclast_si128(c3, rk_last);
-                let c4 = _mm_aesenclast_si128(c4, rk_last);
-                let c5 = _mm_aesenclast_si128(c5, rk_last);
-                let c6 = _mm_aesenclast_si128(c6, rk_last);
-                let c7 = _mm_aesenclast_si128(c7, rk_last);
-                let c8 = _mm_aesenclast_si128(c8, rk_last);
-
-                // SAFETY: `blocks` is 128 bytes and readable
-                let (p1, p2, p3, p4, p5, p6, p7, p8) = unsafe {
-                    (
-                        _mm_loadu_si128(blocks.as_ptr().add(0).cast()),
-                        _mm_loadu_si128(blocks.as_ptr().add(16).cast()),
-                        _mm_loadu_si128(blocks.as_ptr().add(32).cast()),
-                        _mm_loadu_si128(blocks.as_ptr().add(48).cast()),
-                        _mm_loadu_si128(blocks.as_ptr().add(64).cast()),
-                        _mm_loadu_si128(blocks.as_ptr().add(80).cast()),
-                        _mm_loadu_si128(blocks.as_ptr().add(96).cast()),
-                        _mm_loadu_si128(blocks.as_ptr().add(112).cast()),
-                    )
-                };
-
-                let c1 = _mm_xor_si128(c1, p1);
-                let c2 = _mm_xor_si128(c2, p2);
-                let c3 = _mm_xor_si128(c3, p3);
-                let c4 = _mm_xor_si128(c4, p4);
-                let c5 = _mm_xor_si128(c5, p5);
-                let c6 = _mm_xor_si128(c6, p6);
-                let c7 = _mm_xor_si128(c7, p7);
-                let c8 = _mm_xor_si128(c8, p8);
-
-                // SAFETY: `blocks` is 128 bytes and writable, due to `as_chunks_mut`
-                unsafe {
-                    _mm_storeu_si128(blocks.as_mut_ptr().add(0).cast(), c1);
-                    _mm_storeu_si128(blocks.as_mut_ptr().add(16).cast(), c2);
-                    _mm_storeu_si128(blocks.as_mut_ptr().add(32).cast(), c3);
-                    _mm_storeu_si128(blocks.as_mut_ptr().add(48).cast(), c4);
-                    _mm_storeu_si128(blocks.as_mut_ptr().add(64).cast(), c5);
-                    _mm_storeu_si128(blocks.as_mut_ptr().add(80).cast(), c6);
-                    _mm_storeu_si128(blocks.as_mut_ptr().add(96).cast(), c7);
-                    _mm_storeu_si128(blocks.as_mut_ptr().add(112).cast(), c8);
-                }
-
-                let (a1, a2, a3, a4, a5, a6, a7, a8) = if ENC {
-                    (c1, c2, c3, c4, c5, c6, c7, c8)
-                } else {
-                    (p1, p2, p3, p4, p5, p6, p7, p8)
-                };
-
-                let a1 = _mm_shuffle_epi8(a1, BYTESWAP);
-                let a2 = _mm_shuffle_epi8(a2, BYTESWAP);
-                let a3 = _mm_shuffle_epi8(a3, BYTESWAP);
-                let a4 = _mm_shuffle_epi8(a4, BYTESWAP);
-                let a5 = _mm_shuffle_epi8(a5, BYTESWAP);
-                let a6 = _mm_shuffle_epi8(a6, BYTESWAP);
-                let a7 = _mm_shuffle_epi8(a7, BYTESWAP);
-                let a8 = _mm_shuffle_epi8(a8, BYTESWAP);
-
-                let a1 = _mm_xor_si128(ghash.current, a1);
-                ghash.current = ghash::_mul8(table, a1, a2, a3, a4, a5, a6, a7, a8);
-            }
-
-            let cipher_inout = remainder;
-
-            if !ENC {
-                ghash.add(cipher_inout);
-            }
-
-            {
-                let (blocks_iter, remainder) = cipher_inout.as_chunks_mut::<16>();
-                for block in blocks_iter {
-                    let c1 = counter.next();
-
-                    let mut c1 = _mm_xor_si128(c1, rk_first);
-
-                    for rk in rks {
-                        c1 = _mm_aesenc_si128(c1, *rk);
-                    }
-
-                    let c1 = _mm_aesenclast_si128(c1, rk_last);
-
-                    // SAFETY: `block` is 16 bytes due to `as_chunks_mut`
-                    let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
-                    let c1 = _mm_xor_si128(c1, p1);
-
-                    // SAFETY: `block` is 16 bytes and writable, due to `as_chunks_mut`
-                    unsafe { _mm_storeu_si128(block.as_mut_ptr().cast(), c1) };
-                }
-
-                let cipher_inout = remainder;
-                if !cipher_inout.is_empty() {
-                    let mut block = [0u8; 16];
-                    let len = cipher_inout.len();
-                    debug_assert!(len < 16);
-                    block[..len].copy_from_slice(cipher_inout);
-
-                    let c1 = counter.next();
-                    let mut c1 = _mm_xor_si128(c1, rk_first);
-
-                    for rk in rks {
-                        c1 = _mm_aesenc_si128(c1, *rk);
-                    }
-
-                    let c1 = _mm_aesenclast_si128(c1, rk_last);
-
-                    // SAFETY: `block` is 16 bytes and writable.
-                    let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
-                    let c1 = _mm_xor_si128(c1, p1);
-
-                    // SAFETY: `block` is 16 bytes and writable.
-                    unsafe {
-                        _mm_storeu_si128(block.as_mut_ptr().cast(), c1);
-                    }
-
-                    cipher_inout.copy_from_slice(&block[..len]);
-                }
-            }
-
-            if ENC {
-                ghash.add(cipher_inout);
-            }
+        for rk in rks {
+            c1 = _mm_aesenc_si128(c1, *rk);
+            c2 = _mm_aesenc_si128(c2, *rk);
+            c3 = _mm_aesenc_si128(c3, *rk);
+            c4 = _mm_aesenc_si128(c4, *rk);
+            c5 = _mm_aesenc_si128(c5, *rk);
+            c6 = _mm_aesenc_si128(c6, *rk);
+            c7 = _mm_aesenc_si128(c7, *rk);
+            c8 = _mm_aesenc_si128(c8, *rk);
         }
-    };
-}
 
-by8!(by8_avx, "aes,ssse3,pclmulqdq,avx");
-by8!(by8_sse, "aes,ssse3,pclmulqdq");
+        let c1 = _mm_aesenclast_si128(c1, rk_last);
+        let c2 = _mm_aesenclast_si128(c2, rk_last);
+        let c3 = _mm_aesenclast_si128(c3, rk_last);
+        let c4 = _mm_aesenclast_si128(c4, rk_last);
+        let c5 = _mm_aesenclast_si128(c5, rk_last);
+        let c6 = _mm_aesenclast_si128(c6, rk_last);
+        let c7 = _mm_aesenclast_si128(c7, rk_last);
+        let c8 = _mm_aesenclast_si128(c8, rk_last);
+
+        // SAFETY: `blocks` is 128 bytes and readable
+        let (p1, p2, p3, p4, p5, p6, p7, p8) = unsafe {
+            (
+                _mm_loadu_si128(blocks.as_ptr().add(0).cast()),
+                _mm_loadu_si128(blocks.as_ptr().add(16).cast()),
+                _mm_loadu_si128(blocks.as_ptr().add(32).cast()),
+                _mm_loadu_si128(blocks.as_ptr().add(48).cast()),
+                _mm_loadu_si128(blocks.as_ptr().add(64).cast()),
+                _mm_loadu_si128(blocks.as_ptr().add(80).cast()),
+                _mm_loadu_si128(blocks.as_ptr().add(96).cast()),
+                _mm_loadu_si128(blocks.as_ptr().add(112).cast()),
+            )
+        };
+
+        let c1 = _mm_xor_si128(c1, p1);
+        let c2 = _mm_xor_si128(c2, p2);
+        let c3 = _mm_xor_si128(c3, p3);
+        let c4 = _mm_xor_si128(c4, p4);
+        let c5 = _mm_xor_si128(c5, p5);
+        let c6 = _mm_xor_si128(c6, p6);
+        let c7 = _mm_xor_si128(c7, p7);
+        let c8 = _mm_xor_si128(c8, p8);
+
+        // SAFETY: `blocks` is 128 bytes and writable, due to `as_chunks_mut`
+        unsafe {
+            _mm_storeu_si128(blocks.as_mut_ptr().add(0).cast(), c1);
+            _mm_storeu_si128(blocks.as_mut_ptr().add(16).cast(), c2);
+            _mm_storeu_si128(blocks.as_mut_ptr().add(32).cast(), c3);
+            _mm_storeu_si128(blocks.as_mut_ptr().add(48).cast(), c4);
+            _mm_storeu_si128(blocks.as_mut_ptr().add(64).cast(), c5);
+            _mm_storeu_si128(blocks.as_mut_ptr().add(80).cast(), c6);
+            _mm_storeu_si128(blocks.as_mut_ptr().add(96).cast(), c7);
+            _mm_storeu_si128(blocks.as_mut_ptr().add(112).cast(), c8);
+        }
+
+        let (a1, a2, a3, a4, a5, a6, a7, a8) = if ENC {
+            (c1, c2, c3, c4, c5, c6, c7, c8)
+        } else {
+            (p1, p2, p3, p4, p5, p6, p7, p8)
+        };
+
+        let a1 = _mm_shuffle_epi8(a1, BYTESWAP);
+        let a2 = _mm_shuffle_epi8(a2, BYTESWAP);
+        let a3 = _mm_shuffle_epi8(a3, BYTESWAP);
+        let a4 = _mm_shuffle_epi8(a4, BYTESWAP);
+        let a5 = _mm_shuffle_epi8(a5, BYTESWAP);
+        let a6 = _mm_shuffle_epi8(a6, BYTESWAP);
+        let a7 = _mm_shuffle_epi8(a7, BYTESWAP);
+        let a8 = _mm_shuffle_epi8(a8, BYTESWAP);
+
+        let a1 = _mm_xor_si128(ghash.current, a1);
+        ghash.current = ghash::_mul8(table, a1, a2, a3, a4, a5, a6, a7, a8);
+    }
+
+    let cipher_inout = remainder;
+
+    if !ENC {
+        ghash.add(cipher_inout);
+    }
+
+    {
+        let (blocks_iter, remainder) = cipher_inout.as_chunks_mut::<16>();
+        for block in blocks_iter {
+            let c1 = counter.next();
+
+            let mut c1 = _mm_xor_si128(c1, rk_first);
+
+            for rk in rks {
+                c1 = _mm_aesenc_si128(c1, *rk);
+            }
+
+            let c1 = _mm_aesenclast_si128(c1, rk_last);
+
+            // SAFETY: `block` is 16 bytes due to `as_chunks_mut`
+            let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
+            let c1 = _mm_xor_si128(c1, p1);
+
+            // SAFETY: `block` is 16 bytes and writable, due to `as_chunks_mut`
+            unsafe { _mm_storeu_si128(block.as_mut_ptr().cast(), c1) };
+        }
+
+        let cipher_inout = remainder;
+        if !cipher_inout.is_empty() {
+            let mut block = [0u8; 16];
+            let len = cipher_inout.len();
+            debug_assert!(len < 16);
+            block[..len].copy_from_slice(cipher_inout);
+
+            let c1 = counter.next();
+            let mut c1 = _mm_xor_si128(c1, rk_first);
+
+            for rk in rks {
+                c1 = _mm_aesenc_si128(c1, *rk);
+            }
+
+            let c1 = _mm_aesenclast_si128(c1, rk_last);
+
+            // SAFETY: `block` is 16 bytes and writable.
+            let p1 = unsafe { _mm_loadu_si128(block.as_ptr().cast()) };
+            let c1 = _mm_xor_si128(c1, p1);
+
+            // SAFETY: `block` is 16 bytes and writable.
+            unsafe {
+                _mm_storeu_si128(block.as_mut_ptr().cast(), c1);
+            }
+
+            cipher_inout.copy_from_slice(&block[..len]);
+        }
+    }
+
+    if ENC {
+        ghash.add(cipher_inout);
+    }
+}
 
 #[target_feature(
     enable = "aes,avx,avx2,avx512bw,avx512f,avx512vl,sse3,ssse3,pclmulqdq,vaes,vpclmulqdq"
@@ -553,8 +542,8 @@ mod tests {
     use crate::low::x86_64::vpaes_x86_64::VpaesKey;
 
     // Every other test sees only the path the CPU picks, so the slower ones
-    // are checked against it here: AES-NI and PCLMULQDQ without AVX, and
-    // vpaes with SSSE3 GHASH. Each key size, and AAD and message lengths
+    // are checked against it here: the by-8 PCLMULQDQ kernel, which a CPU
+    // with VAES runs only for short messages, and vpaes with SSSE3 GHASH. Each key size, and AAD and message lengths
     // around the block, eight-block, and sixteen-block boundaries, both ways.
     #[test]
     fn paths_match() {
@@ -573,10 +562,11 @@ mod tests {
             let mut h = [0u8; 16];
             fast.encrypt_block(&mut h);
             let fast_table = GhashTable::new(u128::from_be_bytes(h));
-            let mut sse = ClmulTable::new(u128::from_be_bytes(h), hw);
-            sse.avx = None;
             let slow = [
-                (&fast, GhashTable::Clmul(sse)),
+                (
+                    &fast,
+                    GhashTable::Clmul(ClmulTable::new(u128::from_be_bytes(h), hw)),
+                ),
                 (&vpaes, GhashTable::Ssse3(Ssse3Table::new(&h))),
             ];
 
