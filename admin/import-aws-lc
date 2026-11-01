@@ -169,7 +169,11 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/sha/asm/sha512-x86_64.pl",
         "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["K256"],
-        "routines": ["sha256_block_data_order_avx", "sha256_block_data_order_ssse3"],
+        "routines": [
+            "sha256_block_data_order_avx",
+            "sha256_block_data_order_ssse3",
+            "sha256_block_data_order_nohw",
+        ],
     },
     # The rest of the x86_64 imports are for CPUs without AVX2.
     {
@@ -179,7 +183,11 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/sha/asm/sha1-x86_64.pl",
         "copyright": "Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["K_XX_XX"],
-        "routines": ["sha1_block_data_order_avx", "sha1_block_data_order_ssse3"],
+        "routines": [
+            "sha1_block_data_order_avx",
+            "sha1_block_data_order_ssse3",
+            "sha1_block_data_order_nohw",
+        ],
     },
     {
         "arch": "x86_64",

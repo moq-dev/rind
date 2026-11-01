@@ -65,7 +65,7 @@ fn cipher<const ENC: bool>(
         GhashTable::Clmul(table)
         | GhashTable::VaesAvx2(table, _)
         | GhashTable::Avx512(GhashTableAvx512 { avx: table, .. }) => table,
-        GhashTable::Ssse3(_) => {
+        GhashTable::Ssse3(_) | GhashTable::Nohw(_) => {
             return composed::<ENC>(key, ghash, initial_counter, aad, cipher_inout);
         }
     };
@@ -82,8 +82,9 @@ fn cipher<const ENC: bool>(
 }
 
 /// AES-CTR and GHASH in separate passes, for a key without AES-NI, as aws-lc
-/// composes vpaes and SSSE3 GHASH: they take turns over 3 KB at a time, as
-/// aws-lc's `GHASH_CHUNK`, which stays in L1 and spreads each routine's setup.
+/// composes vpaes and SSSE3 GHASH, or its SSE2 AES and integer GHASH: they
+/// take turns over 3 KB at a time, as aws-lc's `GHASH_CHUNK`, which stays in
+/// L1 and spreads each routine's setup.
 fn composed<const ENC: bool>(
     key: &AesKey,
     ghash: &mut Ghash<'_>,
@@ -548,19 +549,19 @@ const BYTESWAP_512_EPI64: __m512i = unsafe {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::low::x86_64::cpu::HaveAesHardware;
+    use crate::low::x86_64::aes_nohw::NohwKey;
+    use crate::low::x86_64::cpu::{HaveAesHardware, HaveSsse3};
+    use crate::low::x86_64::ghash_nohw::NohwTable;
     use crate::low::x86_64::ghash_ssse3_x86_64::Ssse3Table;
     use crate::low::x86_64::vpaes_x86_64::VpaesKey;
 
     // Every other test sees only the path the CPU picks, so the slower ones
-    // are checked against it here: AES-NI and PCLMULQDQ without AVX, and
-    // vpaes with SSSE3 GHASH. Each key size, and AAD and message lengths
-    // around the block, eight-block, and sixteen-block boundaries, both ways.
+    // it can run are checked against it here: AES-NI and PCLMULQDQ without
+    // AVX, vpaes with SSSE3 GHASH, and SSE2 AES with integer GHASH. Each key
+    // size, and AAD and message lengths around the block, eight-block, and
+    // sixteen-block boundaries, both ways.
     #[test]
     fn paths_match() {
-        let Some(hw) = HaveAesHardware::check() else {
-            return;
-        };
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
             (0..n as u32)
                 .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
@@ -569,16 +570,24 @@ mod tests {
         for key_len in [16, 32] {
             let key = bytes(key_len, 1);
             let fast = AesKey::new(&key);
-            let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
             let mut h = [0u8; 16];
             fast.encrypt_block(&mut h);
             let fast_table = GhashTable::new(u128::from_be_bytes(h));
-            let mut sse = ClmulTable::new(u128::from_be_bytes(h), hw);
-            sse.avx = None;
-            let slow = [
-                (&fast, GhashTable::Clmul(sse)),
-                (&vpaes, GhashTable::Ssse3(Ssse3Table::new(&h))),
-            ];
+            let mut slow = vec![(
+                AesKey::Nohw(NohwKey::new(&key)),
+                GhashTable::Nohw(NohwTable::new(&h)),
+            )];
+            if let Some(token) = HaveSsse3::check() {
+                slow.push((
+                    AesKey::Vpaes(VpaesKey::new(&key, token)),
+                    GhashTable::Ssse3(Ssse3Table::new(&h, token)),
+                ));
+            }
+            if let Some(hw) = HaveAesHardware::check() {
+                let mut sse = ClmulTable::new(u128::from_be_bytes(h), hw);
+                sse.avx = None;
+                slow.push((AesKey::new(&key), GhashTable::Clmul(sse)));
+            }
 
             for aad_len in [0, 1, 16, 17] {
                 for msg_len in [0, 1, 15, 16, 17, 112, 127, 128, 129, 255, 256, 257, 1000] {

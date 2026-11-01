@@ -6,14 +6,11 @@ fn check_passes() {
     assert_eq!(rind::cpu::check(), Ok(()));
 }
 
-// `RIND_CPU_DISABLE_*` only takes effect with debug assertions, and the
-// portable armv7 backend requires no CPU features.
-#[cfg(all(debug_assertions, not(target_arch = "arm")))]
+// `RIND_CPU_DISABLE_*` only takes effect with debug assertions, and x86_64
+// and the portable armv7 backend require no CPU features.
+#[cfg(all(debug_assertions, target_arch = "aarch64"))]
 #[test]
 fn missing_feature_is_named() {
-    #[cfg(target_arch = "x86_64")]
-    const REQUIRED: &[&str] = &["ssse3"];
-    #[cfg(target_arch = "aarch64")]
     const REQUIRED: &[&str] = &["neon"];
 
     // Hashing checks the CPU apart from `Entry`, so each hash family is

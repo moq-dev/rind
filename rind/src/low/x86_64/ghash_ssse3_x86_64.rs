@@ -12,6 +12,7 @@
 //! rind's tests of it against PCLMULQDQ, the portable model, Wycheproof, and
 //! aws-lc-rs.
 
+use super::cpu::HaveSsse3;
 use crate::low;
 
 /// A GHASH key as the routine reads it: aws-lc's `u128 Htable[16]`, holding
@@ -22,7 +23,7 @@ pub(crate) struct Ssse3Table([[u8; 16]; 16]);
 
 impl Ssse3Table {
     /// Precomputes for the GHASH key `h`, AES's encryption of the zero block.
-    pub(crate) fn new(h: &[u8; 16]) -> Self {
+    pub(crate) fn new(h: &[u8; 16], _: HaveSsse3) -> Self {
         let (hi, lo) = h.split_at(8);
         // aws-lc's `u128` is `{ hi, lo }`, and `gcm_init_ssse3` starts from
         // `{ H[1], H[0] }`, with the key's halves read big-endian as `H`.
@@ -64,7 +65,7 @@ impl Ssse3Table {
         }
         // SAFETY: `input` is `size_of_val(input)` readable bytes, a multiple
         // of 16, and `self` an aligned table. The routine needs only SSSE3,
-        // which rind requires.
+        // and only a `HaveSsse3` token builds `self`.
         unsafe { gcm_ghash_ssse3(xi, self, input.as_ptr().cast(), size_of_val(input)) }
     }
 }
