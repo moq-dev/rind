@@ -654,6 +654,7 @@ pub(crate) fn sha3_keccak4_f1600(
         Q!("    vmovhpd         " "[rdi + 0x318], xmm15"),
         Q!("    mov             " "rsp, r11"),
 
+        Q!("    vzeroupper      " ),
         inout("rdi") a.as_mut_ptr() => _,
         inout("rsi") rc.as_ptr() => _,
         inout("rdx") rho8.as_ptr() => _,

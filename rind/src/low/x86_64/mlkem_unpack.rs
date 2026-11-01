@@ -159,10 +159,18 @@ pub(crate) fn mlkem_unpack(a: &mut [i16; 256]) {
         Q!("    vmovdqa         " "[448 + rdi], ymm7"),
         Q!("    vmovdqa         " "[480 + rdi], ymm11"),
 
+        Q!("    vzeroupper      " ),
         inout("rdi") a.as_mut_ptr() => _,
         // clobbers
+        out("zmm0") _,
+        out("zmm1") _,
         out("zmm10") _,
         out("zmm11") _,
+        out("zmm12") _,
+        out("zmm13") _,
+        out("zmm14") _,
+        out("zmm15") _,
+        out("zmm2") _,
         out("zmm3") _,
         out("zmm4") _,
         out("zmm5") _,
