@@ -30,7 +30,9 @@ gives that helper its own copy from the label on, which opens a CFI frame of
 its own where the copy closes one. A routine that calls into
 the middle of a helper `carries` it: the helper's body follows the routine's
 in the same file, so the call reaches it as a local label. An import's `cpp`
-defines drop branches rind never takes.
+defines drop branches rind never takes. Its `inserts` add an instruction
+before one that names a symbol: a deliberate change to aws-lc's code, each
+saying why.
 """
 
 import os
@@ -199,20 +201,12 @@ IMPORTS_64 = [
         "tables": ["zero", "rot16"],
         "routines": ["ChaCha20_ctr32_nohw", "ChaCha20_ctr32_ssse3_4x"],
     },
-    # The routines aws-lc's `bn_mul_mont` picks from, by width and CPU, but
-    # for `bn_sqr8x_mont`'s mulx branch: its `bn_sqrx8x_internal` reads two
-    # scratch words it never wrote, which memcheck then sees in every result.
-    {
-        "arch": "x86_64",
-        "source": "x86_64-mont.S",
-        "tag": "mont",
-        "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont.pl",
-        "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
-        "cpp": ["-DMY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2"],
-        "tables": [],
-        "routines": ["bn_mul4x_mont", "bn_sqr8x_mont"],
-        "calls": ["bn_sqr8x_internal"],
-    },
+    # The routines aws-lc's `bn_mul_mont` picks from, by width and CPU.
+    # `bn_sqrx8x_internal` loads the two scratch words after the 2n-word
+    # product, which `bn_sqr8x_mont` never writes. They reach only the
+    # overflow flag before it is cleared, so results and timing do not depend
+    # on them, but memcheck carries them into every result and fails
+    # `admin/ctgrind`; rind's copy of `bn_sqr8x_mont` zeroes them first.
     {
         "arch": "x86_64",
         "source": "x86_64-mont.S",
@@ -220,7 +214,9 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont.pl",
         "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": [],
-        "routines": ["bn_mul_mont_nohw", "bn_mulx4x_mont"],
+        "routines": ["bn_mul_mont_nohw", "bn_mul4x_mont", "bn_mulx4x_mont", "bn_sqr8x_mont"],
+        "calls": ["bn_sqr8x_internal", "bn_sqrx8x_internal"],
+        "inserts": {"bn_sqr8x_mont": [("call", "bn_sqrx8x_internal", "movdqu\t%xmm0,48(%rsp,%r9,2)")]},
     },
     {
         "arch": "x86_64",
@@ -229,8 +225,13 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont5.pl",
         "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": [],
-        "routines": ["bn_sqr8x_internal"],
-        "inner": ["__bn_sqr8x_internal", "__bn_sqr8x_reduction"],
+        "routines": ["bn_sqr8x_internal", "bn_sqrx8x_internal"],
+        "inner": [
+            "__bn_sqr8x_internal",
+            "__bn_sqr8x_reduction",
+            "__bn_sqrx8x_internal",
+            "__bn_sqrx8x_reduction",
+        ],
     },
     # RSAZ, the exponentiation aws-lc runs for 1024-bit moduli with AVX2 but
     # without ADX. `scatter_permd` runs on through `gather_permd` and `inc`,
@@ -553,6 +554,12 @@ def import_64(aws_lc):
                 directives = [line.split()[:1] for line in text]
                 if label[:-1] in inner and [".cfi_endproc"] in directives and [".cfi_startproc"] not in directives:
                     text = [".cfi_startproc"] + text
+                # Before the one instruction that names this symbol.
+                for op, symbol, line in spec.get("inserts", {}).get(name, []):
+                    at = [i for i, old in enumerate(text) if old.split() == [op, prefix + symbol]]
+                    if len(at) != 1:
+                        sys.exit(f"{name}: expected one {op} {symbol}")
+                    text.insert(at[0], "\t" + line)
                 text = escape(text, operands, local, spec["tag"], arch["comment"])
                 write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
 
