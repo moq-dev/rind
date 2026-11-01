@@ -42,8 +42,8 @@ Targets, refused rather than falling back:
 - x86_64 and aarch64 run graviola's backend. x86_64 runs on any CPU
   (maintainer, 2026-11-01); it runs s2n-bignum's `_alt` routines without
   adx, aws-lc's SSSE3 and AVX ChaCha20 and SHA and portable ML-KEM arithmetic
-  without avx2, rind's AES-GCM intrinsics without VEX and aws-lc's AES-NI CTR
-  without avx, aws-lc's vpaes and SSSE3 GHASH without aes and pclmulqdq, and
+  without avx2, aws-lc's RSAZ for RSA-2048 with avx2 but without adx, rind's
+  SSE-encoded AES-GCM intrinsics and aws-lc's AES-NI CTR, aws-lc's vpaes and SSSE3 GHASH without aes and pclmulqdq, and
   ports of aws-lc's SSE2 AES and integer GHASH and its integer ChaCha20,
   SHA-1, and SHA-256 without ssse3, chosen once per process; aarch64 needs
   neon. aarch64 CPUs
@@ -75,7 +75,6 @@ RustCrypto dependency.
 
 ## Required
 
-- [x86_64 portability decisions](/quest/m1/moq/x86-portable.md) - the maintainer decides RSAZ for Haswell-class RSA signing
 - [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
 - [libcrux releases its bignum constant-time fix](/quest/m1/moq/libcrux-ct-fixes.md) - waiting on libcrux's fix, then dropping its armv7 ctgrind suppression
 - [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish
