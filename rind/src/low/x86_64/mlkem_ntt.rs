@@ -626,11 +626,13 @@ pub(crate) fn mlkem_ntt(a: &mut [i16; 256], qdata: &[i16; 624]) {
         Q!("    vmovdqa         " "[448 + rdi], ymm9"),
         Q!("    vmovdqa         " "[480 + rdi], ymm11"),
 
+        Q!("    vzeroupper      " ),
         inout("rdi") a.as_mut_ptr() => _,
         inout("rsi") qdata.as_ptr() => _,
         // clobbers
         out("rax") _,
         out("zmm0") _,
+        out("zmm1") _,
         out("zmm10") _,
         out("zmm11") _,
         out("zmm12") _,

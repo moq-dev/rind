@@ -27,6 +27,15 @@ class Architecture:
     # dropped to macros
     constant_reference_page_offs = False
 
+    # instruction a routine naming a wide vector register ends with, and the
+    # registers it writes
+    wide_vector_exit = None
+    wide_vector_exit_clobbers = []
+
+    @staticmethod
+    def is_wide_vector(reg):
+        return False
+
     # canonicalise register names, by returning a better name
     # for `reg`.
     #
@@ -60,6 +69,16 @@ class Architecture_amd64(Architecture):
     fn_ret_reg = "rax"
 
     cpp_definitions = dict(__linux__="1", __ELF__="1")
+
+    # Legacy SSE code after the upper halves of ymm0-15 are left dirty pays a
+    # state transition or a false dependency, and rustc cannot see an asm
+    # block's vector width to insert this itself.
+    wide_vector_exit = "vzeroupper"
+    wide_vector_exit_clobbers = ["zmm%d" % n for n in range(16)]
+
+    @staticmethod
+    def is_wide_vector(reg):
+        return re.fullmatch(r"[yz]mm[0-9]+", reg) is not None
 
     @staticmethod
     def lookup_register(reg):
@@ -444,6 +463,7 @@ class FunctionState:
         self.hoisting = False
         self.past_hoist_end_marker = False
         self.several_exits = False
+        self.wide_vectors = False
 
     def output(self):
         return self.spool
@@ -949,6 +969,8 @@ use crate::low::macros::*;
             actual_reg = self.arch.lookup_register(t)
             if actual_reg and self.function_state:
                 self.function_state.clobbers.add(actual_reg)
+                if self.arch.is_wide_vector(t):
+                    self.function_state.wide_vectors = True
 
     def on_label(self, contexts, label):
         if "WINDOWS_ABI" in contexts:
@@ -1050,6 +1072,10 @@ use crate::low::macros::*;
         ):
             self.on_asm([], self.arch.unconditional_jump, "hoist_finish")
             return
+
+        if self.function_state.wide_vectors:
+            self.on_asm([], self.arch.wide_vector_exit, "")
+            self.function_state.clobbers.update(self.arch.wide_vector_exit_clobbers)
 
         regs = list(zip(self.arch.fn_arg_regs, self.function_state.parameter_map)) + (
             [(self.arch.fn_ret_reg, self.function_state.return_map)]

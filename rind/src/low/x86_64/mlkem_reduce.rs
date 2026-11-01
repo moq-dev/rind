@@ -217,12 +217,18 @@ pub(crate) fn mlkem_reduce(a: &mut [i16; 256]) {
         Q!("    vmovdqa         " "[rdi + 0x1c0], ymm8"),
         Q!("    vmovdqa         " "[rdi + 0x1e0], ymm9"),
 
+        Q!("    vzeroupper      " ),
         inout("rdi") a.as_mut_ptr() => _,
         // clobbers
         out("rax") _,
         out("zmm0") _,
         out("zmm1") _,
+        out("zmm10") _,
+        out("zmm11") _,
         out("zmm12") _,
+        out("zmm13") _,
+        out("zmm14") _,
+        out("zmm15") _,
         out("zmm2") _,
         out("zmm3") _,
         out("zmm4") _,

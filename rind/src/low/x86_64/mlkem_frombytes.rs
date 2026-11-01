@@ -180,6 +180,7 @@ pub(crate) fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384]) {
         Q!("    vmovdqa         " "[448 + rdi], ymm15"),
         Q!("    vmovdqa         " "[480 + rdi], ymm1"),
 
+        Q!("    vzeroupper      " ),
         inout("rdi") r.as_mut_ptr() => _,
         inout("rsi") a.as_ptr() => _,
         // clobbers
@@ -192,6 +193,7 @@ pub(crate) fn mlkem_frombytes(r: &mut [i16; 256], a: &[u8; 384]) {
         out("zmm13") _,
         out("zmm14") _,
         out("zmm15") _,
+        out("zmm2") _,
         out("zmm3") _,
         out("zmm4") _,
         out("zmm5") _,
