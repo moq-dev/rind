@@ -205,7 +205,8 @@ fn rsa_pkcs1_sha256_verify_sizes(c: &mut Criterion) {
             use rind::signature::{PublicKey, verify};
 
             b.iter(|| {
-                let peer_public_key = PublicKey::new(&verify::RSA_PKCS1_SHA256, public_key).unwrap();
+                let peer_public_key =
+                    PublicKey::new(&verify::RSA_PKCS1_SHA256, public_key).unwrap();
                 black_box(peer_public_key.verify(message, signature)).unwrap();
             })
         });

@@ -100,11 +100,12 @@ fn mul4x(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64, adx: Option<Ha
 fn sqr8x(z: &mut [u64], x: &[u64], m: &[u64], n0: u64, adx: Option<HaveBmi2Adx>) {
     let k = m.len();
     assert!(k >= 8 && k.is_multiple_of(8) && z.len() == k && x.len() == k);
+    let mulx = adx.is_some().into();
     // SAFETY: `z`, `x`, and `m` are each `k` words, as `bn_sqr8x_mont` reads
     // and writes for such a `k`, and it reads `n0` as one word. It runs
     // `mulx`, `adcx`, and `adox` only if `mulx_adx_capable` is nonzero,
     // which the token proves the CPU has.
-    unsafe { bn_sqr8x_mont(z.as_mut_ptr(), x.as_ptr(), adx.is_some().into(), m.as_ptr(), &n0, k) };
+    unsafe { bn_sqr8x_mont(z.as_mut_ptr(), x.as_ptr(), mulx, m.as_ptr(), &n0, k) };
 }
 
 /// `mont_mul` for any width from two words.
