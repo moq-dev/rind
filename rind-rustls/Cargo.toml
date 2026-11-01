@@ -11,7 +11,7 @@ readme = "README.md"
 
 [dependencies]
 rind = { version = "0.1.0", path = "../rind" }
-rustls = { version = "0.23.18", default-features = false, features = ["std", "tls12"] }
+rustls = { version = "0.23.20", default-features = false, features = ["std", "tls12"] }
 
 [dev-dependencies]
 aws-lc-rs = { version = "1.16", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips"] }
@@ -25,7 +25,7 @@ http-body-util = "0.1"
 hyper = { version = "1", default-features = false }
 hyper-rustls = { version = "0.27", default-features = false, features = ["native-tokio", "http1", "tls12", "logging"] }
 hyper-util = { version = "0.1", default-features = false, features = ["server-auto"] }
-rustls = { version = "0.23.23", default-features = false, features = ["aws-lc-rs", "ring"] }
+rustls = { version = "0.23.36", default-features = false, features = ["aws-lc-rs", "ring"] }
 tokio = { version = "1.0", features = ["io-std", "macros", "net", "rt-multi-thread"] }
 tokio-rustls = { version = "0.26", default-features = false }
 
