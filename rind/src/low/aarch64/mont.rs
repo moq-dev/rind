@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! Montgomery multiplication modulo an RSA modulus or prime: s2n-bignum's
-//! Karatsuba routines and 8n reduction for 1024- and 2048-bit moduli, and
-//! aws-lc's `bn_mul_mont` for other widths from two words, which picks its
-//! squaring routine for a multiple of eight words and its 4x routine for a
-//! multiple of four. s2n-bignum's generic `bignum_montmul` runs below two
-//! words, where `bn_mul_mont` does not.
+//! Karatsuba routines and 8n reduction for 1024- and 2048-bit moduli;
+//! aws-lc's `bn_mul_mont`, which picks its own squaring or 4x routine by the
+//! width, for 1536-, 3072-, and 4096-bit moduli, where it measured twice as
+//! fast as s2n-bignum's generic `bignum_montmul` and `bignum_montsqr` on a
+//! Neoverse-N2; and those generic routines for the sizes not measured.
 
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below `m`, where `k` is the
 /// length of each and `n0` is `-m^-1 mod 2^64`.
@@ -13,7 +13,7 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
     debug_assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
     match m.len() {
         16 | 32 => karatsuba_mul(z, x, y, m, n0),
-        k if k >= 2 => mul_mont(z, x, y, m, n0),
+        24 | 48 | 64 => mul_mont(z, x, y, m, n0),
         _ => super::bignum_montmul::bignum_montmul(z, x, y, m),
     }
 }
@@ -24,8 +24,8 @@ pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     debug_assert!(z.len() == m.len() && x.len() == m.len());
     match m.len() {
         16 | 32 => karatsuba_sqr(z, x, m, n0),
-        k if k >= 2 => mul_mont(z, x, x, m, n0),
-        _ => super::bignum_montmul::bignum_montmul(z, x, x, m),
+        24 | 48 | 64 => mul_mont(z, x, x, m, n0),
+        _ => super::bignum_montsqr::bignum_montsqr(z, x, m),
     }
 }
 

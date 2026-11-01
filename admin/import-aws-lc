@@ -32,8 +32,9 @@ the middle of a helper `carries` it: the helper's body follows the routine's
 in the same file, so the call reaches it as a local label. One that branches
 to a helper by name `joins` it: the helper follows the routine's body under a
 local label, through the end of its CFI frame. An import's `cpp` defines drop
-branches rind never takes, and its `inserts` add an instruction before one
-that names a symbol, where aws-lc's text trips `admin/ctgrind`; each says why.
+branches rind never takes. Its `inserts` add an instruction
+before one that names a symbol: a deliberate change to aws-lc's code, each
+saying why.
 """
 
 import os
@@ -204,9 +205,10 @@ IMPORTS_64 = [
     },
     # The routines aws-lc's `bn_mul_mont` picks from, by width and CPU.
     # `bn_sqrx8x_internal` loads the two scratch words after the 2n-word
-    # product, which `bn_sqr8x_mont` never writes; the loads reach only the
-    # overflow flag before it is cleared, but memcheck carries them into every
-    # result, so `bn_sqr8x_mont` zeroes them first.
+    # product, which `bn_sqr8x_mont` never writes. They reach only the
+    # overflow flag before it is cleared, so results and timing do not depend
+    # on them, but memcheck carries them into every result and fails
+    # `admin/ctgrind`; rind's copy of `bn_sqr8x_mont` zeroes them first.
     {
         "arch": "x86_64",
         "source": "x86_64-mont.S",
@@ -581,6 +583,12 @@ def import_64(aws_lc):
                 directives = [line.split()[:1] for line in text]
                 if label[:-1] in inner and [".cfi_endproc"] in directives and [".cfi_startproc"] not in directives:
                     text = [".cfi_startproc"] + text
+                # Before the one instruction that names this symbol.
+                for op, symbol, line in spec.get("inserts", {}).get(name, []):
+                    at = [i for i, old in enumerate(text) if old.split() == [op, prefix + symbol]]
+                    if len(at) != 1:
+                        sys.exit(f"{name}: expected one {op} {symbol}")
+                    text.insert(at[0], "\t" + line)
                 text = escape(text, operands, local, spec["tag"], arch["comment"])
                 write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
 

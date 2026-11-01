@@ -12,8 +12,10 @@ Decided by the maintainer on 2026-11-01, from the re-measure (#175): with
 AVX2, rind takes 1.33-1.44x aws-lc-rs's time from 32 B to 16 KB, because
 aws-lc runs one routine that interleaves ChaCha20 with Poly1305
 (`chacha20_poly1305_x86_64` with AVX2 and SSE4.1 variants, and
-`chacha20_poly1305_armv8`). Without AVX2, Poly1305 alone is also 4-7%
-behind from 2 KB.
+`chacha20_poly1305_armv8`). Without AVX2, aws-lc runs the SSE4.1 variant,
+and rind takes 1.22-1.27x from 1200 B and 1.51x at 32 B (#181, release
+builds); only without SSSE3, where aws-lc has no combined routine, are they
+level from 1200 B.
 
 - Import those routines with `admin/import-aws-lc`, choosing per process as
   the other x86_64 and aarch64 paths do, and keep rind's current code where
@@ -21,7 +23,3 @@ behind from 2 KB.
 - Cover each path in the forced-path tests, ctgrind, and the bench rows at
   32, 1200, 1350 bytes and 16 KB, measured in release builds.
 - Record the source and license in README's Sources table and LICENSE.
-
-## Required
-
-- [Bench forced paths in release builds](/quest/m2/speed/bench-forced-paths.md) - its slower-path numbers must come from release builds

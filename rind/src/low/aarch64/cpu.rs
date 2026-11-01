@@ -200,14 +200,15 @@ mod dit {
     }
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, rind_cpu_disable)))]
 fn test_toggle(_id: &str, detected: bool) -> bool {
     detected
 }
 
-/// Lets a debug build deny a feature with `RIND_CPU_DISABLE_<id>`, so a CPU
-/// with the crypto extension also tests the code for one without.
-#[cfg(debug_assertions)]
+/// Lets a debug build, or a release one with `--cfg rind_cpu_disable`, deny a
+/// feature with `RIND_CPU_DISABLE_<id>`, as on x86_64, so a CPU with the
+/// crypto extension also tests the code for one without.
+#[cfg(any(debug_assertions, rind_cpu_disable))]
 fn test_toggle(id: &str, detected: bool) -> bool {
     if std::env::var(format!("RIND_CPU_DISABLE_{id}")).is_ok() {
         println!("DEBUG: denying cpuid {id:?}");
