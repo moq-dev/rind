@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/moq-dev/rind/compare/rind-v0.1.2...rind-v0.2.0) - 2026-11-01
+
+### Fixed
+
+- *(rsa)* generate keys in constant time ([#182](https://github.com/moq-dev/rind/pull/182))
+- [**breaking**] fuzz the key loaders, take compressed key pair points, refuse ECDSA and RSA PKCS#8 v2 ([#166](https://github.com/moq-dev/rind/pull/166))
+
 ## [0.1.2](https://github.com/moq-dev/rind/compare/rind-v0.1.1...rind-v0.1.2) - 2026-11-01
 
 ### Added
