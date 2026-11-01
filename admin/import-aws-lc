@@ -32,7 +32,9 @@ the label on, which opens a CFI frame of its own where the copy closes one.
 One of an import's `labels`, a jump target inside a routine, does not end it
 either, and stays as a local label. A routine that jumps or calls into
 another routine of its file `carries` it: the other's label and body follow
-the routine's in the same file, as local labels. An import's `cpp` defines
+the routine's in the same file, as local labels. One that branches to a
+helper by name `joins` it: the helper follows the routine's body under a
+local label, through the end of its CFI frame. An import's `cpp` defines
 drop branches rind never takes. Its `inserts` add an instruction before one
 that names a symbol, and its `replaces` swap one instruction for another:
 deliberate changes to aws-lc's code, each saying why.
@@ -335,6 +337,18 @@ IMPORTS_64 = [
         "tables": ["K512"],
         "routines": ["sha512_block_data_order_nohw", "sha512_block_data_order_hw"],
     },
+    # Montgomery multiplication, which picks its squaring or 4x routine by
+    # the width itself.
+    {
+        "arch": "aarch64",
+        "source": "armv8-mont.S",
+        "tag": "mont",
+        "perlasm": "crypto/fipsmodule/bn/asm/armv8-mont.pl",
+        "copyright": "Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": [],
+        "routines": ["bn_mul_mont"],
+        "joins": ["__bn_sqr8x_mont", "__bn_mul4x_mont"],
+    },
     # The rest are for aarch64 CPUs without the crypto extension.
     {
         "arch": "aarch64",
@@ -610,13 +624,23 @@ def import_64(aws_lc):
             # A routine falls through these labels, which name helpers with
             # their own copy.
             dropped = [[f"{name}:"] for name in inner]
+            joined = []
+            joins = spec.get("joins", [])
+            for other in joins:
+                start = find(lines, [f"{other}:"])
+                text = body(lines, f"{other}:", local)
+                end = [line.split()[:1] for line in text].index([".cfi_endproc"])
+                align = lines[start - 1 : start] if lines[start - 1].split()[:1] == [".align"] else []
+                joined += align + [f"{local}{other}:"] + text[: end + 1]
             for label, name in entries:
                 text = [line for line in body(lines, label, local, inner + labels) if line.split() not in dropped]
                 carried = spec.get("carries", {}).get(name, [])
                 for other in carried:
                     text += [f"{local}{other}:"] + body(lines, f"{other}:", local)
-                if labels or carried:
-                    local_re = words(labels + carried)
+                if name in spec["routines"]:
+                    text += joined
+                if labels or carried or joins:
+                    local_re = words(labels + carried + joins)
                     text = [local_re.sub(lambda m: local + m[1], line) for line in text]
                 directives = [line.split()[:1] for line in text]
                 if label[:-1] in inner and [".cfi_endproc"] in directives and [".cfi_startproc"] not in directives:
