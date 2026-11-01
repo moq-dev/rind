@@ -136,9 +136,9 @@ pub mod kem {
 /// ```
 pub mod signature {
     pub use crate::high::signature::{
-        EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, Pkcs8, PublicKey, RsaKeyPair,
-        RsaKeySize, RsaPublicKeyComponents, RsaSigningAlgorithm, RsaVerificationAlgorithm,
-        Signature, Spki, VerificationAlgorithm,
+        EcdsaKeyPair, EcdsaScalar, EcdsaSigningAlgorithm, Ed25519KeyPair, Ed25519Seed, Pkcs8,
+        PublicKey, RsaKeyPair, RsaKeySize, RsaPublicKeyComponents, RsaSigningAlgorithm,
+        RsaVerificationAlgorithm, Signature, Spki, VerificationAlgorithm,
     };
 
     /// Algorithms a key pair signs with.
