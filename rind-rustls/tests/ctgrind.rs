@@ -46,6 +46,28 @@ fn key_exchange() {
             "{:?}",
             group.name()
         );
+
+        // A hybrid client completes its classical part alone when the server
+        // picks the classical group.
+        let client = group.start().unwrap();
+        let Some((name, share)) = client.hybrid_component() else {
+            continue;
+        };
+        let classical = rind_rustls::ALL_KX_GROUPS
+            .iter()
+            .find(|classical| classical.name() == name)
+            .unwrap();
+        let server = classical.start_and_complete(share).unwrap();
+        let client_secret = client.complete_hybrid_component(&server.pub_key).unwrap();
+
+        public(client_secret.secret_bytes());
+        public(server.secret.secret_bytes());
+        assert_eq!(
+            client_secret.secret_bytes(),
+            server.secret.secret_bytes(),
+            "{:?}",
+            group.name()
+        );
     }
 }
 
@@ -254,6 +276,7 @@ fn signing() {
         "rsa-4096",
         "ecdsa-p256",
         "ecdsa-p384",
+        "ecdsa-p521",
         "ed25519",
     ] {
         let path = format!("{}/tests/keys/{slug}/end.key", env!("CARGO_MANIFEST_DIR"));
