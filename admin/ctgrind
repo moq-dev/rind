@@ -39,7 +39,8 @@ esac
 
 # Valgrind runs ADX instructions but hides them from `cpuid`, so this switch
 # makes rind check s2n-bignum's ADX routines rather than their `_alt` twins;
-# deny `adx` with `RIND_CPU_DISABLE_adx` (a debug-assertions build) for those.
+# deny `adx` with `RIND_CPU_DISABLE_adx`, building with
+# `RUSTFLAGS='--cfg rind_cpu_disable'` for `--release`, for those.
 export VALGRIND_BUG_494162=1
 export CARGO_PROFILE_RELEASE_DEBUG=line-tables-only
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$self --run"

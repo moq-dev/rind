@@ -48,6 +48,5 @@ settled; don't ask them again. The chosen option is marked ✅.
 ## Required
 
 - [Audit every algorithm's speed](/quest/m2/speed/audit.md) - measure every algorithm on every path against every source, and recommend a quest per gap
-- [Bench forced paths in release builds](/quest/m2/speed/bench-forced-paths.md) - the slower-path bench rows without debug assertions
 - [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - aws-lc's Montgomery routines beyond 1024 and 2048 bits, on x86_64 and aarch64
 - [Combined ChaCha20-Poly1305 assembly](/quest/m2/speed/chacha-poly-stitched.md) - aws-lc's interleaved routine, closing the 1.3-1.5x gap

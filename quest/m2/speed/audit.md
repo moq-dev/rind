@@ -17,7 +17,8 @@ The decisions are in the [epic](/quest/m2/speed/README.md).
   ChaCha20-Poly1305, XChaCha20-Poly1305, X25519, ECDH and ECDSA on P-256,
   P-384, and P-521, Ed25519, RSA sign, verify, and key generation, ML-KEM-768)
   on every path, with ring added as a nightly baseline beside aws-lc-rs.
-  Forced tiers time release builds, through the forced-path quest.
+  Forced tiers time release builds with `--cfg rind_cpu_disable`, as
+  `bench.yml` does.
 - Add rind-rustls handshake (full and resumed, per key exchange group and
   signature scheme) and bulk-transfer benches against aws-lc-rs's and ring's
   rustls providers.
@@ -26,11 +27,10 @@ The decisions are in the [epic](/quest/m2/speed/README.md).
   through bindings, and any newer release of an imported source. Note each
   source's license and verification.
 - Known leads to confirm or drop: HMAC and HKDF on one-block inputs, armv7
-  P-521 verification (1.05x), Poly1305 without AVX2 (4-7% from 2 KB), and
-  ES256 and EdDSA per-token cost in moq-auth's bench.
+  P-521 verification (1.05x), ChaCha20-Poly1305 without AVX2 (1.22-1.27x
+  from 1200 B against aws-lc's SSE4.1 combined routine, #181), SHA-256 fed
+  1-byte updates without SHA-NI (1.10-1.17x, #181), RSA signing without ADX
+  (1.05-1.08x at 3072 and 4096 bits) and without AVX2 (1.10x at 2048 bits,
+  #181), and ES256 and EdDSA per-token cost in moq-auth's bench.
 - Land the bench rows, ring baseline, handshake benches, and README table;
   create no quests, but list each recommended gap quest with its numbers.
-
-## Required
-
-- [Bench forced paths in release builds](/quest/m2/speed/bench-forced-paths.md) - the forced tiers must time release builds first
