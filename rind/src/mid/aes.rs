@@ -2,7 +2,7 @@
 
 use crate::Error;
 use crate::cipher::Algorithm;
-use crate::low::{self, AesKey, Entry, zeroise};
+use crate::low::{self, AesKey, Entry};
 
 /// An AES key that encrypts single blocks.
 ///
@@ -67,25 +67,7 @@ impl AesCtr {
         check_counter(counter, inout.len())?;
         low::ct::secret_slice(inout);
 
-        // A short final chunk also takes the pipelined eight-block path: the
-        // unused blocks cost less than encrypting it one serial block at a
-        // time. Counters past the last used block may wrap; they are discarded.
-        let (by8, tail) = inout.as_chunks_mut::<128>();
-        let mut counter = counter;
-        for chunk in by8 {
-            low::aes_ctr::apply_8(&self.0, nonce, counter, chunk);
-            counter = counter.wrapping_add(8);
-        }
-
-        if !tail.is_empty() {
-            let mut buf = [0u8; 128];
-            buf[..tail.len()].copy_from_slice(tail);
-            low::aes_ctr::apply_8(&self.0, nonce, counter, &mut buf);
-            tail.copy_from_slice(&buf[..tail.len()]);
-            // the unused part is bare keystream
-            zeroise(&mut buf);
-        }
-
+        low::aes_ctr::apply(&self.0, nonce, counter, inout);
         low::ct::public_slice(inout);
         Ok(())
     }

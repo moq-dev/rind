@@ -13,7 +13,8 @@ use core::arch::x86_64::*;
 use core::mem;
 
 use super::aes_gcm_vaes::VaesKernel;
-use super::cpu::{HaveAvx512ForAesGcm, HaveVaesAvx2ForAesGcm};
+use super::cpu::{HaveAesHardware, HaveAvx, HaveAvx512ForAesGcm, HaveVaesAvx2ForAesGcm};
+use super::ghash_ssse3_x86_64::Ssse3Table;
 use crate::low;
 
 macro_rules! mul {
@@ -52,30 +53,29 @@ macro_rules! reduce {
 
 #[expect(clippy::large_enum_variant)]
 pub(crate) enum GhashTable {
-    Avx(GhashTableAvx),
-    /// VAES without AVX-512: the AVX path for short messages, and
+    Clmul(ClmulTable),
+    /// VAES without AVX-512: the PCLMULQDQ path for short messages, and
     /// BoringSSL's 256-bit kernel for long ones.
-    VaesAvx2(GhashTableAvx, VaesKernel),
+    VaesAvx2(ClmulTable, VaesKernel),
     Avx512(GhashTableAvx512),
+    /// SSSE3's, which the table picks when the CPU lacks AES-NI or
+    /// PCLMULQDQ.
+    Ssse3(Ssse3Table),
 }
 
 impl GhashTable {
     pub(crate) fn new(h: u128) -> Self {
+        let Some(hw) = HaveAesHardware::check() else {
+            return Self::Ssse3(Ssse3Table::new(&h.to_be_bytes()));
+        };
         if let Some(token) = HaveAvx512ForAesGcm::check() {
-            return Self::Avx512(GhashTableAvx512::new(h, token));
+            return Self::Avx512(GhashTableAvx512::new(h, hw, token));
         }
         if let Some(token) = HaveVaesAvx2ForAesGcm::check() {
-            return Self::VaesAvx2(GhashTableAvx::new(h), VaesKernel::avx2(h, token));
+            return Self::VaesAvx2(ClmulTable::new(h, hw), VaesKernel::avx2(h, token));
         }
 
-        Self::Avx(GhashTableAvx::new(h))
-    }
-
-    pub(crate) fn avx(&self) -> &GhashTableAvx {
-        match self {
-            Self::Avx(table) | Self::VaesAvx2(table, _) => table,
-            Self::Avx512(table) => &table.avx,
-        }
+        Self::Clmul(ClmulTable::new(h, hw))
     }
 }
 
@@ -88,7 +88,9 @@ impl Drop for GhashTable {
 // SAFETY: GhashTable is POD type
 impl low::generic::zeroise::Zeroable for GhashTable {}
 
-pub(crate) struct GhashTableAvx {
+/// Powers of a GHASH key for PCLMULQDQ, which only a `HaveAesHardware` token
+/// builds.
+pub(crate) struct ClmulTable {
     /// H, H^2, H^3, H^4, ... H^8
     powers: [__m128i; 8],
 
@@ -96,121 +98,147 @@ pub(crate) struct GhashTableAvx {
     ///
     /// This can be used directly in the middle Karatsuba term.
     powers_xor: [__m128i; 8],
+
+    /// Whether the kernels run VEX-encoded, decided with the table.
+    pub(crate) avx: Option<HaveAvx>,
 }
 
-impl GhashTableAvx {
-    pub(crate) fn new(h: u128) -> Self {
+impl ClmulTable {
+    pub(crate) fn new(h: u128, _: HaveAesHardware) -> Self {
         let mut powers = [zero(); 8];
         let mut powers_xor = powers;
         let h = u128_to_m128i(h);
 
-        // SAFETY: this crate requires the `avx` cpu feature
+        // SAFETY: every x86_64 CPU has SSE2
         let h = unsafe { gf128_big_endian(h) };
         powers[0] = h;
 
         for i in 1..8 {
-            // SAFETY: this crate requires the `avx` and `pclmulqdq` cpu features
+            // SAFETY: the token proves the CPU has PCLMULQDQ.
             powers[i] = unsafe { _mul(powers[i - 1], h) };
         }
 
         for i in 0..8 {
-            // SAFETY: this crate requires the `avx` cpu feature
+            // SAFETY: every x86_64 CPU has SSE2
             powers_xor[i] = unsafe { xor_halves(powers[i]) };
         }
 
-        Self { powers, powers_xor }
+        Self {
+            powers,
+            powers_xor,
+            avx: HaveAvx::check(),
+        }
     }
 
-    fn add(&self, bytes: &[u8], mut current: __m128i) -> __m128i {
-        let (eight_blocks, remainder) = bytes.as_chunks::<128>();
-
-        for chunk8 in eight_blocks {
-            let u1 = u128::from_be_bytes(chunk8[0..16].try_into().unwrap());
-            let u2 = u128::from_be_bytes(chunk8[16..32].try_into().unwrap());
-            let u3 = u128::from_be_bytes(chunk8[32..48].try_into().unwrap());
-            let u4 = u128::from_be_bytes(chunk8[48..64].try_into().unwrap());
-            let u5 = u128::from_be_bytes(chunk8[64..80].try_into().unwrap());
-            let u6 = u128::from_be_bytes(chunk8[80..96].try_into().unwrap());
-            let u7 = u128::from_be_bytes(chunk8[96..112].try_into().unwrap());
-            let u8 = u128::from_be_bytes(chunk8[112..128].try_into().unwrap());
-
-            let b1 = u128_to_m128i(u1);
-            let b2 = u128_to_m128i(u2);
-            let b3 = u128_to_m128i(u3);
-            let b4 = u128_to_m128i(u4);
-            let b5 = u128_to_m128i(u5);
-            let b6 = u128_to_m128i(u6);
-            let b7 = u128_to_m128i(u7);
-            let b8 = u128_to_m128i(u8);
-
-            // SAFETY: this crate requires the `avx` and `pclmulqdq` cpu features
-            unsafe {
-                let b1 = _mm_xor_si128(current, b1);
-                current = _mul8(self, b1, b2, b3, b4, b5, b6, b7, b8);
-            }
+    fn add(&self, bytes: &[u8], current: __m128i) -> __m128i {
+        match self.avx {
+            // SAFETY: only a `HaveAesHardware` token builds `self`, proving
+            // PCLMULQDQ, and the `HaveAvx` token proves AVX.
+            Some(_) => unsafe { self.add_avx(bytes, current) },
+            // SAFETY: only a `HaveAesHardware` token builds `self`, proving
+            // PCLMULQDQ.
+            None => unsafe { self.add_sse(bytes, current) },
         }
-
-        // SAFETY: this crate requires the `avx` and `pclmulqdq` cpu features
-        unsafe { self.add_tail(remainder, current) }
-    }
-
-    /// Hashes the fewer than eight blocks after `add`'s chunks, zero-padding
-    /// the last: block `i` of `n` is multiplied by H^(n-i), so the sum needs
-    /// one reduction rather than one per block.
-    #[target_feature(enable = "pclmulqdq,avx")]
-    fn add_tail(&self, bytes: &[u8], current: __m128i) -> __m128i {
-        if bytes.is_empty() {
-            return current;
-        }
-
-        let (blocks, partial) = bytes.as_chunks::<16>();
-        let mut powers = self
-            .powers
-            .iter()
-            .zip(&self.powers_xor)
-            .take(bytes.len().div_ceil(16))
-            .rev();
-
-        let (mut lo, mut mi, mut hi) = (zero(), zero(), zero());
-        let mut x = current;
-        for (block, (h, hx)) in blocks.iter().zip(&mut powers) {
-            let b = _mm_xor_si128(x, u128_to_m128i(u128::from_be_bytes(*block)));
-            mul!(lo, mi, hi, b, *h, *hx);
-            x = zero();
-        }
-        // Only a partial block pays for the copy that pads it.
-        if let Some((h, hx)) = powers.next() {
-            let mut last = [0u8; 16];
-            last[..partial.len()].copy_from_slice(partial);
-            let b = _mm_xor_si128(x, u128_to_m128i(u128::from_be_bytes(last)));
-            mul!(lo, mi, hi, b, *h, *hx);
-        }
-        reduce!(lo, mi, hi)
     }
 }
+
+/// Defines `$add`, which hashes `bytes` into `current`, and its tail, for the
+/// target features given: one copy runs VEX-encoded, one without AVX.
+macro_rules! clmul_add {
+    ($add:ident, $add_tail:ident, $features:literal) => {
+        impl ClmulTable {
+            #[target_feature(enable = $features)]
+            fn $add(&self, bytes: &[u8], mut current: __m128i) -> __m128i {
+                let (eight_blocks, remainder) = bytes.as_chunks::<128>();
+
+                for chunk8 in eight_blocks {
+                    let u1 = u128::from_be_bytes(chunk8[0..16].try_into().unwrap());
+                    let u2 = u128::from_be_bytes(chunk8[16..32].try_into().unwrap());
+                    let u3 = u128::from_be_bytes(chunk8[32..48].try_into().unwrap());
+                    let u4 = u128::from_be_bytes(chunk8[48..64].try_into().unwrap());
+                    let u5 = u128::from_be_bytes(chunk8[64..80].try_into().unwrap());
+                    let u6 = u128::from_be_bytes(chunk8[80..96].try_into().unwrap());
+                    let u7 = u128::from_be_bytes(chunk8[96..112].try_into().unwrap());
+                    let u8 = u128::from_be_bytes(chunk8[112..128].try_into().unwrap());
+
+                    let b1 = u128_to_m128i(u1);
+                    let b2 = u128_to_m128i(u2);
+                    let b3 = u128_to_m128i(u3);
+                    let b4 = u128_to_m128i(u4);
+                    let b5 = u128_to_m128i(u5);
+                    let b6 = u128_to_m128i(u6);
+                    let b7 = u128_to_m128i(u7);
+                    let b8 = u128_to_m128i(u8);
+
+                    let b1 = _mm_xor_si128(current, b1);
+                    current = _mul8(self, b1, b2, b3, b4, b5, b6, b7, b8);
+                }
+
+                self.$add_tail(remainder, current)
+            }
+
+            /// Hashes the fewer than eight blocks after `add`'s chunks, zero-padding
+            /// the last: block `i` of `n` is multiplied by H^(n-i), so the sum needs
+            /// one reduction rather than one per block.
+            #[target_feature(enable = $features)]
+            fn $add_tail(&self, bytes: &[u8], current: __m128i) -> __m128i {
+                if bytes.is_empty() {
+                    return current;
+                }
+
+                let (blocks, partial) = bytes.as_chunks::<16>();
+                let mut powers = self
+                    .powers
+                    .iter()
+                    .zip(&self.powers_xor)
+                    .take(bytes.len().div_ceil(16))
+                    .rev();
+
+                let (mut lo, mut mi, mut hi) = (zero(), zero(), zero());
+                let mut x = current;
+                for (block, (h, hx)) in blocks.iter().zip(&mut powers) {
+                    let b = _mm_xor_si128(x, u128_to_m128i(u128::from_be_bytes(*block)));
+                    mul!(lo, mi, hi, b, *h, *hx);
+                    x = zero();
+                }
+                // Only a partial block pays for the copy that pads it.
+                if let Some((h, hx)) = powers.next() {
+                    let mut last = [0u8; 16];
+                    last[..partial.len()].copy_from_slice(partial);
+                    let b = _mm_xor_si128(x, u128_to_m128i(u128::from_be_bytes(last)));
+                    mul!(lo, mi, hi, b, *h, *hx);
+                }
+                reduce!(lo, mi, hi)
+            }
+        }
+    };
+}
+
+clmul_add!(add_avx, add_tail_avx, "pclmulqdq,avx");
+clmul_add!(add_sse, add_tail_sse, "pclmulqdq");
 
 pub(crate) struct GhashTableAvx512 {
     /// H^16, H^15, ... H^1: descending, so a tail of `n` blocks multiplies
     /// by the last `n`
     powers: [__m512i; 4],
-    avx: GhashTableAvx,
+    pub(crate) avx: ClmulTable,
     /// BoringSSL's 512-bit kernel, for long messages.
     pub(crate) vaes: VaesKernel,
     pub(crate) token: HaveAvx512ForAesGcm,
 }
 
 impl GhashTableAvx512 {
-    pub(crate) fn new(h: u128, token: HaveAvx512ForAesGcm) -> Self {
+    pub(crate) fn new(h: u128, hw: HaveAesHardware, token: HaveAvx512ForAesGcm) -> Self {
         // This builds on the AVX version, which is perhaps not the most
         // efficient option.
-        let avx = GhashTableAvx::new(h);
+        let avx = ClmulTable::new(h, hw);
 
         let mut powers = [zero(); 16];
 
         powers[..8].copy_from_slice(&avx.powers);
 
         for i in 8..16 {
-            // SAFETY: necessary features mandated by crate
+            // SAFETY: the token proves the CPU has PCLMULQDQ.
             powers[i] = unsafe { _mul(powers[i - 1], powers[0]) };
         }
 
@@ -261,7 +289,7 @@ impl GhashTableAvx512 {
 
         // A short input, such as AAD or the length block, has too few blocks
         // to fill vectors, so it is quicker to hash it by the AVX path.
-        self.avx.add(remainder, current)
+        self.avx.add_avx(remainder, current)
     }
 }
 
@@ -283,9 +311,22 @@ impl<'a> Ghash<'a> {
     /// `bytes` is zero-padded, if required.
     pub(crate) fn add(&mut self, bytes: &[u8]) {
         self.current = match self.table {
-            GhashTable::Avx(avx) | GhashTable::VaesAvx2(avx, _) => avx.add(bytes, self.current),
+            GhashTable::Clmul(table) | GhashTable::VaesAvx2(table, _) => {
+                table.add(bytes, self.current)
+            }
             // SAFETY: avx512.token proves features were dynamically checked
             GhashTable::Avx512(avx512) => unsafe { avx512.add(bytes, self.current) },
+            GhashTable::Ssse3(table) => {
+                let mut xi = self.xi();
+                let (blocks, tail) = bytes.as_chunks::<16>();
+                table.ghash(&mut xi, blocks);
+                if !tail.is_empty() {
+                    let mut last = [0u8; 16];
+                    last[..tail.len()].copy_from_slice(tail);
+                    table.ghash(&mut xi, &[last]);
+                }
+                return self.set_xi(xi);
+            }
         };
     }
 
@@ -295,13 +336,13 @@ impl<'a> Ghash<'a> {
 
     /// The state in GCM's byte order, as BoringSSL's `Xi`.
     pub(crate) fn xi(&self) -> [u8; 16] {
-        // SAFETY: this crate requires the `ssse3` cpu feature
+        // SAFETY: rind requires SSSE3
         m128i_to_u128(unsafe { byteswap(self.current) }).to_le_bytes()
     }
 
     /// Sets the state from GCM's byte order, as BoringSSL's `Xi`.
     pub(crate) fn set_xi(&mut self, xi: [u8; 16]) {
-        // SAFETY: this crate requires the `ssse3` cpu feature
+        // SAFETY: rind requires SSSE3
         self.current = unsafe { byteswap(u128_to_m128i(u128::from_le_bytes(xi))) };
     }
 }
@@ -312,7 +353,7 @@ fn byteswap(x: __m128i) -> __m128i {
 }
 
 #[inline]
-#[target_feature(enable = "pclmulqdq,avx")]
+#[target_feature(enable = "pclmulqdq")]
 fn _mul(a: __m128i, b: __m128i) -> __m128i {
     // SAFETY: intrinsics. see [crate::low::inline_assembly_safety#safety-of-intrinsics] for safety info.
     let (mut lo, mut mi, mut hi) = (zero(), zero(), zero());
@@ -322,9 +363,9 @@ fn _mul(a: __m128i, b: __m128i) -> __m128i {
 }
 
 #[inline]
-#[target_feature(enable = "pclmulqdq,avx")]
+#[target_feature(enable = "pclmulqdq")]
 pub(crate) fn _mul8(
-    table: &GhashTableAvx,
+    table: &ClmulTable,
     x1: __m128i,
     x2: __m128i,
     x3: __m128i,
@@ -466,7 +507,7 @@ pub(crate) fn _mul_tail(
     _mm_ternarylogic_epi32(ab, c, d, TERNARY_XOR)
 }
 
-#[target_feature(enable = "avx")]
+#[target_feature(enable = "sse2")]
 fn gf128_big_endian(h: __m128i) -> __m128i {
     // takes a raw hash subkey, and arranges that it can
     // be used in big endian ordering.
@@ -477,7 +518,7 @@ fn gf128_big_endian(h: __m128i) -> __m128i {
     _mm_xor_si128(h, t)
 }
 
-#[target_feature(enable = "avx")]
+#[target_feature(enable = "sse2")]
 fn xor_halves(h: __m128i) -> __m128i {
     let hx = _mm_shuffle_epi32(h, 0b01_00_11_10);
     _mm_xor_si128(hx, h)
@@ -485,7 +526,7 @@ fn xor_halves(h: __m128i) -> __m128i {
 
 #[inline]
 fn zero() -> __m128i {
-    // SAFETY: this crate requires the `avx` cpu feature
+    // SAFETY: every x86_64 CPU has SSE2
     unsafe { _mm_setzero_si128() }
 }
 
@@ -569,20 +610,32 @@ mod tests {
         check(k, &pattern);
     }
 
+    // Checks the table the CPU picks, and every slower one it can run: the
+    // SSSE3 table, and PCLMULQDQ without AVX.
     fn check(key: u128, input: &[u8]) {
         println!("check: input={input:02x?}");
-        let ta = GhashTable::new(key);
         let tb = model::GhashTable::new(key);
-        let mut a = Ghash::new(&ta);
         let mut b = model::Ghash::new(&tb);
-        a.add(input);
         b.add(input);
-
-        let fa = a.into_bytes();
         let fb = b.into_bytes();
 
-        if fa != fb {
-            panic!("for input: {input:02x?}:\n\n impl  {fa:02x?}\n    !=\nmodel  {fb:02x?}");
+        let mut tables = vec![
+            GhashTable::new(key),
+            GhashTable::Ssse3(Ssse3Table::new(&key.to_be_bytes())),
+        ];
+        if let Some(hw) = HaveAesHardware::check() {
+            let mut sse = ClmulTable::new(key, hw);
+            sse.avx = None;
+            tables.push(GhashTable::Clmul(sse));
+        }
+        for ta in &tables {
+            let mut a = Ghash::new(ta);
+            a.add(input);
+            let fa = a.into_bytes();
+
+            if fa != fb {
+                panic!("for input: {input:02x?}:\n\n impl  {fa:02x?}\n    !=\nmodel  {fb:02x?}");
+            }
         }
     }
 }

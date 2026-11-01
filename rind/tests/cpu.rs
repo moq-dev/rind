@@ -12,7 +12,7 @@ fn check_passes() {
 #[test]
 fn missing_feature_is_named() {
     #[cfg(target_arch = "x86_64")]
-    const REQUIRED: &[&str] = &["ssse3", "aes", "pclmulqdq", "avx"];
+    const REQUIRED: &[&str] = &["ssse3"];
     #[cfg(target_arch = "aarch64")]
     const REQUIRED: &[&str] = &["neon"];
 

@@ -15,6 +15,7 @@ mod generic {
     #[cfg(not(target_arch = "arm"))]
     pub(super) mod ct_copy;
     pub(super) mod ct_equal;
+    pub(super) mod ctr;
     #[cfg(all(test, not(target_arch = "arm")))]
     pub(crate) mod ghash;
     #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]

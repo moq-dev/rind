@@ -7,7 +7,7 @@
 //! testing in BoringSSL and Linux, and on rind's tests of them against the
 //! portable GHASH, Wycheproof, and aws-lc-rs. Both support in-place use.
 
-use super::aes::AesKey;
+use super::aes::HwKey;
 use super::cpu::{HaveAvx512ForAesGcm, HaveVaesAvx2ForAesGcm};
 use super::ghash::Ghash;
 
@@ -60,7 +60,7 @@ impl VaesKernel {
     /// block after `y0`, folding the ciphertext into `ghash`.
     pub(crate) fn cipher<const ENC: bool>(
         &self,
-        key: &AesKey,
+        key: &HwKey,
         y0: &[u8; 16],
         ghash: &mut Ghash<'_>,
         inout: &mut [u8],

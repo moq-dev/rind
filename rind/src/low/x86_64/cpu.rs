@@ -169,7 +169,8 @@ impl HaveAvx512ForMlKem {
     }
 }
 
-/// Token type reflecting the check for CPU features needed for SHA1 using SHA-NI
+/// Token type reflecting the check for CPU features needed for SHA1 using SHA-NI,
+/// and the SSE4.1 its rounds also use
 ///
 /// A value of this type is proof that the CPU dynamic feature check has happened.
 #[derive(Clone, Copy, Debug)]
@@ -177,14 +178,15 @@ pub(crate) struct HaveSha1(());
 
 impl HaveSha1 {
     pub(crate) fn check() -> Option<Self> {
-        match has(SHA) {
+        match has(SHA | SSE41) {
             true => Some(Self(())),
             false => None,
         }
     }
 }
 
-/// Token type reflecting the check for CPU features needed for SHA256 using SHA-NI
+/// Token type reflecting the check for CPU features needed for SHA256 using SHA-NI,
+/// and the SSE4.1 its rounds also use
 ///
 /// A value of this type is proof that the CPU dynamic feature check has happened.
 #[derive(Clone, Copy, Debug)]
@@ -192,7 +194,7 @@ pub(crate) struct HaveSha256(());
 
 impl HaveSha256 {
     pub(crate) fn check() -> Option<Self> {
-        match has(SHA) {
+        match has(SHA | SSE41) {
             true => Some(Self(())),
             false => None,
         }
@@ -215,7 +217,23 @@ impl HaveAvx2 {
     }
 }
 
-/// Proof that the CPU has AVX, which aws-lc's AVX SHA routines use.
+/// Proof that the CPU has AES-NI and PCLMULQDQ, and the SSSE3 and SSE4.1
+/// their kernels also use: rind's AES-GCM and GHASH intrinsics, and aws-lc's
+/// AES-CTR.
+///
+/// Without it, aws-lc's vpaes and SSSE3 GHASH run instead, and
+/// `has_aes_hardware()` is false, as aws-lc's `EVP_has_aes_hardware` is.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAesHardware(());
+
+impl HaveAesHardware {
+    pub(crate) fn check() -> Option<Self> {
+        has(AES | PCLMULQDQ | SSSE3 | SSE41).then_some(Self(()))
+    }
+}
+
+/// Proof that the CPU has AVX, which aws-lc's AVX SHA routines and rind's
+/// VEX-encoded AES-CTR, AES-GCM, and GHASH intrinsics use.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAvx(());
 
@@ -259,6 +277,7 @@ const AVX512VL: u32 = 1 << 12;
 const AVX512VBMI: u32 = 1 << 13;
 const AVX512VBMI2: u32 = 1 << 14;
 const SHA: u32 = 1 << 15;
+const SSE41: u32 = 1 << 16;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
 const AVX2_KERNELS: u32 = AVX | AVX2 | BMI2 | POPCNT;
@@ -320,6 +339,7 @@ fn detect() -> u32 {
         | detect!("bmi2", BMI2)
         | detect!("popcnt", POPCNT)
         | detect!("ssse3", SSSE3)
+        | detect!("sse4.1", SSE41)
         | detect!("avx", AVX)
         | detect!("avx2", AVX2)
         | detect!("avx512f", AVX512F)
@@ -349,25 +369,14 @@ fn test_toggle(id: &str, detected: bool) -> bool {
 
 /// Returns the first CPU feature we require unconditionally that this CPU lacks.
 ///
-/// This limits the library to x86_64 processors released after approx 2011.
-/// Ordered oldest first, so the name points at the real gap. `sse3` and
-/// `sse4.1` are implied by `avx` in rustc's feature model.
+/// Every other feature picks a faster path where the CPU has it, so this
+/// limits the library only to x86_64 processors with SSSE3: Intel's since
+/// Core 2 (2006), and AMD's since Bobcat and Bulldozer (2011).
 pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
-    // aws-lc's ChaCha20, SHA-1, and SHA-256 routines, and assorted intrinsic
-    // code
+    // The slowest path of each primitive: aws-lc's SSSE3 vpaes, GHASH,
+    // ChaCha20, SHA-1, and SHA-256 routines, and assorted intrinsic code.
     if !has(SSSE3) {
         return Some("ssse3");
-    }
-    // our aes-gcm
-    if !has(AES) {
-        return Some("aes");
-    }
-    if !has(PCLMULQDQ) {
-        return Some("pclmulqdq");
-    }
-    // the VEX-encoded AES-NI and GHASH intrinsics
-    if !has(AVX) {
-        return Some("avx");
     }
     None
 }
@@ -402,6 +411,12 @@ mod tests {
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX2") {
             assert_eq!(HaveAvx2::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX") {
+            assert_eq!(HaveAvx::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AES_HARDWARE") {
+            assert_eq!(HaveAesHardware::check().is_some(), expected == "1");
         }
     }
 }

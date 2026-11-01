@@ -9,8 +9,8 @@ pub(in crate::low) fn sha256_compress_blocks_shaext(
     _token: super::cpu::HaveSha256,
 ) {
     debug_assert!(blocks.len().is_multiple_of(64));
-    // SAFETY: `_token` proves the caller checked the `sha` feature;
-    // this crate requires the `sse4.1` and `ssse3` features
+    // SAFETY: `_token` proves the caller checked the `sha` and `sse4.1`
+    // features; this crate requires the `ssse3` feature
     unsafe { sha256(state, blocks) }
 }
 
