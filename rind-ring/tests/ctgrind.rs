@@ -122,8 +122,7 @@ fn pbkdf2_short() {
         b"salt",
         &password,
         &mut stored,
-    )
-    .unwrap();
+    );
 
     secret(&password);
     secret(&stored);

@@ -21,8 +21,6 @@ Changes to what a test checks are marked `rind-ring:` where they are made:
   not: Ed25519 loads the seed instead of generating from it, ECDH checks
   only that a valid peer key is accepted, and RSA-PSS signs with a random
   salt and verifies.
-- `pbkdf2::derive` returns an error rather than panic, so the test unwraps
-  it.
 - RSA verification expects a public exponent over 32 bits to be refused,
   as rind refuses it, where ring takes 33 bits.
 
