@@ -91,7 +91,7 @@ fn chacha20_ctr32(key: &[u32; 8], counter_nonce: &[u32; 4], buffer: &mut [u8]) {
         // SAFETY: `buffer` is `len` readable and writable bytes, which the
         // routine allows to alias exactly, and `key` and `counter_nonce` are
         // 8 and 4 words.
-        ..SSSE3_4X_MIN_LEN => unsafe { chacha20_ctr32_nohw(ptr, ptr, len, key, counter_nonce) },
+        1..SSSE3_4X_MIN_LEN => unsafe { chacha20_ctr32_nohw(ptr, ptr, len, key, counter_nonce) },
         // SAFETY: as above, and this crate requires the `ssse3` cpu feature.
         _ => unsafe { chacha20_ctr32_ssse3_4x(ptr, ptr, len, key, counter_nonce) },
     }
