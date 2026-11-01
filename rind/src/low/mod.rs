@@ -139,6 +139,7 @@ cfg_if::cfg_if! {
             mlkem_unpack,
         };
         pub(crate) use x86_64::mont::{mont_mul, mont_sqr};
+        pub(crate) use x86_64::rsaz::Rsaz;
         pub(crate) use x86_64::mlkem768_sample_poly_ntt_8x::mlkem768_sample_poly_ntt_8x;
 
         pub(crate) use x86_64::adx_mux::p256_montjadd;

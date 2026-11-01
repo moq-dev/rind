@@ -221,6 +221,29 @@ IMPORTS_64 = [
         "routines": ["bn_sqr8x_internal"],
         "inner": ["__bn_sqr8x_internal", "__bn_sqr8x_reduction"],
     },
+    # RSAZ, the exponentiation aws-lc runs for 1024-bit moduli with AVX2 but
+    # without ADX. `scatter_permd` runs on through `gather_permd` and `inc`,
+    # since the gather reads the former before the latter.
+    {
+        "arch": "x86_64",
+        "source": "rsaz-avx2.S",
+        "tag": "rsaz",
+        "perlasm": "crypto/fipsmodule/bn/asm/rsaz-avx2.pl",
+        "notice": [
+            "Copyright 2013-2016 The OpenSSL Project Authors. All Rights Reserved.",
+            "Copyright (c) 2012, Intel Corporation. All Rights Reserved.",
+            "SPDX-License-Identifier: Apache-2.0",
+        ],
+        "tables": ["and_mask", "scatter_permd"],
+        "routines": [
+            "rsaz_1024_sqr_avx2",
+            "rsaz_1024_mul_avx2",
+            "rsaz_1024_norm2red_avx2",
+            "rsaz_1024_red2norm_avx2",
+            "rsaz_1024_scatter5_avx2",
+            "rsaz_1024_gather5_avx2",
+        ],
+    },
     # Of those, these are AES and GHASH for CPUs without AVX, or without
     # AES-NI and PCLMULQDQ.
     {
