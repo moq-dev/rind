@@ -16,8 +16,6 @@ use crate::{
     },
 };
 
-// Named in full, since x86_64 loads this file from its dispatcher.
-#[path = "mlkem768/sample_ntt.rs"]
 mod sample_ntt;
 
 /// An ML-KEM-768 decapsulation key.
@@ -42,7 +40,7 @@ impl DecapKey {
     }
 
     /// Decapsulate ciphertext `c`, yielding a [`SharedSecret`].
-    pub(crate) fn decaps(&self, c: &Ciphertext) -> SharedSecret {
+    pub(crate) fn decaps(self, c: &Ciphertext) -> SharedSecret {
         let _entry = low::Entry::new_secret();
         self.decaps_internal(c)
     }
@@ -351,7 +349,7 @@ impl Drop for KpkeRandomness {
 }
 
 /// An ML-KEM shared secret.
-pub(crate) struct SharedSecret(pub(super) [u8; 32]);
+pub(crate) struct SharedSecret([u8; 32]);
 
 impl AsRef<[u8; 32]> for SharedSecret {
     fn as_ref(&self) -> &[u8; 32] {
@@ -834,20 +832,8 @@ mod tests {
         assert_eq!(format!("{:?}", SharedSecret([0u8; 32])), "SharedSecret(..)");
     }
 
-    /// Whether this CPU runs rind's ML-KEM: x86_64 runs libcrux's without
-    /// AVX2, and the dispatcher's tests compare the two.
-    fn runs_here() -> bool {
-        #[cfg(target_arch = "x86_64")]
-        return low::HaveAvx2::check().is_some();
-        #[cfg(not(target_arch = "x86_64"))]
-        true
-    }
-
     #[test]
     fn pairwise() {
-        if !runs_here() {
-            return;
-        }
         let d = DecapKey::generate().unwrap();
         let (ess, ct) = d.encapsulation_key().encaps().unwrap();
         let dss = d.decaps(&ct);
@@ -856,9 +842,6 @@ mod tests {
 
     #[test]
     fn encaps_modulus_test() {
-        if !runs_here() {
-            return;
-        }
         assert_eq!(
             EncapKey::from_bytes(&[0xffu8; 1184]).err(),
             Some(KeyFormatError::MlKemModulus.into())

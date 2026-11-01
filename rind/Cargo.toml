@@ -27,13 +27,10 @@ fiat-crypto = { version = "0.3", default-features = false }
 libcrux-aes = { version = "0.0.10", default-features = false }
 libcrux-hacl-rs = { version = "0.0.6", features = ["alloc"] }
 libcrux-macros = "0.0.4"
+libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["mlkem768"] }
 libcrux-p256 = { version = "0.0.9", features = ["expose-hacl"] }
 libcrux-poly1305 = { version = "0.0.7", features = ["expose-hacl"] }
 libcrux-traits = "0.0.9"
-
-# ML-KEM on armv7, and on x86_64 CPUs without AVX2: libcrux's portable Rust.
-[target.'cfg(any(target_arch = "arm", target_arch = "x86_64"))'.dependencies]
-libcrux-ml-kem = { version = "0.0.11", default-features = false, features = ["mlkem768"] }
 
 # Reads the AArch32 crypto extension's HWCAP2 bits.
 [target.'cfg(all(target_arch = "arm", any(target_os = "linux", target_os = "android")))'.dependencies]

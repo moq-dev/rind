@@ -41,7 +41,8 @@ Targets, refused rather than falling back:
   (maintainer, 2026-10-26).
 - x86_64 and aarch64 run graviola's backend. x86_64 needs aes, ssse3, avx,
   and pclmulqdq; it runs s2n-bignum's `_alt` routines without adx, and
-  aws-lc's SSSE3 and AVX ChaCha20 and SHA and libcrux's ML-KEM without avx2;
+  aws-lc's SSSE3 and AVX ChaCha20 and SHA and portable ML-KEM arithmetic
+  without avx2;
   aarch64 needs neon. aarch64 CPUs
   without the crypto extension (Raspberry Pi 4, CM4, Zero 2 W) run aws-lc's
   NEON AES and GHASH and scalar SHA-1 and SHA-256, chosen once per process,

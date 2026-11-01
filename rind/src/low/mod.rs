@@ -17,10 +17,13 @@ mod generic {
     pub(super) mod ct_equal;
     #[cfg(all(test, not(target_arch = "arm")))]
     pub(crate) mod ghash;
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     pub(crate) mod mlkem;
     #[cfg(target_arch = "aarch64")]
     pub(crate) mod mlkem768;
+    // x86_64's ML-KEM arithmetic for CPUs without AVX2.
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) mod mlkem_poly;
     // armv7's group orders, picked from by modulus.
     #[cfg(target_arch = "arm")]
     pub(crate) mod order;
@@ -67,7 +70,6 @@ cfg_if::cfg_if! {
 
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
         pub(crate) use x86_64::chacha20;
-        pub(crate) use x86_64::cpu::HaveAvx2;
         pub(crate) use x86_64::aes::AesKey;
         pub(crate) use x86_64::aes_ctr;
         pub(crate) use x86_64::aes_gcm;
@@ -133,14 +135,14 @@ cfg_if::cfg_if! {
             mlkem_ntt,
             mlkem_intt,
             mlkem_mulcache_compute,
-            mlkem_rej_uniform_vartime
+            mlkem_rej_uniform_vartime,
+            mlkem_basemul_k3,
+            mlkem_reduce,
+            mlkem_frombytes,
+            mlkem_tobytes,
+            mlkem_tomont,
+            mlkem_unpack,
         };
-        pub(crate) use x86_64::mlkem_basemul_k3::mlkem_basemul_k3;
-        pub(crate) use x86_64::mlkem_reduce::mlkem_reduce;
-        pub(crate) use x86_64::mlkem_frombytes::mlkem_frombytes;
-        pub(crate) use x86_64::mlkem_tobytes::mlkem_tobytes;
-        pub(crate) use x86_64::mlkem_tomont::mlkem_tomont;
-        pub(crate) use x86_64::mlkem_unpack::mlkem_unpack;
         pub(crate) use x86_64::mlkem768_sample_poly_ntt_8x::mlkem768_sample_poly_ntt_8x;
 
         pub(crate) use x86_64::adx_mux::p256_montjadd;

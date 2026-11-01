@@ -23,6 +23,11 @@ pub(crate) fn bignum_copy_row_from_table(
                 z, table, height, width, index, token,
             )
         }
+        (None, width) if width.is_multiple_of(2) => {
+            super::bignum_copy_row_from_table_sse2::bignum_copy_row_from_table_sse2(
+                z, table, height, width, index,
+            )
+        }
         (_, width) => super::bignum_copy_row_from_table::bignum_copy_row_from_table(
             z, table, height, width, index,
         ),

@@ -28,3 +28,28 @@ static RHO56: [u64; 4] = [
     0x1017161514131211,
     0x181F1E1D1C1B1A19,
 ];
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // AVX2, where present, hides the one-at-a-time path from every other
+    // test, so it is checked against the four-way routine directly.
+    #[test]
+    fn scalar_matches_avx2() {
+        if super::super::cpu::HaveAvx2::check().is_none() {
+            return;
+        }
+        let rc = core::array::from_fn(|i| (i as u64).wrapping_mul(0x9e3779b97f4a7c15));
+        let mut want: [[u64; 25]; 4] = core::array::from_fn(|j| {
+            core::array::from_fn(|i| ((j * 25 + i) as u64).wrapping_mul(0xbf58476d1ce4e5b9))
+        });
+        let mut got = want;
+        super::super::sha3_keccak4_f1600_alt::sha3_keccak4_f1600(&mut want, &rc, &RHO8, &RHO56);
+        for a in got.iter_mut() {
+            super::super::sha3_keccak_f1600::sha3_keccak_f1600(a, &rc);
+        }
+        assert_eq!(got, want);
+    }
+}

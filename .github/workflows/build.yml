@@ -76,10 +76,10 @@ jobs:
           # as Haswell; the last variable fails the run that lands on the
           # wrong path
           env RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 cargo test
-          # test aws-lc's SSSE3 ChaCha20, SHA-1, and SHA-256, libcrux's ML-KEM,
-          # and the SSE2 and scalar selects for CPUs without AVX2, such as
-          # AMD's Bulldozer and Jaguar; x86-cpu's Sandy Bridge run covers
-          # aws-lc's AVX SHA routines, which Intel's cores run there
+          # test aws-lc's SSSE3 ChaCha20, SHA-1, and SHA-256, the portable
+          # ML-KEM arithmetic, and the SSE2 selects for CPUs without AVX2,
+          # such as AMD's Bulldozer and Jaguar; x86-cpu's Sandy Bridge run
+          # covers aws-lc's AVX SHA routines, which Intel's cores run there
           env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 cargo test
 
       - name: Artificial CPU feature tests (aarch64)

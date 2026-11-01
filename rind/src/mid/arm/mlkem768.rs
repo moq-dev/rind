@@ -31,7 +31,7 @@ impl DecapKey {
     }
 
     /// Decapsulate ciphertext `c`, yielding a [`SharedSecret`].
-    pub(crate) fn decaps(&self, c: &Ciphertext) -> SharedSecret {
+    pub(crate) fn decaps(self, c: &Ciphertext) -> SharedSecret {
         let _entry = low::Entry::new_secret();
         self.decaps_internal(c)
     }

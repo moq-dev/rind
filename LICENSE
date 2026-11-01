@@ -120,6 +120,15 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     AWS-LC
     Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
+mlkem-native <https://github.com/pq-code-package/mlkem-native>
+
+  What: rind/src/low/generic/mlkem_poly.rs, which ports mlkem-native's
+  portable C polynomial arithmetic (mlkem/poly.c, poly_k.c, compress.c,
+  sampling.c, and zetas.inc, as aws-lc vendors them at commit
+  91c93a8eb860e51482a871a8772cb9b1b310baea) to Rust.
+  Copyright (c) The mlkem-native project authors
+  License: Apache-2.0 OR ISC OR MIT.
+
 BoringSSL <https://boringssl.googlesource.com/boringssl>
 
   What: the files under rind/src/low/{x86_64,arm}/boringssl, which

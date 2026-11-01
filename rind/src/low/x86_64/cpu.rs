@@ -203,8 +203,9 @@ impl HaveSha256 {
 /// kernels also use: ChaCha20, SHA-1, SHA-256, ML-KEM, the 4-way Keccak-f,
 /// and the constant-time table selects.
 ///
-/// Without it, aws-lc's SSSE3 and AVX routines, libcrux's portable ML-KEM,
-/// and SSE2 or scalar selects run instead.
+/// Without it, aws-lc's SSSE3 and AVX routines, a portable port of
+/// mlkem-native's ML-KEM arithmetic, scalar Keccak-f, and SSE2 selects run
+/// instead.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAvx2(());
 

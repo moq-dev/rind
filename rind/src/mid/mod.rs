@@ -11,7 +11,7 @@ cfg_if::cfg_if! {
         pub(super) mod aes_gcm;
         #[path = "arm/ed25519.rs"]
         pub(super) mod ed25519;
-        #[path = "generic/mlkem768.rs"]
+        #[path = "arm/mlkem768.rs"]
         pub(super) mod mlkem768;
         #[path = "arm/p256.rs"]
         pub(super) mod p256;
@@ -22,9 +22,6 @@ cfg_if::cfg_if! {
     } else {
         pub(super) mod aes_gcm;
         pub(super) mod ed25519;
-        // x86_64 picks rind's AVX2 ML-KEM or libcrux's portable Rust once per
-        // process.
-        #[cfg_attr(target_arch = "x86_64", path = "x86_64/mlkem768.rs")]
         pub(super) mod mlkem768;
         pub(super) mod p256;
         pub(super) mod rsa_priv;

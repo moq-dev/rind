@@ -40,7 +40,8 @@ impl ChaCha20 {
             Some(_) => unsafe { cipher_avx2(&self.key, &self.counter_nonce, buffer) },
             None => chacha20_ctr32(&self.key, &self.counter_nonce, buffer),
         }
-        self.counter_nonce[0] = self.counter_nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
+        self.counter_nonce[0] =
+            self.counter_nonce[0].wrapping_add(buffer.len().div_ceil(64) as u32);
     }
 }
 

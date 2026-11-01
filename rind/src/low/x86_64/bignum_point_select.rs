@@ -123,7 +123,9 @@ mod tests {
         let Some(token) = HaveAvx2::check() else {
             return;
         };
-        let table: Vec<u64> = (0..18 * 16u64).map(|i| i.wrapping_mul(0x9e3779b97f4a7c15)).collect();
+        let table: Vec<u64> = (0..18 * 16u64)
+            .map(|i| i.wrapping_mul(0x9e3779b97f4a7c15))
+            .collect();
         for index in 0..=17 {
             let (mut want, mut got) = ([1; 12], [2; 12]);
             select_avx2::<12, 3>(&mut want, &table[..12 * 16], index, token);
