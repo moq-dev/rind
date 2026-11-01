@@ -84,7 +84,7 @@ fn missing_feature_is_named() {
 #[test]
 fn upper_vector_state_left_clean() {
     use core::arch::asm;
-    use core::arch::x86_64::__cpuid_count;
+    use core::arch::x86_64::{__cpuid_count, _mm256_zeroupper};
     use rind::aead::{AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305, Key, Nonce};
     use rind::agreement::{self, X25519};
     use rind::digest::{SHA256, SHA512, digest, legacy::SHA1};
@@ -99,9 +99,13 @@ fn upper_vector_state_left_clean() {
         };
         xinuse & 4 != 0
     }
+    #[target_feature(enable = "avx")]
+    fn zeroupper() {
+        _mm256_zeroupper();
+    }
     fn vzeroupper() {
         // SAFETY: the caller checked for AVX.
-        unsafe { asm!("vzeroupper", options(nomem, nostack)) };
+        unsafe { zeroupper() };
     }
 
     let xgetbv1 = __cpuid_count(0xd, 1).eax & 4 != 0;
