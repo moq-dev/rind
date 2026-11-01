@@ -28,7 +28,8 @@ The decisions are in the [epic](/quest/m2/speed/README.md).
   source's license and verification.
 - Known leads to confirm or drop: HMAC and HKDF on one-block inputs, armv7
   P-521 verification (1.05x), ChaCha20-Poly1305 without AVX2 (1.22-1.27x
-  from 1200 B against aws-lc's SSE4.1 combined routine, #181), and
-  ES256 and EdDSA per-token cost in moq-auth's bench.
+  from 1200 B against aws-lc's SSE4.1 combined routine, #181), SHA-256 fed
+  1-byte updates without SHA-NI (1.10-1.17x, #181), RSA-2048 signing without
+  AVX2 (1.11x, #181), and ES256 and EdDSA per-token cost in moq-auth's bench.
 - Land the bench rows, ring baseline, handshake benches, and README table;
   create no quests, but list each recommended gap quest with its numbers.
