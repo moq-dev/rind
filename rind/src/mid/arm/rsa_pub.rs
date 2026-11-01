@@ -12,7 +12,7 @@ use crate::low;
 #[derive(Clone, Debug)]
 pub(crate) struct RsaPublicKey {
     pub(crate) n: RsaPosInt,
-    pub(crate) e: u32,
+    pub(crate) e: u64,
 
     /// The Montgomery setup, which HACL*'s `mod_exp_vartime` would
     /// otherwise recompute on every operation: R² mod n, as wide as `n`,
@@ -25,15 +25,16 @@ pub(crate) struct RsaPublicKey {
 impl low::Zeroable for RsaPublicKey {}
 
 impl RsaPublicKey {
-    pub(crate) fn new(n: RsaPosInt, e: u32) -> Result<Self, Error> {
+    pub(crate) fn new(n: RsaPosInt, e: u64) -> Result<Self, Error> {
         if n.is_even()
             || !(MIN_PUBLIC_MODULUS_BITS..=MAX_PUBLIC_MODULUS_BITS).contains(&n.len_bits())
         {
             return Err(KeyFormatError::RsaModulus.into());
         }
         // As aws-lc requires: an even e has no inverse mod the even
-        // (p - 1)(q - 1), and e = 1 makes every message its own signature.
-        if e.is_multiple_of(2) || e == 1 {
+        // (p - 1)(q - 1), e = 1 makes every message its own signature, and
+        // 33 bits bounds the public operation's cost.
+        if e.is_multiple_of(2) || e == 1 || e >> MAX_PUBLIC_EXPONENT_BITS != 0 {
             return Err(KeyFormatError::RsaExponent.into());
         }
 
@@ -69,8 +70,8 @@ impl RsaPublicKey {
         let m = &mut m[..n.len()];
         // The exponent is public, so a variable-time ladder is fine, and
         // its exact length saves the squarings past its top bit.
-        let e_bits = u32::BITS - self.e.leading_zeros();
-        bignum64::mod_exp_vartime_precomp(&k, c, e_bits, &[u64::from(self.e)], m);
+        let e_bits = u64::BITS - self.e.leading_zeros();
+        bignum64::mod_exp_vartime_precomp(&k, c, e_bits, &[self.e], m);
         RsaPosInt::from_words(m)
     }
 }
@@ -105,6 +106,8 @@ fn montgomery_r2(n: &RsaPosInt, mu: u64) -> [u64; MAX_PUBLIC_MODULUS_WORDS] {
 const MAX_PUBLIC_MODULUS_BITS: usize = 8192;
 pub(crate) const MAX_PUBLIC_MODULUS_WORDS: usize = MAX_PUBLIC_MODULUS_BITS / 64;
 pub(crate) const MAX_PUBLIC_MODULUS_BYTES: usize = MAX_PUBLIC_MODULUS_BITS / 8;
+
+const MAX_PUBLIC_EXPONENT_BITS: u32 = 33;
 
 // Legacy verification's floor; anything smaller is refused outright.
 const MIN_PUBLIC_MODULUS_BITS: usize = 1024;

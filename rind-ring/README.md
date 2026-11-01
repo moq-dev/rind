@@ -33,10 +33,6 @@ These items are not offered, so code using them fails to build:
   test harness, which are no cryptography. `test::rand`'s fixed random
   sources could not work, since rind draws its own randomness.
 
-These inputs ring takes are refused with an error:
-
-- An RSA public exponent over 32 bits, which ring takes up to 33 bits.
-
 And these behave differently:
 
 - Where ring takes a `rand::SecureRandom` to generate a key or sign,

@@ -52,7 +52,7 @@ pub(super) fn generate_key(
         let dp = d.reduce_even(&p_1);
         let dq = d.reduce_even(&q_1);
 
-        return super::RsaPrivateKey::new(p, q, d, dp, dq, iqmp, n, PUBLIC_EXPONENT);
+        return super::RsaPrivateKey::new(p, q, d, dp, dq, iqmp, n, PUBLIC_EXPONENT.into());
     }
 }
 

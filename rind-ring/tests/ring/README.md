@@ -21,8 +21,6 @@ Changes to what a test checks are marked `rind-ring:` where they are made:
   not: Ed25519 loads the seed instead of generating from it, ECDH checks
   only that a valid peer key is accepted, and RSA-PSS signs with a random
   salt and verifies.
-- RSA verification expects a public exponent over 32 bits to be refused,
-  as rind refuses it, where ring takes 33 bits.
 
 Otherwise, imports name this harness, paths to the moved files are local,
 the `std`-only error test always runs, `cargo fmt` reordered the imports,
