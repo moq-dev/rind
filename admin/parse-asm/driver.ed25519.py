@@ -27,6 +27,27 @@ if __name__ == "__main__":
         )
         parse_file(input, d)
 
+    # edwards25519_decode (x86_64, without BMI2 and ADX)
+    with (
+        open(
+            "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_decode_alt.S"
+        ) as input,
+        open("../../rind/src/low/x86_64/edwards25519_decode_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "edwards25519_decode_alt",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "c.as_ptr() => _"),
+            ],
+            return_value=("u64", "ret", "ret == 0"),
+            return_map=("out", "ret"),
+            hoist=["proc", "Ledwards25519_decode_alt_loop", "ret"],
+            rust_decl="fn edwards25519_decode_alt(z: &mut [u64; 8], c: &[u8; 32]) -> bool",
+        )
+        parse_file(input, d)
+
     # edwards25519_scalarmulbase (x86_64)
     with (
         open(
@@ -45,6 +66,27 @@ if __name__ == "__main__":
                 ("inout", "scalar.as_ptr() => _"),
             ],
             rust_decl="fn edwards25519_scalarmulbase(res: &mut [u64; 8], scalar: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    # edwards25519_scalarmulbase (x86_64, without BMI2 and ADX)
+    with (
+        open(
+            "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_scalarmulbase_alt.S"
+        ) as input,
+        open(
+            "../../rind/src/low/x86_64/edwards25519_scalarmulbase_alt.rs", "w"
+        ) as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.add_const_symbol("edwards25519_scalarmulbase_alt_constant")
+        d.emit_rust_function(
+            "edwards25519_scalarmulbase_alt",
+            parameter_map=[
+                ("inout", "res.as_mut_ptr() => _"),
+                ("inout", "scalar.as_ptr() => _"),
+            ],
+            rust_decl="fn edwards25519_scalarmulbase_alt(res: &mut [u64; 8], scalar: &[u64; 4])",
         )
         parse_file(input, d)
 
@@ -72,6 +114,30 @@ if __name__ == "__main__":
         )
         parse_file(input, d)
 
+    # edwards25519_scalarmuldouble (x86_64, without BMI2 and ADX)
+    with (
+        open(
+            "../../thirdparty/s2n-bignum/x86/curve25519/edwards25519_scalarmuldouble_alt.S"
+        ) as input,
+        open(
+            "../../rind/src/low/x86_64/edwards25519_scalarmuldouble_alt.rs", "w"
+        ) as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.add_const_symbol("edwards25519_scalarmuldouble_alt_constant")
+        d.emit_rust_function(
+            "edwards25519_scalarmuldouble_alt",
+            parameter_map=[
+                ("inout", "res.as_mut_ptr() => _"),
+                ("inout", "scalar.as_ptr() => _"),
+                ("inout", "point.as_ptr() => _"),
+                ("inout", "bscalar.as_ptr() => _"),
+            ],
+            hoist=["proc", "Ledwards25519_scalarmuldouble_alt_pepadd", "ret"],
+            rust_decl="fn edwards25519_scalarmuldouble_alt(res: &mut [u64; 8], scalar: &[u64; 4], point: &[u64; 8], bscalar: &[u64; 4])",
+        )
+        parse_file(input, d)
+
     # bignum_madd_n25519 (x86_64)
     with (
         open(
@@ -89,6 +155,26 @@ if __name__ == "__main__":
                 ("inout", "c.as_ptr() => _"),
             ],
             rust_decl="fn bignum_madd_n25519(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4], c: &[u64; 4])",
+        )
+        parse_file(input, d)
+
+    # bignum_madd_n25519 (x86_64, without BMI2 and ADX)
+    with (
+        open(
+            "../../thirdparty/s2n-bignum/x86/curve25519/bignum_madd_n25519_alt.S"
+        ) as input,
+        open("../../rind/src/low/x86_64/bignum_madd_n25519_alt.rs", "w") as output,
+    ):
+        d = RustDriver(output, Architecture_amd64)
+        d.emit_rust_function(
+            "bignum_madd_n25519_alt",
+            parameter_map=[
+                ("inout", "z.as_mut_ptr() => _"),
+                ("inout", "x.as_ptr() => _"),
+                ("inout", "y.as_ptr() => _"),
+                ("inout", "c.as_ptr() => _"),
+            ],
+            rust_decl="fn bignum_madd_n25519_alt(z: &mut [u64; 4], x: &[u64; 4], y: &[u64; 4], c: &[u64; 4])",
         )
         parse_file(input, d)
 

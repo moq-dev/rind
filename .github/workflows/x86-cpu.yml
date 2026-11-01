@@ -48,6 +48,13 @@ jobs:
       - name: Build (release)
         run: cargo build --release --tests
 
+      # Haswell lacks ADX, so s2n-bignum's `_alt` routines run.
+      - name: Check Haswell
+        run: cargo test --release
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -hsw --"
+          RIND_TEST_X86_BMI2_ADX: 0
+
       - name: Check Skylake
         run: cargo test --release
         env:

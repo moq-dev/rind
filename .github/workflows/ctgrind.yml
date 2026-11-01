@@ -39,6 +39,34 @@ jobs:
       - name: ctgrind tests
         run: admin/ctgrind ${{ matrix.build }}
 
+  # Valgrind hides ADX, which `admin/ctgrind`'s build switch overrides to
+  # check s2n-bignum's ADX routines, so this job denies it to check their
+  # `_alt` twins, which CPUs without BMI2 and ADX run. The denial takes debug
+  # assertions, which the optimised build then keeps.
+  x86_64-portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: ctgrind tests
+        run: admin/ctgrind --release
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
+          RIND_CPU_DISABLE_adx: 1
+          RIND_TEST_X86_BMI2_ADX: 0
+
   # The arm64 runner's core has the crypto extension, so this job denies it
   # to check vpaes, NEON GHASH, and the scalar SHA-1 and SHA-256 that cores
   # without it run. The denial takes debug assertions, which the optimised

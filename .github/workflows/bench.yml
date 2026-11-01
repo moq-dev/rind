@@ -45,28 +45,38 @@ jobs:
           mode: simulation
           run: cargo codspeed run
 
-  # The arm64 runner times aarch64, and executes 32-bit ARM natively, so it
-  # times the armv7 build without emulation too. Its Neoverse core is no
-  # phone or board, so read rind's time relative to aws-lc-rs in the same
-  # run, not as a device's.
+  # Each row reads rind's time relative to aws-lc-rs in the same run, not as
+  # a device's: the arm64 runner's Neoverse core is no phone or board, and it
+  # times the armv7 build natively too.
   #
-  # The portable row denies both libraries the crypto extension and the
-  # SHA-512 and SHA-3 instructions, as a Raspberry Pi 4 lacks them. rind's
-  # denial takes debug assertions, which the optimised build then keeps.
-  arm:
-    name: arm (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }})
+  # A portable row denies both libraries what the slower path lacks: on
+  # aarch64, the crypto extension and the SHA-512 and SHA-3 instructions, as
+  # a Raspberry Pi 4 lacks them; on x86_64, BMI2 and ADX. rind's denial takes
+  # debug assertions, which the optimised build then keeps.
+  native:
+    name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
             personality: linux64
           - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
             personality: linux64
             portable: true
           - target: armv7-unknown-linux-gnueabihf
+            runner: ubuntu-24.04-arm
             personality: linux32
-    runs-on: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+            portable: true
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     steps:
@@ -91,7 +101,7 @@ jobs:
           echo "CPU: $model; ${{ matrix.target }} features:$features" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Install OpenSSL
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        if: matrix.target != 'armv7-unknown-linux-gnueabihf'
         run: sudo apt-get update && sudo apt-get install -y libssl-dev
 
       - name: Install armhf toolchain and OpenSSL
@@ -106,9 +116,18 @@ jobs:
         run: |
           if [ "${{ matrix.portable }}" = true ]; then
             export CARGO_PROFILE_BENCH_DEBUG_ASSERTIONS=true
-            export RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_CPU_DISABLE_sha3=1
-            # aws-lc's AES, SHA1, SHA256, PMULL, SHA512, and SHA3 bits.
-            export OPENSSL_armcap='~0x87c'
+            case "${{ matrix.target }}" in
+              aarch64-*)
+                export RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_CPU_DISABLE_sha3=1
+                # aws-lc's AES, SHA1, SHA256, PMULL, SHA512, and SHA3 bits.
+                export OPENSSL_armcap='~0x87c'
+                ;;
+              x86_64-*)
+                export RIND_CPU_DISABLE_adx=1
+                # aws-lc's BMI2 and ADX bits, in CPUID leaf 7's EBX.
+                export OPENSSL_ia32cap='~0x0:~0x80100'
+                ;;
+            esac
           fi
           cargo bench -p rind-bench --target ${{ matrix.target }} -- --noplot '(^|/)(rind|aws-lc-rs)(/|$)'
         env:
