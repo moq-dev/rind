@@ -33,9 +33,6 @@
 //! These inputs ring takes are refused with an error:
 //!
 //! - An RSA public exponent over 32 bits, which ring takes up to 33 bits.
-//! - An ECDSA or RSA PKCS#8 document carrying attributes, which rind's parser
-//!   refuses. An Ed25519 one loads as in ring, as does one whose public key
-//!   has the `[1] EXPLICIT` tag early ring versions wrote.
 //!
 //! And these behave differently:
 //!

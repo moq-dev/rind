@@ -1011,3 +1011,149 @@ mod mlkem768 {
         }
     }
 }
+
+/// PKCS#8's optional attributes: both sides skip them, uninterpreted, and
+/// refuse the same malformed ones, on every key type.
+mod pkcs8_attributes {
+    use aws_lc_rs::rsa::KeyPair as TheirsRsaKeyPair;
+    use aws_lc_rs::signature::{self as theirs, KeyPair as _};
+    use rind::signature::{self, sign};
+
+    /// A PKCS#8 document, and each side's loader for its key type, which
+    /// gives the public key.
+    struct Key {
+        pkcs8: Vec<u8>,
+        /// Whether the document is v2, ending in a public key.
+        v2: bool,
+        ours: fn(&[u8]) -> Option<Vec<u8>>,
+        theirs: fn(&[u8]) -> Option<Vec<u8>>,
+    }
+
+    macro_rules! ecdsa {
+        ($ours:ident, $theirs:ident) => {
+            Key {
+                pkcs8: signature::EcdsaKeyPair::generate(&sign::$ours)
+                    .unwrap()
+                    .to_pkcs8()
+                    .as_ref()
+                    .to_vec(),
+                v2: false,
+                ours: |der| {
+                    let key = signature::EcdsaKeyPair::from_pkcs8(&sign::$ours, der);
+                    key.ok().map(|key| key.public_key().as_ref().to_vec())
+                },
+                theirs: |der| {
+                    let key = theirs::EcdsaKeyPair::from_pkcs8(&theirs::$theirs, der);
+                    key.ok().map(|key| key.public_key().as_ref().to_vec())
+                },
+            }
+        };
+    }
+
+    fn keys() -> [Key; 5] {
+        [
+            ecdsa!(ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING),
+            ecdsa!(ECDSA_P384_SHA384_ASN1, ECDSA_P384_SHA384_ASN1_SIGNING),
+            ecdsa!(ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_ASN1_SIGNING),
+            Key {
+                pkcs8: include_bytes!("../src/high/rsa/rsa2056.pkcs8.der").to_vec(),
+                v2: false,
+                ours: |der| {
+                    let key = signature::RsaKeyPair::from_pkcs8(der);
+                    key.ok()
+                        .map(|key| key.public_key(&sign::RSA_PKCS1_SHA256).as_ref().to_vec())
+                },
+                theirs: |der| {
+                    let key = TheirsRsaKeyPair::from_pkcs8(der);
+                    key.ok().map(|key| key.public_key().as_ref().to_vec())
+                },
+            },
+            Key {
+                pkcs8: signature::Ed25519KeyPair::generate()
+                    .unwrap()
+                    .to_pkcs8()
+                    .as_ref()
+                    .to_vec(),
+                v2: true,
+                ours: |der| {
+                    let key = signature::Ed25519KeyPair::from_pkcs8(der);
+                    key.ok().map(|key| key.public_key().as_ref().to_vec())
+                },
+                theirs: |der| {
+                    let key = theirs::Ed25519KeyPair::from_pkcs8(der);
+                    key.ok().map(|key| key.public_key().as_ref().to_vec())
+                },
+            },
+        ]
+    }
+
+    /// The header and body lengths of the DER element starting `der`.
+    fn element(der: &[u8]) -> (usize, usize) {
+        match der[1] {
+            len @ 0..=0x7f => (2, usize::from(len)),
+            0x81 => (3, usize::from(der[2])),
+            0x82 => (4, usize::from(u16::from_be_bytes([der[2], der[3]]))),
+            _ => unreachable!("no test document is that long"),
+        }
+    }
+
+    /// `pkcs8` with `fields` inserted after its first `after` fields.
+    fn insert(pkcs8: &[u8], after: usize, fields: &[u8]) -> Vec<u8> {
+        let (header, len) = element(pkcs8);
+        let mut body = pkcs8[header..header + len].to_vec();
+        let mut at = 0;
+        for _ in 0..after {
+            let (header, len) = element(&body[at..]);
+            at += header + len;
+        }
+        body.splice(at..at, fields.iter().copied());
+
+        let header = match body.len() {
+            len @ 0..=0x7f => vec![0x30, len as u8],
+            len @ 0x80..=0xff => vec![0x30, 0x81, len as u8],
+            len => [
+                &[0x30, 0x82][..],
+                &u16::try_from(len).unwrap().to_be_bytes(),
+            ]
+            .concat(),
+        };
+        [header, body].concat()
+    }
+
+    #[test]
+    fn attributes() {
+        // RFC 8410's example, and contents that are not DER at all.
+        let rfc_8410 =
+            hex::decode("a01f301d060a2a864886f70d01090914310f0c0d437572646c6520436861697273")
+                .unwrap();
+        let skipped: [&[u8]; 3] = [&[0xa0, 0x00], &rfc_8410, &[0xa0, 0x03, 0xff, 0xff, 0xff]];
+        let refused: [&[u8]; 5] = [
+            &[0xa0, 0x7f, 0x31, 0x00], // truncated
+            &[0x80, 0x00],             // primitive
+            &[0xa2, 0x00],             // another tag
+            &[0xa0, 0x00, 0x05, 0x00], // trailing garbage
+            &[0xa0, 0x00, 0xa0, 0x00], // twice
+        ];
+
+        for key in keys() {
+            let plain = (key.ours)(&key.pkcs8).unwrap();
+            let check = |pkcs8: &[u8], expected: Option<&[u8]>| {
+                let (ours, theirs) = ((key.ours)(pkcs8), (key.theirs)(pkcs8));
+                assert_eq!(ours.as_deref(), expected, "{pkcs8:02x?}");
+                assert_eq!(theirs.as_deref(), expected, "{pkcs8:02x?}");
+            };
+
+            // After the version, algorithm, and private key.
+            for fields in skipped {
+                check(&insert(&key.pkcs8, 3, fields), Some(&plain));
+            }
+            for fields in refused {
+                check(&insert(&key.pkcs8, 3, fields), None);
+            }
+            // Following a v2 document's public key, out of order.
+            if key.v2 {
+                check(&insert(&key.pkcs8, 4, &[0xa0, 0x00]), None);
+            }
+        }
+    }
+}
