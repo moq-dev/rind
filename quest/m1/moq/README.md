@@ -71,5 +71,6 @@ RustCrypto dependency.
 - [instant-acme 0.9 is released](/quest/m1/moq/instant-acme-release.md) - waiting on the release with a pluggable `CryptoProvider`
 - [libcrux releases its bignum constant-time fix](/quest/m1/moq/libcrux-ct-fixes.md) - waiting on libcrux's fix, then dropping its armv7 ctgrind suppression
 - [Publish rind-instant-acme](/quest/m1/moq/instant-acme-publish.md) - switch to the 0.9 release and publish
+- [aarch64 without the crypto extensions](/quest/m1/moq/aarch64-portable.md) - rind runs on a Pi 4's aarch64 CPU, as ring and aws-lc-rs do
 - [Raw private-key export](/quest/m1/moq/raw-export.md) - ECDSA scalars and Ed25519 seeds for moq-auth's JWKs
 - [JWT signing as fast as aws-lc-rs](/quest/m1/moq/jwt-speed.md) - moq-auth's per-token cost does not grow on rind
