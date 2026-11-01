@@ -6,9 +6,10 @@ fn check_passes() {
     assert_eq!(rind::cpu::check(), Ok(()));
 }
 
-// `RIND_CPU_DISABLE_*` only takes effect with debug assertions, and x86_64
-// and the portable armv7 backend require no CPU features.
-#[cfg(all(debug_assertions, target_arch = "aarch64"))]
+// `RIND_CPU_DISABLE_*` only takes effect with debug assertions or
+// `--cfg rind_cpu_disable`, and x86_64 and the portable armv7 backend require
+// no CPU features.
+#[cfg(all(any(debug_assertions, rind_cpu_disable), target_arch = "aarch64"))]
 #[test]
 fn missing_feature_is_named() {
     const REQUIRED: &[&str] = &["neon"];

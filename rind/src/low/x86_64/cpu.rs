@@ -368,14 +368,16 @@ fn detect() -> u32 {
         | detect!("sha", SHA)
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, rind_cpu_disable)))]
 fn test_toggle(_id: &str, detected: bool) -> bool {
     detected
 }
 
 /// Lets a debug build deny a feature with `RIND_CPU_DISABLE_<id>`, so a CPU
-/// with it also tests the code for one without.
-#[cfg(debug_assertions)]
+/// with it also tests the code for one without. `--cfg rind_cpu_disable`
+/// does the same for a release build, so benches and ctgrind time and check
+/// the code that ships; only `RUSTFLAGS` sets it, never a dependent crate.
+#[cfg(any(debug_assertions, rind_cpu_disable))]
 fn test_toggle(id: &str, detected: bool) -> bool {
     if std::env::var(format!("RIND_CPU_DISABLE_{id}")).is_ok() {
         println!("DEBUG: denying cpuid {id:?}");
