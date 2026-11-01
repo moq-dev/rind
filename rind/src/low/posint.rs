@@ -498,10 +498,39 @@ impl<const N: usize> PosInt<N> {
     /// This is done in a side-channel-free way, with respect to the values of `self`, `e`,
     /// `n` and `n_0`.  The instruction trace depends only on `e.used` and `n.used`.
     pub(crate) fn mod_exp(&self, e: &Self, n: &Self, n_montifier: &Self, n_0: u64) -> Self {
+        #[cfg(target_arch = "x86_64")]
+        if let Some(r) = self.mod_exp_rsaz(e, n, n_montifier, n_0) {
+            return r;
+        }
+
         let one_mont = n.fixed_one().mont_mul(n_montifier, n, n_0);
         let self_mont = self.to_montgomery(n_montifier, n);
 
         self_mont.mont_exp(one_mont, e, n, n_0).from_montgomery(n)
+    }
+
+    /// [`Self::mod_exp`] by aws-lc's RSAZ, for a 16-word `n` and an `e` no
+    /// wider, where it is the fastest: on x86_64 CPUs with AVX2 but without
+    /// ADX. RSAZ takes every 1024 bits of `e`, so the trace depends on none
+    /// of the values.
+    #[cfg(target_arch = "x86_64")]
+    fn mod_exp_rsaz(&self, e: &Self, n: &Self, n_montifier: &Self, n_0: u64) -> Option<Self> {
+        let rsaz = low::Rsaz::check()?;
+        if n.used != 16 || e.used > 16 {
+            return None;
+        }
+        // Each word above `used` is zero.
+        let mut r = Self::zero();
+        r.used = n.used;
+        rsaz.mod_exp(
+            r.words.first_chunk_mut()?,
+            self.words.first_chunk()?,
+            e.words.first_chunk()?,
+            n.words.first_chunk()?,
+            n_montifier.words.first_chunk()?,
+            n_0,
+        );
+        Some(r)
     }
 
     /// Computes `self` ^ `e` mod `n`.

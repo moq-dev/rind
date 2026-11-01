@@ -7,15 +7,18 @@
 
 use core::arch::x86_64::*;
 
-use super::cpu::HaveAesHardware;
+use super::aes_nohw::NohwKey;
+use super::cpu::{HaveAesHardware, HaveSsse3};
 use super::vpaes_x86_64::VpaesKey;
 use crate::low;
 
 pub(crate) enum AesKey {
     /// AES-NI's, which the key picks when the CPU has AES-NI and PCLMULQDQ.
     Hw(HwKey),
-    /// SSSE3's, otherwise.
+    /// SSSE3's, without AES-NI.
     Vpaes(VpaesKey),
+    /// SSE2's, which the key picks when the CPU also lacks SSSE3.
+    Nohw(NohwKey),
 }
 
 impl AesKey {
@@ -23,17 +26,18 @@ impl AesKey {
     ///
     /// `key` must be 16 or 32 bytes in length (AES-192 not supported).
     pub(crate) fn new(key: &[u8]) -> Self {
-        match (key.len(), HaveAesHardware::check()) {
-            (16, Some(token)) => Self::Hw(HwKey::Aes128(AesKey128::new(
+        match (key.len(), HaveAesHardware::check(), HaveSsse3::check()) {
+            (16, Some(token), _) => Self::Hw(HwKey::Aes128(AesKey128::new(
                 key.try_into().unwrap(),
                 token,
             ))),
-            (32, Some(token)) => Self::Hw(HwKey::Aes256(AesKey256::new(
+            (32, Some(token), _) => Self::Hw(HwKey::Aes256(AesKey256::new(
                 key.try_into().unwrap(),
                 token,
             ))),
-            (16 | 32, None) => Self::Vpaes(VpaesKey::new(key)),
-            (24, _) => panic!("aes-192 not supported"),
+            (16 | 32, None, Some(token)) => Self::Vpaes(VpaesKey::new(key, token)),
+            (16 | 32, None, None) => Self::Nohw(NohwKey::new(key)),
+            (24, ..) => panic!("aes-192 not supported"),
             _ => panic!("invalid aes key size"),
         }
     }
@@ -42,6 +46,7 @@ impl AesKey {
         match self {
             Self::Hw(key) => key.encrypt_block(inout),
             Self::Vpaes(key) => key.encrypt_block(inout),
+            Self::Nohw(key) => key.encrypt_block(inout),
         }
     }
 }
@@ -405,7 +410,7 @@ mod tests {
                 Ok(key) => match key {
                     AesKey::Hw(HwKey::Aes128(_)) => assert_eq!(num_bits, 128),
                     AesKey::Hw(HwKey::Aes256(_)) => assert_eq!(num_bits, 256),
-                    AesKey::Vpaes(_) => assert!(matches!(num_bits, 128 | 256)),
+                    AesKey::Vpaes(_) | AesKey::Nohw(_) => assert!(matches!(num_bits, 128 | 256)),
                 },
                 Err(_) => {
                     assert_ne!(num_bits, 128);
@@ -530,7 +535,7 @@ mod tests {
     // their modes.
     #[test]
     fn hw_matches_vpaes() {
-        let Some(token) = HaveAesHardware::check() else {
+        let (Some(token), Some(ssse3)) = (HaveAesHardware::check(), HaveSsse3::check()) else {
             return;
         };
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
@@ -544,7 +549,7 @@ mod tests {
                 16 => HwKey::Aes128(AesKey128::new(key[..].try_into().unwrap(), token)),
                 _ => HwKey::Aes256(AesKey256::new(key[..].try_into().unwrap(), token)),
             });
-            let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
+            let vpaes = AesKey::Vpaes(VpaesKey::new(&key, ssse3));
             for block_seed in 0..4 {
                 let mut want: [u8; 16] = bytes(16, block_seed).try_into().unwrap();
                 let mut got = want;

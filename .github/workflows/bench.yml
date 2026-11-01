@@ -55,8 +55,10 @@ jobs:
   # BMI1 and BMI2, ADX, the SHA extensions, AVX-512, VAES, and VPCLMULQDQ.
   # Two more x86_64 rows time only AES: one also denies AVX, as Westmere and
   # the Goldmont Atoms lack it, and one AES-NI and PCLMULQDQ too, as Core 2
-  # and Nehalem lack them. rind's denial takes debug assertions, which the
-  # optimised build then keeps.
+  # and Nehalem lack them. A last row denies SSSE3 as well, as QEMU's default
+  # `qemu64` model and pre-Core 2 CPUs lack it, and times the primitives that
+  # then run integer or SSE2 code. rind's denial takes debug assertions,
+  # which the optimised build then keeps.
   native:
     name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }}${{ matrix.cpu && format(', {0}', matrix.cpu) || '' }})
     strategy:
@@ -84,6 +86,12 @@ jobs:
             runner: ubuntu-24.04
             personality: linux64
             portable: true
+            cpu: no-adx
+            benches: --bench rsa_priv
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+            portable: true
             cpu: no-avx
             benches: --bench aes_gcm --bench cipher
           - target: x86_64-unknown-linux-gnu
@@ -92,6 +100,12 @@ jobs:
             portable: true
             cpu: no-aes
             benches: --bench aes_gcm --bench cipher
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+            portable: true
+            cpu: no-ssse3
+            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305 --bench sha1 --bench sha2
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -132,11 +146,17 @@ jobs:
         run: |
           if [ "${{ matrix.portable }}" = true ]; then
             export CARGO_PROFILE_BENCH_DEBUG_ASSERTIONS=true
-            case "${{ matrix.target }}" in
+            case "${{ matrix.target }}/${{ matrix.cpu }}" in
               aarch64-*)
                 export RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_CPU_DISABLE_sha3=1
                 # aws-lc's AES, SHA1, SHA256, PMULL, SHA512, and SHA3 bits.
                 export OPENSSL_armcap='~0x87c'
+                ;;
+              # Haswell's path: without ADX, and for aws-lc without BMI2 and
+              # ADX in CPUID leaf 7's EBX, so both run RSAZ for RSA-2048.
+              x86_64-*/no-adx)
+                export RIND_CPU_DISABLE_adx=1
+                export OPENSSL_ia32cap='~0x0:~0x80100'
                 ;;
               x86_64-*)
                 # rind's AVX-512 and VAES paths also need AVX2.
@@ -147,7 +167,9 @@ jobs:
                 # and VPCLMULQDQ).
                 export OPENSSL_ia32cap='~0x0:~0x5e42f02b0128'
                 # And for these rows, CPUID leaf 1's ECX: AVX, then AES-NI
-                # and PCLMULQDQ.
+                # and PCLMULQDQ, then SSSE3 and SSE4.1, which aws-lc's
+                # stitched ChaCha20-Poly1305 needs and no CPU without SSSE3
+                # has.
                 case "${{ matrix.cpu }}" in
                   no-avx)
                     export RIND_CPU_DISABLE_avx=1
@@ -156,6 +178,10 @@ jobs:
                   no-aes)
                     export RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1
                     export OPENSSL_ia32cap='~0x1200000200000000:~0x5e42f02b0128'
+                    ;;
+                  no-ssse3)
+                    export RIND_CPU_DISABLE_ssse3=1
+                    export OPENSSL_ia32cap='~0x1208020200000000:~0x5e42f02b0128'
                     ;;
                 esac
                 ;;

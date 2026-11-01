@@ -15,6 +15,9 @@ pub(crate) fn apply(key: &AesKey, nonce: &[u8; 12], counter: u32, inout: &mut [u
         AesKey::Vpaes(key) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
             key.ctr32(ivec, blocks)
         }),
+        AesKey::Nohw(key) => ctr::blocks(nonce, counter, inout, |ivec, blocks| {
+            key.ctr32(ivec, blocks)
+        }),
     }
 }
 
@@ -65,7 +68,7 @@ unsafe extern "sysv64" fn aes_hw_ctr32_encrypt_blocks(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::low::x86_64::cpu::HaveAesHardware;
+    use crate::low::x86_64::cpu::{HaveAesHardware, HaveSsse3};
     use crate::low::x86_64::vpaes_x86_64::VpaesKey;
 
     // Every other test sees only the path the CPU picks, so the two are
@@ -74,7 +77,7 @@ mod tests {
     // single-block shortcut and each of its tails.
     #[test]
     fn paths_match() {
-        let Some(_) = HaveAesHardware::check() else {
+        let (Some(_), Some(ssse3)) = (HaveAesHardware::check(), HaveSsse3::check()) else {
             return;
         };
         let bytes = |n: usize, seed: u32| -> Vec<u8> {
@@ -88,7 +91,7 @@ mod tests {
             let AesKey::Hw(hw) = &aes_key else {
                 unreachable!("the CPU has AES-NI")
             };
-            let vpaes = VpaesKey::new(&key);
+            let vpaes = VpaesKey::new(&key, ssse3);
             let nonce: [u8; 12] = bytes(12, seed).try_into().unwrap();
             for counter in [0, 1, u32::MAX - 3, u32::MAX] {
                 for len in [1, 15, 16, 17, 32, 48, 64, 80, 96, 112, 127, 128, 129, 300] {

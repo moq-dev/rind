@@ -7,7 +7,7 @@ There are also a selection AMD CPUs that are characterised manually.
 | --- | --- | --- | --- |
 | AMD Zen 3 | :large_blue_circle: | :white_circle: | adx, aes, avx, avx2, ~~avx512bw~~, ~~avx512f~~, bmi1, bmi2, pclmulqdq, sha, ssse3, ~~vaes~~ |
 | AMD Zen 4 | :large_blue_circle: | :large_blue_circle: | adx, aes, avx, avx2, avx512bw, avx512f, avx512vl, bmi1, bmi2, pclmulqdq, sha, ssse3, vaes, vpclmulqdq |
-| Intel Pentium4 Prescott | :white_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ~~ssse3~~, ~~vaes~~, ~~vpclmulqdq~~ |
+| Intel Pentium4 Prescott | :large_blue_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ~~ssse3~~, ~~vaes~~, ~~vpclmulqdq~~ |
 | Intel Merom | :large_blue_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
 | Intel Penryn | :large_blue_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |
 | Intel Nehalem | :large_blue_circle: | :white_circle: | ~~adx~~, ~~aes~~, ~~avx~~, ~~avx2~~, ~~avx512bw~~, ~~avx512f~~, ~~avx512vl~~, ~~bmi1~~, ~~bmi2~~, ~~pclmulqdq~~, ~~sha~~, ssse3, ~~vaes~~, ~~vpclmulqdq~~ |

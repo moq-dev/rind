@@ -32,6 +32,9 @@ pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
 
 #[target_feature(enable = "avx,avx2")]
 unsafe fn zero_bytes_avx2(ptr: *mut u8, len: usize) {
+    // Typed so rustc sees a 256-bit register written and ends the function
+    // with `vzeroupper`, sparing the SSE code that runs next a transition.
+    let _zero: __m256i;
     // SAFETY: writes to `len` bytes at `ptr`, which the caller guarantees
     unsafe {
         core::arch::asm!(
@@ -54,8 +57,7 @@ unsafe fn zero_bytes_avx2(ptr: *mut u8, len: usize) {
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,
 
-            // clobbers
-            zero = out(ymm_reg) _,
+            zero = out(ymm_reg) _zero,
         )
     }
 }
@@ -170,7 +172,7 @@ impl HaveAvx512ForMlKem {
 }
 
 /// Token type reflecting the check for CPU features needed for SHA1 using SHA-NI,
-/// and the SSE4.1 its rounds also use
+/// and the SSSE3 and SSE4.1 its rounds also use
 ///
 /// A value of this type is proof that the CPU dynamic feature check has happened.
 #[derive(Clone, Copy, Debug)]
@@ -178,7 +180,7 @@ pub(crate) struct HaveSha1(());
 
 impl HaveSha1 {
     pub(crate) fn check() -> Option<Self> {
-        match has(SHA | SSE41) {
+        match has(SHA | SSSE3 | SSE41) {
             true => Some(Self(())),
             false => None,
         }
@@ -186,7 +188,7 @@ impl HaveSha1 {
 }
 
 /// Token type reflecting the check for CPU features needed for SHA256 using SHA-NI,
-/// and the SSE4.1 its rounds also use
+/// and the SSSE3 and SSE4.1 its rounds also use
 ///
 /// A value of this type is proof that the CPU dynamic feature check has happened.
 #[derive(Clone, Copy, Debug)]
@@ -194,18 +196,18 @@ pub(crate) struct HaveSha256(());
 
 impl HaveSha256 {
     pub(crate) fn check() -> Option<Self> {
-        match has(SHA | SSE41) {
+        match has(SHA | SSSE3 | SSE41) {
             true => Some(Self(())),
             false => None,
         }
     }
 }
 
-/// Proof that the CPU has AVX2, and the BMI2 and POPCNT that rind's AVX2
-/// kernels also use: ChaCha20, SHA-1, SHA-256, ML-KEM, the 4-way Keccak-f,
-/// and the constant-time table selects.
+/// Proof that the CPU has AVX2, and the BMI2, POPCNT, and SSSE3 that rind's
+/// AVX2 kernels also use: ChaCha20, SHA-1, SHA-256, ML-KEM, the 4-way
+/// Keccak-f, and the constant-time table selects.
 ///
-/// Without it, aws-lc's SSSE3 and AVX routines, a portable port of
+/// Without it, aws-lc's SSSE3, AVX, or scalar routines, a portable port of
 /// mlkem-native's ML-KEM arithmetic, scalar Keccak-f, and SSE2 selects run
 /// instead.
 #[derive(Clone, Copy, Debug)]
@@ -221,7 +223,8 @@ impl HaveAvx2 {
 /// their kernels also use: rind's AES-GCM and GHASH intrinsics, and aws-lc's
 /// AES-CTR.
 ///
-/// Without it, aws-lc's vpaes and SSSE3 GHASH run instead, and
+/// Without it, aws-lc's vpaes and SSSE3 GHASH, or ports of its SSE2 AES and
+/// integer GHASH where the CPU also lacks SSSE3, run instead, and
 /// `has_aes_hardware()` is false, as aws-lc's `EVP_has_aes_hardware` is.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAesHardware(());
@@ -232,14 +235,29 @@ impl HaveAesHardware {
     }
 }
 
-/// Proof that the CPU has AVX, which aws-lc's AVX SHA routines and rind's
-/// VEX-encoded AES-GCM and GHASH intrinsics use.
+/// Proof that the CPU has AVX, which aws-lc's AVX SHA routines use, and the
+/// SSSE3 they also use.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAvx(());
 
 impl HaveAvx {
     pub(crate) fn check() -> Option<Self> {
-        has(AVX).then_some(Self(()))
+        has(AVX | SSSE3).then_some(Self(()))
+    }
+}
+
+/// Proof that the CPU has SSSE3, which aws-lc's vpaes, GHASH, ChaCha20,
+/// SHA-1, and SHA-256 routines for CPUs without AES-NI or AVX2 use.
+///
+/// Without it, aws-lc's integer ChaCha20, SHA-1, and SHA-256 routines, and
+/// ports of its constant-time AES and GHASH in SSE2 and integer code, run
+/// instead.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveSsse3(());
+
+impl HaveSsse3 {
+    pub(crate) fn check() -> Option<Self> {
+        has(SSSE3).then_some(Self(()))
     }
 }
 
@@ -280,7 +298,7 @@ const SHA: u32 = 1 << 15;
 const SSE41: u32 = 1 << 16;
 const INTEL: u32 = 1 << 30;
 /// What rind's AVX2 kernels use, for [`HaveAvx2`].
-const AVX2_KERNELS: u32 = AVX | AVX2 | BMI2 | POPCNT;
+const AVX2_KERNELS: u32 = AVX | AVX2 | BMI2 | POPCNT | SSSE3;
 /// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, and
 /// AES-NI and PCLMULQDQ for their key schedule and tail.
 const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | AVX | AVX2;
@@ -369,15 +387,9 @@ fn test_toggle(id: &str, detected: bool) -> bool {
 
 /// Returns the first CPU feature we require unconditionally that this CPU lacks.
 ///
-/// Every other feature picks a faster path where the CPU has it, so this
-/// limits the library only to x86_64 processors with SSSE3: Intel's since
-/// Core 2 (2006), and AMD's since Bobcat and Bulldozer (2011).
+/// Every feature beyond SSE2, which every x86_64 CPU has, only picks a faster
+/// path, so this refuses no x86_64 CPU.
 pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
-    // The slowest path of each primitive: aws-lc's SSSE3 vpaes, GHASH,
-    // ChaCha20, SHA-1, and SHA-256 routines, and assorted intrinsic code.
-    if !has(SSSE3) {
-        return Some("ssse3");
-    }
     None
 }
 
@@ -417,6 +429,9 @@ mod tests {
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_AES_HARDWARE") {
             assert_eq!(HaveAesHardware::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_SSSE3") {
+            assert_eq!(HaveSsse3::check().is_some(), expected == "1");
         }
     }
 }

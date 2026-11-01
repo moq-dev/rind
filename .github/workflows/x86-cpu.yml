@@ -48,10 +48,23 @@ jobs:
       - name: Build (release)
         run: cargo build --release --tests
 
-      # Merom, the first Core 2, has SSSE3 but not SSE4.1 or AES-NI, so it
-      # runs every slowest path: aws-lc's vpaes, SSSE3 GHASH, ChaCha20, SHA-1,
-      # and SHA-256, the portable ML-KEM arithmetic, s2n-bignum's `_alt`
-      # routines, and aws-lc's Montgomery multiplication.
+      # Prescott, a Pentium 4, lacks SSSE3, so it runs every slowest path:
+      # aws-lc's SSE2 AES and integer GHASH, ChaCha20, SHA-1, and SHA-256, the
+      # portable ML-KEM arithmetic, s2n-bignum's `_alt` routines, and aws-lc's
+      # Montgomery multiplication.
+      - name: Check Prescott
+        run: cargo test --release
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -p4p --"
+          RIND_TEST_X86_AES_HARDWARE: 0
+          RIND_TEST_X86_AVX: 0
+          RIND_TEST_X86_AVX2: 0
+          RIND_TEST_X86_BMI2_ADX: 0
+          RIND_TEST_X86_SSSE3: 0
+
+      # Merom, the first Core 2, adds SSSE3 but not SSE4.1 or AES-NI, so it
+      # runs aws-lc's vpaes and SSSE3 GHASH, ChaCha20, SHA-1, and SHA-256,
+      # beside Prescott's other paths.
       - name: Check Merom
         run: cargo test --release
         env:
@@ -60,6 +73,7 @@ jobs:
           RIND_TEST_X86_AVX: 0
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
+          RIND_TEST_X86_SSSE3: 1
 
       # Nehalem adds SSE4.2 and POPCNT, but still lacks AES-NI, so it runs
       # Merom's paths.
@@ -106,8 +120,9 @@ jobs:
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
 
-      # Haswell lacks ADX, so s2n-bignum's `_alt` routines and aws-lc's
-      # Montgomery multiplication run, beside the AVX2 kernels.
+      # Haswell lacks ADX, so s2n-bignum's `_alt` routines, aws-lc's
+      # Montgomery multiplication, and its RSAZ exponentiation for RSA-2048
+      # run, beside the AVX2 kernels.
       - name: Check Haswell
         run: cargo test --release
         env:
