@@ -574,6 +574,8 @@ macro_rules! ec_crosschecks {
                     let ours_spki = ours.to_spki();
                     prop_assert_eq!(spki.as_ref(), ours_spki.as_ref());
                     let scalar = theirs_from_ours.private_key().as_be_bytes().unwrap();
+                    let ours_scalar = ours.to_scalar();
+                    prop_assert_eq!(ours_scalar.as_ref(), scalar.as_ref());
 
                     // We load its scalar and point as the same key, and refuse
                     // the scalar with another key's point.
@@ -669,7 +671,7 @@ ec_crosschecks!(
 );
 
 mod ed25519 {
-    use aws_lc_rs::encoding::AsDer;
+    use aws_lc_rs::encoding::{AsBigEndian, AsDer};
     use aws_lc_rs::signature::{ED25519, Ed25519KeyPair, KeyPair, UnparsedPublicKey};
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -684,8 +686,8 @@ mod ed25519 {
             flip in any::<Option<Index>>(),
         ) {
             // Signing is deterministic, so one seed gives both sides the same
-            // public key, encoding, and signatures; loading ours checks the
-            // public key matches theirs.
+            // public key, encodings, seed, and signatures; loading ours checks
+            // the public key matches theirs.
             let theirs = Ed25519KeyPair::from_seed_unchecked(&seed).unwrap();
             let public = theirs.public_key().as_ref();
             let ours = signature::Ed25519KeyPair::from_seed_and_public_key(&seed, public).unwrap();
@@ -694,6 +696,9 @@ mod ed25519 {
             prop_assert_eq!(ours_spki.as_ref(), spki.as_ref());
             let (ours_pkcs8, theirs_pkcs8) = (ours.to_pkcs8(), theirs.to_pkcs8().unwrap());
             prop_assert_eq!(ours_pkcs8.as_ref(), theirs_pkcs8.as_ref());
+            let ours_seed = ours.to_seed();
+            let theirs_seed = theirs.seed().unwrap().as_be_bytes().unwrap();
+            prop_assert_eq!(ours_seed.as_ref(), theirs_seed.as_ref());
             let signature = ours.sign(&message);
             let theirs_signature = theirs.sign(&message);
             prop_assert_eq!(signature.as_ref(), theirs_signature.as_ref());
