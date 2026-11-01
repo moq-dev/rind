@@ -1,6 +1,7 @@
 //! The little DER that ring's API needs rind-ring to read itself: an RSA
-//! public key's fields, and an Ed25519 PKCS#8 document's structure, whose
-//! secret seed it slices out but never branches on.
+//! public key's fields, an ECDSA PKCS#8 document's public key, and an
+//! Ed25519 PKCS#8 document's structure, whose secret seed it slices out but
+//! never branches on.
 
 use crate::error::{self, KeyRejected};
 
@@ -56,6 +57,46 @@ pub(crate) fn rsa_public_key(der: &[u8]) -> Result<(&[u8], &[u8]), error::Unspec
             Ok((positive_integer(input)?, positive_integer(input)?))
         })
     })
+}
+
+/// The public key in an ECDSA PKCS#8 document's `ECPrivateKey`, if it has one.
+///
+/// rind has already checked the document; this only finds the field, and
+/// skips the private key without reading it.
+pub(crate) fn ecdsa_pkcs8_public_key(der: &[u8]) -> Option<&[u8]> {
+    const OCTET_STRING: u8 = 0x04;
+    const BIT_STRING: u8 = 0x03;
+    const PARAMETERS: u8 = 0xa0;
+    const PUBLIC_KEY: u8 = 0xa1;
+
+    fn ec_private_key<'a>(
+        input: &mut untrusted::Reader<'a>,
+    ) -> Result<&'a [u8], error::Unspecified> {
+        read(input, INTEGER)?;
+        read(input, OCTET_STRING)?;
+        if input.peek(PARAMETERS) {
+            read(input, PARAMETERS)?;
+        }
+        let bits =
+            read(input, PUBLIC_KEY)?.read_all(error::Unspecified, |bits| read(bits, BIT_STRING))?;
+        match bits.as_slice_less_safe() {
+            [0, public_key @ ..] => Ok(public_key),
+            _ => Err(error::Unspecified),
+        }
+    }
+    untrusted::Input::from(der)
+        .read_all(error::Unspecified, |outer| {
+            read(outer, SEQUENCE)?.read_all(error::Unspecified, |input| {
+                read(input, INTEGER)?;
+                read(input, SEQUENCE)?;
+                let key = read(input, OCTET_STRING)?;
+                input.skip_to_end();
+                key.read_all(error::Unspecified, |key| {
+                    read(key, SEQUENCE)?.read_all(error::Unspecified, ec_private_key)
+                })
+            })
+        })
+        .ok()
 }
 
 /// An Ed25519 PKCS#8 document's parts, as ring reads them.
