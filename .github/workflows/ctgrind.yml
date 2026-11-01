@@ -41,8 +41,11 @@ jobs:
 
   # Valgrind hides ADX, which `admin/ctgrind`'s build switch overrides to
   # check s2n-bignum's ADX routines, so this job denies it to check their
-  # `_alt` twins, which CPUs without ADX run. The denial takes debug
-  # assertions, which the optimised build then keeps.
+  # `_alt` twins, which CPUs without ADX run. It denies AVX2 and the SHA
+  # extensions too, and the vendor, for what CPUs such as AMD's Bulldozer
+  # run: aws-lc's SSSE3 ChaCha20, SHA-1, and SHA-256, libcrux's ML-KEM, and
+  # the SSE2 and scalar selects. The denial takes debug assertions, which the
+  # optimised build then keeps.
   x86_64-portable:
     runs-on: ubuntu-latest
     steps:
@@ -65,6 +68,10 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
           RIND_CPU_DISABLE_adx: 1
+          RIND_CPU_DISABLE_avx2: 1
+          RIND_CPU_DISABLE_intel: 1
+          RIND_CPU_DISABLE_sha: 1
+          RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
 
   # The arm64 runner's core has the crypto extension, so this job denies it

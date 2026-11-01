@@ -141,16 +141,33 @@ fn sha256(state: &mut [u32; 8], blocks: &[u8]) {
 /// `sha256_block_data_order_avx`, imported by `admin/import-aws-lc`. It
 /// rotates with `shrd`, which is fast on Intel's cores and slow on pre-Zen
 /// AMD's, so aws-lc runs it on Intel only, and so does rind.
-pub(in crate::low) fn sha256_compress_blocks_avx(state: &mut [u32; 8], blocks: &[u8]) {
+pub(in crate::low) fn sha256_compress_blocks_avx(
+    state: &mut [u32; 8],
+    blocks: &[u8],
+    _token: super::cpu::HaveAvx,
+) {
     debug_assert!(blocks.len().is_multiple_of(64));
     // The routine runs its loop at least once, so zero blocks would read past
     // `blocks`.
     if blocks.is_empty() {
         return;
     }
-    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and rind
-    // requires AVX on x86_64.
+    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
+    // proves AVX.
     unsafe { sha256_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 64) }
+}
+
+/// SHA-256 without the SHA extensions or AVX2 on other vendors' CPUs, with
+/// aws-lc's `sha256_block_data_order_ssse3`, as aws-lc runs there.
+pub(in crate::low) fn sha256_compress_blocks_ssse3(state: &mut [u32; 8], blocks: &[u8]) {
+    debug_assert!(blocks.len().is_multiple_of(64));
+    // As for the AVX routine.
+    if blocks.is_empty() {
+        return;
+    }
+    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and rind
+    // requires SSSE3 on x86_64.
+    unsafe { sha256_block_data_order_ssse3(state, blocks.as_ptr(), blocks.len() / 64) }
 }
 
 /// The round constants, each group of four twice for the vector additions,
@@ -160,8 +177,10 @@ struct Table([u32; 152]);
 
 static K256: Table = Table(include!("aws_lc/sha256-x86_64.K256.rs"));
 
-// The System V ABI on every OS, since the text is aws-lc's ELF and Mach-O
-// flavors, which read their arguments from its registers.
+// Both routines take the System V ABI on every OS, since their text is
+// aws-lc's ELF and Mach-O flavors, which read their arguments from its
+// registers.
+
 #[unsafe(naked)]
 unsafe extern "sysv64" fn sha256_block_data_order_avx(
     state: *mut [u32; 8],
@@ -182,13 +201,38 @@ unsafe extern "sysv64" fn sha256_block_data_order_avx(
     );
 }
 
-/// SHA-256 without the SHA extensions on other CPUs, structured as aws-lc's
-/// `sha256_block_data_order_avx2`: AVX2 computes the message schedule of two
-/// blocks at once, one per 128-bit lane, interleaved with the scalar rounds
-/// of the first block; the second block's rounds then read their half.
-pub(in crate::low) fn sha256_compress_blocks_avx2(state: &mut [u32; 8], blocks: &[u8]) {
+#[unsafe(naked)]
+unsafe extern "sysv64" fn sha256_block_data_order_ssse3(
+    state: *mut [u32; 8],
+    data: *const u8,
+    blocks: usize,
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha256_block_data_order_ssse3.linux.s"),
+        K256 = sym K256,
+        options(att_syntax),
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha256_block_data_order_ssse3.apple.s"),
+        K256 = sym K256,
+        options(att_syntax),
+    );
+}
+
+/// SHA-256 without the SHA extensions on other vendors' CPUs with AVX2,
+/// structured as aws-lc's `sha256_block_data_order_avx2`: AVX2 computes the
+/// message schedule of two blocks at once, one per 128-bit lane, interleaved
+/// with the scalar rounds of the first block; the second block's rounds then
+/// read their half.
+pub(in crate::low) fn sha256_compress_blocks_avx2(
+    state: &mut [u32; 8],
+    blocks: &[u8],
+    _token: super::cpu::HaveAvx2,
+) {
     debug_assert!(blocks.len().is_multiple_of(64));
-    // SAFETY: this crate requires the `avx2` and `bmi2` cpu features
+    // SAFETY: `_token` proves the `avx2` and `bmi2` cpu features
     unsafe { sha256_avx2(state, blocks) }
 }
 
@@ -416,26 +460,41 @@ static K: Aligned = Aligned([
 mod tests {
     use super::*;
     use crate::low::generic;
+    use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2};
 
-    // The SHA extensions and the vendor hide all but one path from every
-    // other test, so each is checked against the portable code directly: odd
-    // and even block counts, with distinct bytes in every block.
+    const START: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+
+    // The SHA extensions, AVX2, and the vendor hide all but one path from
+    // every other test, so each the CPU can run is checked against the
+    // portable code directly: odd and even block counts, with distinct bytes
+    // in every block.
     #[test]
     fn vector_paths_match_generic() {
+        let (avx, avx2) = (HaveAvx::check(), HaveAvx2::check());
         let blocks: Vec<u8> = (0..5 * 64u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
         for n in 0..=5 {
-            let mut wanted = [
-                0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-                0x5be0cd19,
-            ];
-            let (mut avx, mut avx2) = (wanted, wanted);
-            generic::sha256::sha256_compress_blocks(&mut wanted, &blocks[..n * 64]);
-            sha256_compress_blocks_avx(&mut avx, &blocks[..n * 64]);
-            sha256_compress_blocks_avx2(&mut avx2, &blocks[..n * 64]);
-            assert_eq!(avx, wanted, "avx, {n} blocks");
-            assert_eq!(avx2, wanted, "avx2, {n} blocks");
+            let mut wanted = START;
+            let blocks = &blocks[..n * 64];
+            generic::sha256::sha256_compress_blocks(&mut wanted, blocks);
+
+            let mut got = START;
+            sha256_compress_blocks_ssse3(&mut got, blocks);
+            assert_eq!(got, wanted, "ssse3, {n} blocks");
+            if let Some(token) = avx {
+                let mut got = START;
+                sha256_compress_blocks_avx(&mut got, blocks, token);
+                assert_eq!(got, wanted, "avx, {n} blocks");
+            }
+            if let Some(token) = avx2 {
+                let mut got = START;
+                sha256_compress_blocks_avx2(&mut got, blocks, token);
+                assert_eq!(got, wanted, "avx2, {n} blocks");
+            }
         }
     }
 }

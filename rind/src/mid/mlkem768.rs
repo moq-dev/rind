@@ -16,6 +16,8 @@ use crate::{
     },
 };
 
+// Named in full, since x86_64 loads this file from its dispatcher.
+#[path = "mlkem768/sample_ntt.rs"]
 mod sample_ntt;
 
 /// An ML-KEM-768 decapsulation key.
@@ -40,7 +42,7 @@ impl DecapKey {
     }
 
     /// Decapsulate ciphertext `c`, yielding a [`SharedSecret`].
-    pub(crate) fn decaps(self, c: &Ciphertext) -> SharedSecret {
+    pub(crate) fn decaps(&self, c: &Ciphertext) -> SharedSecret {
         let _entry = low::Entry::new_secret();
         self.decaps_internal(c)
     }
@@ -349,7 +351,7 @@ impl Drop for KpkeRandomness {
 }
 
 /// An ML-KEM shared secret.
-pub(crate) struct SharedSecret([u8; 32]);
+pub(crate) struct SharedSecret(pub(super) [u8; 32]);
 
 impl AsRef<[u8; 32]> for SharedSecret {
     fn as_ref(&self) -> &[u8; 32] {

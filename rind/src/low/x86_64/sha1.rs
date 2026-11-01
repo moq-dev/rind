@@ -181,10 +181,98 @@ fn sha1(state: &mut [u32; 5], blocks: &[u8]) {
 /// `sha1_block_data_order_avx2`: AVX2 computes the message schedule of two
 /// blocks at once, one per 128-bit lane, while scalar code runs the rounds of
 /// the pair before.
-pub(in crate::low) fn sha1_compress_blocks_avx2(state: &mut [u32; 5], blocks: &[u8]) {
+pub(in crate::low) fn sha1_compress_blocks_avx2(
+    state: &mut [u32; 5],
+    blocks: &[u8],
+    _token: super::cpu::HaveAvx2,
+) {
     debug_assert!(blocks.len().is_multiple_of(64));
-    // SAFETY: this crate requires the `avx2` and `bmi2` cpu features
+    // SAFETY: `_token` proves the `avx2` and `bmi2` cpu features
     unsafe { sha1_avx2(state, blocks) }
+}
+
+/// SHA-1 without the SHA extensions or AVX2 on Intel, with aws-lc's
+/// `sha1_block_data_order_avx`, imported by `admin/import-aws-lc`. Like
+/// SHA-256's, it rotates with `shld`, which pre-Zen AMD cores run slowly, so
+/// aws-lc runs it on Intel only, and so does rind.
+pub(in crate::low) fn sha1_compress_blocks_avx(
+    state: &mut [u32; 5],
+    blocks: &[u8],
+    _token: super::cpu::HaveAvx,
+) {
+    debug_assert!(blocks.len().is_multiple_of(64));
+    // The routine runs its loop at least once, so zero blocks would read past
+    // `blocks`.
+    if blocks.is_empty() {
+        return;
+    }
+    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
+    // proves AVX.
+    unsafe { sha1_block_data_order_avx(state, blocks.as_ptr(), blocks.len() / 64) }
+}
+
+/// SHA-1 without the SHA extensions or AVX2 on other vendors' CPUs, with
+/// aws-lc's `sha1_block_data_order_ssse3`, as aws-lc runs there.
+pub(in crate::low) fn sha1_compress_blocks_ssse3(state: &mut [u32; 5], blocks: &[u8]) {
+    debug_assert!(blocks.len().is_multiple_of(64));
+    // As for the AVX routine.
+    if blocks.is_empty() {
+        return;
+    }
+    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and rind
+    // requires SSSE3 on x86_64.
+    unsafe { sha1_block_data_order_ssse3(state, blocks.as_ptr(), blocks.len() / 64) }
+}
+
+/// The round constants, each four times for the vector additions, then the
+/// byte-swap mask, as the routines load them.
+#[repr(C, align(64))]
+struct Table([u32; 40]);
+
+static K_XX_XX: Table = Table(include!("aws_lc/sha1-x86_64.K_XX_XX.rs"));
+
+// Both routines take the System V ABI on every OS, since their text is
+// aws-lc's ELF and Mach-O flavors, which read their arguments from its
+// registers.
+
+#[unsafe(naked)]
+unsafe extern "sysv64" fn sha1_block_data_order_avx(
+    state: *mut [u32; 5],
+    data: *const u8,
+    blocks: usize,
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha1_block_data_order_avx.linux.s"),
+        K_XX_XX = sym K_XX_XX,
+        options(att_syntax),
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha1_block_data_order_avx.apple.s"),
+        K_XX_XX = sym K_XX_XX,
+        options(att_syntax),
+    );
+}
+
+#[unsafe(naked)]
+unsafe extern "sysv64" fn sha1_block_data_order_ssse3(
+    state: *mut [u32; 5],
+    data: *const u8,
+    blocks: usize,
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha1_block_data_order_ssse3.linux.s"),
+        K_XX_XX = sym K_XX_XX,
+        options(att_syntax),
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha1_block_data_order_ssse3.apple.s"),
+        K_XX_XX = sym K_XX_XX,
+        options(att_syntax),
+    );
 }
 
 #[target_feature(enable = "avx,avx2,bmi2")]
@@ -384,21 +472,37 @@ fn maj(b: u32, c: u32, d: u32) -> u32 {
 mod tests {
     use super::*;
     use crate::low::generic;
+    use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2};
 
-    // The SHA extensions, where present, would hide this path from every
-    // other test, so it is checked against the portable code directly: odd
-    // and even block counts, with distinct bytes in every block.
+    // The SHA extensions, AVX2, and the vendor hide all but one path from
+    // every other test, so each the CPU can run is checked against the
+    // portable code directly: odd and even block counts, with distinct bytes
+    // in every block.
     #[test]
-    fn avx2_matches_generic() {
+    fn vector_paths_match_generic() {
+        const START: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
+        let (avx, avx2) = (HaveAvx::check(), HaveAvx2::check());
         let blocks: Vec<u8> = (0..5 * 64u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
         for n in 0..=5 {
-            let mut wanted = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
-            let mut got = wanted;
-            generic::sha1::sha1_compress_blocks(&mut wanted, &blocks[..n * 64]);
-            sha1_compress_blocks_avx2(&mut got, &blocks[..n * 64]);
-            assert_eq!(got, wanted, "{n} blocks");
+            let blocks = &blocks[..n * 64];
+            let mut wanted = START;
+            generic::sha1::sha1_compress_blocks(&mut wanted, blocks);
+
+            let mut got = START;
+            sha1_compress_blocks_ssse3(&mut got, blocks);
+            assert_eq!(got, wanted, "ssse3, {n} blocks");
+            if let Some(token) = avx {
+                let mut got = START;
+                sha1_compress_blocks_avx(&mut got, blocks, token);
+                assert_eq!(got, wanted, "avx, {n} blocks");
+            }
+            if let Some(token) = avx2 {
+                let mut got = START;
+                sha1_compress_blocks_avx2(&mut got, blocks, token);
+                assert_eq!(got, wanted, "avx2, {n} blocks");
+            }
         }
     }
 }

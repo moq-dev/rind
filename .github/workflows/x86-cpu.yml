@@ -48,11 +48,23 @@ jobs:
       - name: Build (release)
         run: cargo build --release --tests
 
-      # Haswell lacks ADX, so s2n-bignum's `_alt` routines run.
+      # Sandy Bridge lacks AVX2, BMI2, and ADX, so aws-lc's AVX SHA and SSSE3
+      # ChaCha20 routines, libcrux's ML-KEM, and s2n-bignum's `_alt` routines
+      # run.
+      - name: Check Sandy Bridge
+        run: cargo test --release
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -snb --"
+          RIND_TEST_X86_AVX2: 0
+          RIND_TEST_X86_BMI2_ADX: 0
+
+      # Haswell lacks ADX, so s2n-bignum's `_alt` routines run, beside the
+      # AVX2 kernels.
       - name: Check Haswell
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -hsw --"
+          RIND_TEST_X86_AVX2: 1
           RIND_TEST_X86_BMI2_ADX: 0
 
       - name: Check Skylake

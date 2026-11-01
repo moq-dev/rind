@@ -32,7 +32,7 @@ mod generic {
     pub(crate) mod p521;
     #[cfg(not(target_arch = "arm"))]
     pub(crate) mod poly1305;
-    // armv7's SHA1 and SHA256, also built in x86_64 tests to check the AVX2
+    // armv7's SHA1 and SHA256, also built in x86_64 tests to check the vector
     // paths against.
     #[cfg(any(target_arch = "arm", all(test, target_arch = "x86_64")))]
     pub(super) mod sha1;
@@ -67,6 +67,7 @@ cfg_if::cfg_if! {
 
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, leave_cpu_state, missing_cpu_feature};
         pub(crate) use x86_64::chacha20;
+        pub(crate) use x86_64::cpu::HaveAvx2;
         pub(crate) use x86_64::aes::AesKey;
         pub(crate) use x86_64::aes_ctr;
         pub(crate) use x86_64::aes_gcm;

@@ -22,12 +22,16 @@ pub(crate) fn leave_cpu_state(_old: u32) {}
 /// and that the pointed-to object has a safe all-zeroes representation.
 /// (see `low::generic::zeroise` which expresses this within the type system).
 pub(in crate::low) fn zero_bytes(ptr: *mut u8, len: usize) {
-    // SAFETY: this crate requires the `avx` cpu feature
-    unsafe { _zero_bytes(ptr, len) }
+    match HaveAvx2::check() {
+        // SAFETY: the caller's guarantee, and the token proves AVX2
+        Some(_) => unsafe { zero_bytes_avx2(ptr, len) },
+        // SAFETY: the caller's guarantee, and every x86_64 CPU has SSE2
+        None => unsafe { zero_bytes_sse2(ptr, len) },
+    }
 }
 
 #[target_feature(enable = "avx,avx2")]
-unsafe fn _zero_bytes(ptr: *mut u8, len: usize) {
+unsafe fn zero_bytes_avx2(ptr: *mut u8, len: usize) {
     // SAFETY: writes to `len` bytes at `ptr`, which the caller guarantees
     unsafe {
         core::arch::asm!(
@@ -52,6 +56,35 @@ unsafe fn _zero_bytes(ptr: *mut u8, len: usize) {
 
             // clobbers
             zero = out(ymm_reg) _,
+        )
+    }
+}
+
+unsafe fn zero_bytes_sse2(ptr: *mut u8, len: usize) {
+    // SAFETY: writes to `len` bytes at `ptr`, which the caller guarantees
+    unsafe {
+        core::arch::asm!(
+            "       pxor    {zero}, {zero}",
+            // by-16 loop
+            "   2:  cmp {len}, 16",
+            "       jl  3f",
+            "       movdqu  [{ptr}], {zero}",
+            "       add {ptr}, 16",
+            "       sub {len}, 16",
+            "       jmp 2b",
+            // by-1 loop
+            "   3:  sub {len}, 1",
+            "       jl  4f",
+            "       mov byte ptr [{ptr}], 0",
+            "       add {ptr}, 1",
+            "       jmp 3b",
+            "   4:  ",
+
+            ptr = inout(reg) ptr => _,
+            len = inout(reg) len => _,
+
+            // clobbers
+            zero = out(xmm_reg) _,
         )
     }
 }
@@ -97,7 +130,7 @@ pub(crate) struct HaveAvx512ForAesGcm(());
 
 impl HaveAvx512ForAesGcm {
     pub(crate) fn check() -> Option<Self> {
-        match has(AVX512F | AVX512BW | AVX512VL | VPCLMULQDQ | VAES) {
+        match has(AES_GCM_BASE | AVX512F | AVX512BW | AVX512VL | VPCLMULQDQ | VAES) {
             true => Some(Self(())),
             false => None,
         }
@@ -105,7 +138,7 @@ impl HaveAvx512ForAesGcm {
 }
 
 /// Token type reflecting the check for CPU features needed for VAES-AES-GCM
-/// on 256-bit vectors, beyond the AVX2 this crate requires.
+/// on 256-bit vectors.
 ///
 /// A value of this type is proof that the CPU dynamic feature check has happened.
 #[derive(Clone, Copy, Debug)]
@@ -113,7 +146,7 @@ pub(crate) struct HaveVaesAvx2ForAesGcm(());
 
 impl HaveVaesAvx2ForAesGcm {
     pub(crate) fn check() -> Option<Self> {
-        match has(VPCLMULQDQ | VAES) {
+        match has(AES_GCM_BASE | VPCLMULQDQ | VAES) {
             true => Some(Self(())),
             false => None,
         }
@@ -128,7 +161,8 @@ pub(crate) struct HaveAvx512ForMlKem(());
 
 impl HaveAvx512ForMlKem {
     pub(crate) fn check() -> Option<Self> {
-        match has(AVX512F | AVX512BW | AVX512VBMI | AVX512VBMI2) {
+        // It runs inside rind's AVX2 ML-KEM.
+        match has(AVX2_KERNELS | AVX512F | AVX512BW | AVX512VBMI | AVX512VBMI2) {
             true => Some(Self(())),
             false => None,
         }
@@ -162,6 +196,31 @@ impl HaveSha256 {
             true => Some(Self(())),
             false => None,
         }
+    }
+}
+
+/// Proof that the CPU has AVX2, and the BMI2 and POPCNT that rind's AVX2
+/// kernels also use: ChaCha20, SHA-1, SHA-256, ML-KEM, the 4-way Keccak-f,
+/// and the constant-time table selects.
+///
+/// Without it, aws-lc's SSSE3 and AVX routines, libcrux's portable ML-KEM,
+/// and SSE2 or scalar selects run instead.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx2(());
+
+impl HaveAvx2 {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX2_KERNELS).then_some(Self(()))
+    }
+}
+
+/// Proof that the CPU has AVX, which aws-lc's AVX SHA routines use.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveAvx(());
+
+impl HaveAvx {
+    pub(crate) fn check() -> Option<Self> {
+        has(AVX).then_some(Self(()))
     }
 }
 
@@ -200,6 +259,11 @@ const AVX512VBMI: u32 = 1 << 13;
 const AVX512VBMI2: u32 = 1 << 14;
 const SHA: u32 = 1 << 15;
 const INTEL: u32 = 1 << 30;
+/// What rind's AVX2 kernels use, for [`HaveAvx2`].
+const AVX2_KERNELS: u32 = AVX | AVX2 | BMI2 | POPCNT;
+/// What the AES-GCM kernels for wider vectors build on: the AVX2 ISA, and
+/// AES-NI and PCLMULQDQ for their key schedule and tail.
+const AES_GCM_BASE: u32 = AES | PCLMULQDQ | SSSE3 | AVX | AVX2;
 const DETECTED: u32 = 1 << 31;
 
 /// Whether the CPU has every feature in `wanted`.
@@ -284,17 +348,14 @@ fn test_toggle(id: &str, detected: bool) -> bool {
 
 /// Returns the first CPU feature we require unconditionally that this CPU lacks.
 ///
-/// This limits the library to x86_64 processors released after approx 2014.
+/// This limits the library to x86_64 processors released after approx 2011.
 /// Ordered oldest first, so the name points at the real gap. `sse3` and
 /// `sse4.1` are implied by `avx` in rustc's feature model.
 pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
-    // assorted intrinsic code
+    // aws-lc's ChaCha20, SHA-1, and SHA-256 routines, and assorted intrinsic
+    // code
     if !has(SSSE3) {
         return Some("ssse3");
-    }
-    // ML-KEM rejection sampling
-    if !has(POPCNT) {
-        return Some("popcnt");
     }
     // our aes-gcm
     if !has(AES) {
@@ -303,16 +364,9 @@ pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
     if !has(PCLMULQDQ) {
         return Some("pclmulqdq");
     }
-    // assorted intrinsic code
+    // the VEX-encoded AES-NI and GHASH intrinsics
     if !has(AVX) {
         return Some("avx");
-    }
-    if !has(AVX2) {
-        return Some("avx2");
-    }
-    // the AVX2 SHA-1 and SHA-256 rounds, and ML-KEM rejection sampling
-    if !has(BMI2) {
-        return Some("bmi2");
     }
     None
 }
@@ -344,6 +398,9 @@ mod tests {
     fn detects_the_expected_cpu() {
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_BMI2_ADX") {
             assert_eq!(HaveBmi2Adx::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX2") {
+            assert_eq!(HaveAvx2::check().is_some(), expected == "1");
         }
     }
 }

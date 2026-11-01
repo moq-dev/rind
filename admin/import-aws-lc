@@ -164,7 +164,27 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/sha/asm/sha512-x86_64.pl",
         "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["K256"],
-        "routines": ["sha256_block_data_order_avx"],
+        "routines": ["sha256_block_data_order_avx", "sha256_block_data_order_ssse3"],
+    },
+    # The rest of the x86_64 imports are for CPUs without AVX2.
+    {
+        "arch": "x86_64",
+        "source": "sha1-x86_64.S",
+        "tag": "sha1",
+        "perlasm": "crypto/fipsmodule/sha/asm/sha1-x86_64.pl",
+        "copyright": "Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["K_XX_XX"],
+        "routines": ["sha1_block_data_order_avx", "sha1_block_data_order_ssse3"],
+    },
+    {
+        "arch": "x86_64",
+        "source": "chacha-x86_64.S",
+        "dir": "chacha",
+        "tag": "chacha",
+        "perlasm": "crypto/chacha/asm/chacha-x86_64.pl",
+        "copyright": "Copyright 2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": ["zero", "rot16"],
+        "routines": ["ChaCha20_ctr32_nohw", "ChaCha20_ctr32_ssse3_4x"],
     },
     {
         "arch": "aarch64",
@@ -287,11 +307,12 @@ def body(lines, label, local, inner=()):
 
 
 def table(lines, label, local):
-    """The values from `label` up to the first line that is not one, their
-    width in bytes, and the offset of each label within them, keyed without
-    `local`."""
+    """The values from `label` up to the first line that is not one of the
+    same width, their width in bytes, and the offset of each label within
+    them, keyed without `local`. A label just before a change of width starts
+    the next table, which a spec names separately."""
     start = find(lines, [label]) + 1
-    widths = {".quad": 8, ".long": 4}
+    widths = {".quad": 8, ".long": 4, ".byte": 1}
     values, width, offsets = [], None, {}
     for line in lines[start:]:
         words = re.sub(r"(//|#).*", "", line).replace(",", " ").split()
@@ -300,15 +321,14 @@ def table(lines, label, local):
         if len(words) == 1 and words[0].startswith(local) and words[0].endswith(":"):
             offsets[words[0][len(local) : -1]] = len(values) * width if width else 0
             continue
-        if words[0] not in widths:
+        if words[0] not in widths or width not in (None, widths[words[0]]):
             break
-        if width not in (None, widths[words[0]]):
-            sys.exit(f"mixed widths in table: {label}")
         width = widths[words[0]]
         values += words[1:]
     if not values:
         sys.exit(f"empty table: {label}")
-    return values, width, offsets
+    end = len(values) * width
+    return values, width, {sub: offset for sub, offset in offsets.items() if offset < end}
 
 
 def words(names):
@@ -386,7 +406,7 @@ def import_64(aws_lc):
         out_dir = os.path.join(ROOT, spec["arch"], "aws_lc")
         stem = spec["source"].removesuffix(".S")
         for flavor, (directory, defines, prefix, local) in arch["flavors"].items():
-            source = os.path.join("generated-src", directory, "crypto", "fipsmodule", spec["source"])
+            source = os.path.join("generated-src", directory, "crypto", spec.get("dir", "fipsmodule"), spec["source"])
             lines = preprocess(os.path.join(aws_lc, source), arch["cpp"] + defines)
 
             # A flavor names a table with or without its local prefix, and a
