@@ -1287,7 +1287,7 @@ mod tests {
             for public in [other.as_ref(), &public[..public.len() - 1]] {
                 assert_eq!(
                     rejected(EcdsaKeyPair::from_private_key_and_public_key(
-                        signing, &scalar, public
+                        signing, scalar, public
                     )),
                     KeyFormatError::MismatchedPublicKey.into()
                 );
