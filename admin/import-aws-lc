@@ -32,9 +32,8 @@ the middle of a helper `carries` it: the helper's body follows the routine's
 in the same file, so the call reaches it as a local label. One that branches
 to a helper by name `joins` it: the helper follows the routine's body under a
 local label, through the end of its CFI frame. An import's `cpp` defines drop
-branches rind never takes. Its `inserts` add an instruction
-before one that names a symbol: a deliberate change to aws-lc's code, each
-saying why.
+branches rind never takes. Its `inserts` add an instruction before one that
+names a symbol: a deliberate change to aws-lc's code, each saying why.
 """
 
 import os
@@ -574,12 +573,6 @@ def import_64(aws_lc):
                     text += carried
                 if joins:
                     text = [words(joins).sub(lambda m: local + m[1], line) for line in text]
-                # Before the one instruction that names this symbol.
-                for op, symbol, line in spec.get("inserts", {}).get(name, []):
-                    at = [i for i, old in enumerate(text) if old.split() == [op, prefix + symbol]]
-                    if len(at) != 1:
-                        sys.exit(f"{name}: expected one {op} {symbol}")
-                    text.insert(at[0], "\t" + line)
                 directives = [line.split()[:1] for line in text]
                 if label[:-1] in inner and [".cfi_endproc"] in directives and [".cfi_startproc"] not in directives:
                     text = [".cfi_startproc"] + text
