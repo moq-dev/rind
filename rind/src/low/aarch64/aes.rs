@@ -10,11 +10,16 @@
 
 use core::arch::aarch64::*;
 
+use super::cpu::HaveCryptoExt;
+use super::vpaes_armv8::VpaesKey;
 use crate::low;
 
 pub(crate) enum AesKey {
-    Aes128(AesKey128),
-    Aes256(AesKey256),
+    /// The AES instructions', which the key picks when the CPU has the crypto
+    /// extension.
+    Hw(HwKey),
+    /// NEON's, otherwise.
+    Vpaes(VpaesKey),
 }
 
 impl AesKey {
@@ -22,20 +27,34 @@ impl AesKey {
     ///
     /// `key` must be 16 or 32 bytes in length (AES-192 not supported).
     pub(crate) fn new(key: &[u8]) -> Self {
-        match key.len() {
-            16 => Self::Aes128(AesKey128::new(key.try_into().unwrap())),
-            32 => Self::Aes256(AesKey256::new(key.try_into().unwrap())),
-            24 => panic!("aes-192 not supported"),
+        match (key.len(), HaveCryptoExt::check()) {
+            (16, Some(token)) => Self::Hw(HwKey::Aes128(AesKey128::new(
+                key.try_into().unwrap(),
+                token,
+            ))),
+            (32, Some(token)) => Self::Hw(HwKey::Aes256(AesKey256::new(
+                key.try_into().unwrap(),
+                token,
+            ))),
+            (16 | 32, None) => Self::Vpaes(VpaesKey::new(key)),
+            (24, _) => panic!("aes-192 not supported"),
             _ => panic!("invalid aes key size"),
         }
     }
 
     pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
         match self {
-            Self::Aes128(a128) => a128.encrypt_block(inout),
-            Self::Aes256(a256) => a256.encrypt_block(inout),
+            Self::Hw(HwKey::Aes128(a128)) => a128.encrypt_block(inout),
+            Self::Hw(HwKey::Aes256(a256)) => a256.encrypt_block(inout),
+            Self::Vpaes(key) => key.encrypt_block(inout),
         }
     }
+}
+
+/// A key for the AES instructions.
+pub(crate) enum HwKey {
+    Aes128(AesKey128),
+    Aes256(AesKey256),
 }
 
 impl Drop for AesKey {
@@ -46,12 +65,14 @@ impl Drop for AesKey {
 
 impl low::generic::zeroise::Zeroable for AesKey {}
 
+/// An AES-128 key for the AES instructions, which only a `HaveCryptoExt`
+/// token builds.
 pub(crate) struct AesKey128 {
     round_keys: [uint8x16_t; 10 + 1],
 }
 
 impl AesKey128 {
-    pub(crate) fn new(key: &[u8; 16]) -> Self {
+    pub(crate) fn new(key: &[u8; 16], token: HaveCryptoExt) -> Self {
         // we do the key expansion in 32 bit words, then convert
         // uint8x16_t as the final step.
         let mut rk32 = [0; (10 + 1) * 4];
@@ -62,7 +83,7 @@ impl AesKey128 {
 
         for r in 1..11 {
             let (prev, current) = &mut rk32[((r - 1) * 4)..((r + 1) * 4)].split_at_mut(4);
-            current[0] = sub_word(prev[3].rotate_left(8)) ^ (RCON[r - 1] << 24) ^ prev[0];
+            current[0] = sub_word(prev[3].rotate_left(8), token) ^ (RCON[r - 1] << 24) ^ prev[0];
             current[1] = current[0] ^ prev[1];
             current[2] = current[1] ^ prev[2];
             current[3] = current[2] ^ prev[3];
@@ -78,7 +99,7 @@ impl AesKey128 {
     }
 
     pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
-        // SAFETY: this crate requires the `aes` cpu feature
+        // SAFETY: only a `HaveCryptoExt` token builds `self`.
         unsafe { aes128_block(&self.round_keys, inout) }
     }
 
@@ -87,12 +108,14 @@ impl AesKey128 {
     }
 }
 
+/// An AES-256 key for the AES instructions, which only a `HaveCryptoExt`
+/// token builds.
 pub(crate) struct AesKey256 {
     round_keys: [uint8x16_t; 14 + 1],
 }
 
 impl AesKey256 {
-    pub(crate) fn new(key: &[u8; 32]) -> Self {
+    pub(crate) fn new(key: &[u8; 32], token: HaveCryptoExt) -> Self {
         let mut rk32 = [0; (14 + 1) * 4];
         rk32[0] = u32::from_be_bytes(key[0..4].try_into().unwrap());
         rk32[1] = u32::from_be_bytes(key[4..8].try_into().unwrap());
@@ -107,10 +130,11 @@ impl AesKey256 {
             let (prev, current) = &mut rk32[((r - 2) * 4)..((r + 1) * 4)].split_at_mut(8);
             if r & 1 == 1 {
                 // odd round
-                current[0] = sub_word(prev[7]) ^ prev[0];
+                current[0] = sub_word(prev[7], token) ^ prev[0];
             } else {
                 // even round
-                current[0] = sub_word(prev[7].rotate_left(8)) ^ (RCON[(r - 1) / 2] << 24) ^ prev[0];
+                current[0] =
+                    sub_word(prev[7].rotate_left(8), token) ^ (RCON[(r - 1) / 2] << 24) ^ prev[0];
             }
             current[1] = current[0] ^ prev[1];
             current[2] = current[1] ^ prev[2];
@@ -127,7 +151,7 @@ impl AesKey256 {
     }
 
     pub(crate) fn encrypt_block(&self, inout: &mut [u8; 16]) {
-        // SAFETY: this crate requires the `aes` cpu feature
+        // SAFETY: only a `HaveCryptoExt` token builds `self`.
         unsafe { aes256_block(&self.round_keys, inout) }
     }
 
@@ -141,8 +165,8 @@ fn zero() -> uint8x16_t {
     unsafe { vdupq_n_u8(0) }
 }
 
-fn sub_word(w: u32) -> u32 {
-    // SAFETY: this crate requires the `aes` cpu feature
+fn sub_word(w: u32, _: HaveCryptoExt) -> u32 {
+    // SAFETY: the token proves the CPU has the AES instructions.
     unsafe { _sub_word(w) }
 }
 
@@ -378,6 +402,7 @@ mod tests {
     use std::panic;
 
     use super::*;
+    use crate::low::aes_ctr;
 
     fn to_u128(v: uint8x16_t) -> u128 {
         let mut buf = [0u8; 16];
@@ -404,8 +429,9 @@ mod tests {
             let num_bits = len * 8;
             match panic::catch_unwind(|| AesKey::new(&input[..len])) {
                 Ok(key) => match key {
-                    AesKey::Aes128(_) => assert_eq!(num_bits, 128),
-                    AesKey::Aes256(_) => assert_eq!(num_bits, 256),
+                    AesKey::Hw(HwKey::Aes128(_)) => assert_eq!(num_bits, 128),
+                    AesKey::Hw(HwKey::Aes256(_)) => assert_eq!(num_bits, 256),
+                    AesKey::Vpaes(_) => assert!(matches!(num_bits, 128 | 256)),
                 },
                 Err(_) => {
                     assert_ne!(num_bits, 128);
@@ -417,10 +443,16 @@ mod tests {
 
     #[test]
     fn test_key_expansion_128() {
-        let context = AesKey128::new(&[
-            0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf,
-            0x4f, 0x3c,
-        ]);
+        let Some(token) = HaveCryptoExt::check() else {
+            return;
+        };
+        let context = AesKey128::new(
+            &[
+                0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf,
+                0x4f, 0x3c,
+            ],
+            token,
+        );
 
         let expected = [
             0x2b7e1516_28aed2a6_abf71588_09cf4f3c,
@@ -443,11 +475,17 @@ mod tests {
 
     #[test]
     fn test_key_expansion_256() {
-        let context = AesKey256::new(&[
-            0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d,
-            0x77, 0x81, 0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3,
-            0x09, 0x14, 0xdf, 0xf4,
-        ]);
+        let Some(token) = HaveCryptoExt::check() else {
+            return;
+        };
+        let context = AesKey256::new(
+            &[
+                0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe, 0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d,
+                0x77, 0x81, 0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3,
+                0x09, 0x14, 0xdf, 0xf4,
+            ],
+            token,
+        );
 
         let expected = [
             0x603deb10_15ca71be_2b73aef0_857d7781,
@@ -474,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_block_128() {
-        let context = AesKey128::new(&[
+        let context = AesKey::new(&[
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
             0x0e, 0x0f,
         ]);
@@ -494,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_block_256() {
-        let context = AesKey256::new(&[
+        let context = AesKey::new(&[
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
             0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b,
             0x1c, 0x1d, 0x1e, 0x1f,
@@ -511,5 +549,43 @@ mod tests {
                 0x60, 0x89
             ]
         );
+    }
+
+    // Every other test sees only the path the CPU picks, so the AES
+    // instructions are checked against vpaes here: each key size, single
+    // blocks, and counter mode across the 32-bit counter's wrap.
+    #[test]
+    fn hw_matches_vpaes() {
+        let Some(token) = HaveCryptoExt::check() else {
+            return;
+        };
+        let bytes = |n: usize, seed: u32| -> Vec<u8> {
+            (0..n as u32)
+                .map(|i| (i.wrapping_add(seed).wrapping_mul(0x9e3779b9) >> 24) as u8)
+                .collect()
+        };
+        for (key_len, seed) in [16, 32].into_iter().zip(1..) {
+            let key = bytes(key_len, seed);
+            let hw = AesKey::Hw(match key_len {
+                16 => HwKey::Aes128(AesKey128::new(key[..].try_into().unwrap(), token)),
+                _ => HwKey::Aes256(AesKey256::new(key[..].try_into().unwrap(), token)),
+            });
+            let vpaes = AesKey::Vpaes(VpaesKey::new(&key));
+
+            let mut want: [u8; 16] = bytes(16, seed).try_into().unwrap();
+            let mut got = want;
+            hw.encrypt_block(&mut want);
+            vpaes.encrypt_block(&mut got);
+            assert_eq!(got, want, "{key_len}-byte key block");
+
+            let nonce = bytes(12, seed).try_into().unwrap();
+            for counter in [0, 1, u32::MAX - 3, u32::MAX] {
+                let mut want: [u8; 128] = bytes(128, counter).try_into().unwrap();
+                let mut got = want;
+                aes_ctr::apply_8(&hw, &nonce, counter, &mut want);
+                aes_ctr::apply_8(&vpaes, &nonce, counter, &mut got);
+                assert_eq!(got, want, "{key_len}-byte key, counter {counter}");
+            }
+        }
     }
 }

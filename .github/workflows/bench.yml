@@ -49,14 +49,21 @@ jobs:
   # times the armv7 build without emulation too. Its Neoverse core is no
   # phone or board, so read rind's time relative to aws-lc-rs in the same
   # run, not as a device's.
+  #
+  # The portable row denies both libraries the crypto extension and the
+  # SHA-512 and SHA-3 instructions, as a Raspberry Pi 4 lacks them. rind's
+  # denial takes debug assertions, which the optimised build then keeps.
   arm:
-    name: arm (${{ matrix.target }})
+    name: arm (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: aarch64-unknown-linux-gnu
             personality: linux64
+          - target: aarch64-unknown-linux-gnu
+            personality: linux64
+            portable: true
           - target: armv7-unknown-linux-gnueabihf
             personality: linux32
     runs-on: ubuntu-24.04-arm
@@ -96,7 +103,14 @@ jobs:
 
       # Only rind and aws-lc-rs, the library it is measured against.
       - name: Run benchmarks
-        run: cargo bench -p rind-bench --target ${{ matrix.target }} -- --noplot '(^|/)(rind|aws-lc-rs)(/|$)'
+        run: |
+          if [ "${{ matrix.portable }}" = true ]; then
+            export CARGO_PROFILE_BENCH_DEBUG_ASSERTIONS=true
+            export RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_CPU_DISABLE_sha3=1
+            # aws-lc's AES, SHA1, SHA256, PMULL, SHA512, and SHA3 bits.
+            export OPENSSL_armcap='~0x87c'
+          fi
+          cargo bench -p rind-bench --target ${{ matrix.target }} -- --noplot '(^|/)(rind|aws-lc-rs)(/|$)'
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc

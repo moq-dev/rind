@@ -1,17 +1,37 @@
 // Written for Graviola by Joe Birr-Pixton, 2024.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! Basic implementation using vmull_p64.
+//! Basic implementation using vmull_p64, and aws-lc's NEON code for CPUs
+//! without it.
 //!
 //! Based on the implementation in low/x86_64/ghash.rs
 
 use core::arch::aarch64::*;
 use core::mem;
 
-use super::cpu::HaveSha3;
+use super::cpu::{HaveCryptoExt, HaveSha3};
+use super::ghash_neon_armv8::NeonTable;
 use crate::low;
 
-pub(crate) struct GhashTable {
+// A process only ever builds one variant, so boxing would buy nothing.
+#[expect(clippy::large_enum_variant)]
+pub(crate) enum GhashTable {
+    Pmull(PmullTable),
+    /// NEON's, which the table picks when the CPU lacks the crypto extension.
+    Neon(NeonTable),
+}
+
+impl GhashTable {
+    pub(crate) fn new(h: u128) -> Self {
+        match HaveCryptoExt::check() {
+            Some(token) => Self::Pmull(PmullTable::new(h, token)),
+            None => Self::Neon(NeonTable::new(&h.to_be_bytes())),
+        }
+    }
+}
+
+/// Powers of a GHASH key for PMULL, which only a `HaveCryptoExt` token builds.
+pub(crate) struct PmullTable {
     powers: [uint64x2_t; 8],
     powers_xor: [uint64x2_t; 8],
     /// H to H^8 in the layout `gcm_init_v8` writes, which s2n-bignum's
@@ -22,19 +42,20 @@ pub(crate) struct GhashTable {
     pub(crate) htable: [uint64x2_t; 12],
     /// Whether AES-256 runs the eight-way kernels, which need SHA3's `EOR3`.
     pub(crate) eight_way: Option<HaveSha3>,
+    token: HaveCryptoExt,
 }
 
-impl GhashTable {
-    pub(crate) fn new(h: u128) -> Self {
+impl PmullTable {
+    pub(crate) fn new(h: u128, token: HaveCryptoExt) -> Self {
         // SAFETY: this crate requires the `neon` cpu feature
         let h = unsafe { gf128_big_endian(from_u128(h)) };
-        let h2 = mul(h, h);
-        let h3 = mul(h2, h);
-        let h4 = mul(h3, h);
-        let h5 = mul(h4, h);
-        let h6 = mul(h5, h);
-        let h7 = mul(h6, h);
-        let h8 = mul(h7, h);
+        let h2 = mul(h, h, token);
+        let h3 = mul(h2, h, token);
+        let h4 = mul(h3, h, token);
+        let h5 = mul(h4, h, token);
+        let h6 = mul(h5, h, token);
+        let h7 = mul(h6, h, token);
+        let h8 = mul(h7, h, token);
 
         let powers = [h, h2, h3, h4, h5, h6, h7, h8];
         // SAFETY: this crate requires the `neon` cpu feature
@@ -74,11 +95,12 @@ impl GhashTable {
             powers_xor,
             htable,
             eight_way: HaveSha3::check(),
+            token,
         }
     }
 }
 
-impl Drop for GhashTable {
+impl Drop for PmullTable {
     fn drop(&mut self) {
         low::zeroise(&mut self.powers);
         low::zeroise(&mut self.powers_xor);
@@ -103,10 +125,26 @@ impl<'a> Ghash<'a> {
     ///
     /// `bytes` is zero-padded, if required.
     pub(crate) fn add(&mut self, bytes: &[u8]) {
+        let table = match self.table {
+            GhashTable::Pmull(table) => table,
+            GhashTable::Neon(table) => {
+                let mut xi = self.state();
+                let (blocks, tail) = bytes.as_chunks::<16>();
+                table.ghash(&mut xi, blocks);
+                if !tail.is_empty() {
+                    let mut last = [0u8; 16];
+                    last[..tail.len()].copy_from_slice(tail);
+                    table.ghash(&mut xi, &[last]);
+                }
+                return self.set_state(xi);
+            }
+        };
+
         let (by8_blocks, remainder) = bytes.as_chunks::<128>();
 
         for chunk8 in by8_blocks {
             self.eight_blocks(
+                table,
                 u128::from_be_bytes(chunk8[0..16].try_into().unwrap()),
                 u128::from_be_bytes(chunk8[16..32].try_into().unwrap()),
                 u128::from_be_bytes(chunk8[32..48].try_into().unwrap()),
@@ -122,7 +160,7 @@ impl<'a> Ghash<'a> {
 
         for chunk in whole_blocks {
             let u = u128::from_be_bytes(*chunk);
-            self.one_block(u);
+            self.one_block(table, u);
         }
 
         let bytes = remainder;
@@ -131,7 +169,7 @@ impl<'a> Ghash<'a> {
             block[..bytes.len()].copy_from_slice(bytes);
 
             let u = u128::from_be_bytes(block);
-            self.one_block(u);
+            self.one_block(table, u);
         }
     }
 
@@ -149,15 +187,16 @@ impl<'a> Ghash<'a> {
         self.current = from_u128(u128::from_be_bytes(state));
     }
 
-    fn one_block(&mut self, block: u128) {
+    fn one_block(&mut self, table: &PmullTable, block: u128) {
         // SAFETY: this crate requires the `neon` cpu feature
         self.current = unsafe { veorq_u64(self.current, from_u128(block)) };
-        self.current = mul(self.current, self.table.powers[0]);
+        self.current = mul(self.current, table.powers[0], table.token);
     }
 
     #[inline]
-    pub(crate) fn eight_blocks(
+    fn eight_blocks(
         &mut self,
+        table: &PmullTable,
         b1: u128,
         b2: u128,
         b3: u128,
@@ -170,7 +209,7 @@ impl<'a> Ghash<'a> {
         // SAFETY: this crate requires the `neon` cpu feature
         let b1 = unsafe { veorq_u64(self.current, from_u128(b1)) };
         self.current = mul8(
-            self.table,
+            table,
             b1,
             from_u128(b2),
             from_u128(b3),
@@ -184,14 +223,14 @@ impl<'a> Ghash<'a> {
 }
 
 #[inline]
-fn mul(a: uint64x2_t, b: uint64x2_t) -> uint64x2_t {
-    // SAFETY: this crate requires the `neon` and `aes` cpu features
+fn mul(a: uint64x2_t, b: uint64x2_t, _: HaveCryptoExt) -> uint64x2_t {
+    // SAFETY: the token proves the CPU has PMULL, and rind requires NEON.
     unsafe { _mul(a, b) }
 }
 
 #[inline]
 fn mul8(
-    table: &GhashTable,
+    table: &PmullTable,
     a: uint64x2_t,
     b: uint64x2_t,
     c: uint64x2_t,
@@ -201,7 +240,8 @@ fn mul8(
     g: uint64x2_t,
     h: uint64x2_t,
 ) -> uint64x2_t {
-    // SAFETY: this crate requires the `neon` and `aes` cpu features
+    // SAFETY: only a `HaveCryptoExt` token builds `table`, and rind requires
+    // NEON.
     unsafe { _mul8(table, a, b, c, d, e, f, g, h) }
 }
 
@@ -250,7 +290,7 @@ fn _mul(a: uint64x2_t, b: uint64x2_t) -> uint64x2_t {
 #[target_feature(enable = "neon,aes")]
 #[inline]
 fn _mul8(
-    table: &GhashTable,
+    table: &PmullTable,
     a: uint64x2_t,
     b: uint64x2_t,
     c: uint64x2_t,
@@ -379,23 +419,29 @@ mod tests {
         check(k, &pattern);
     }
 
+    // Checks both tables the CPU can build, not only the one it picks, in
+    // one call and split at a block boundary.
     fn check(key: u128, input: &[u8]) {
         println!("check: input={input:02x?}");
-        let ta = GhashTable::new(key);
         let tb = model::GhashTable::new(key);
-        let mut a = Ghash::new(&ta);
         let mut b = model::Ghash::new(&tb);
-        a.add(input);
         b.add(input);
-
-        let fa = a.into_bytes();
         let fb = b.into_bytes();
 
-        if fa != fb {
-            panic!(
-                "for input: {:02x?}:\n\n impl  {:02x?}\n    !=\nmodel  {:02x?}",
-                input, fa, fb
-            );
+        let mut tables = vec![GhashTable::Neon(NeonTable::new(&key.to_be_bytes()))];
+        if let Some(token) = HaveCryptoExt::check() {
+            tables.push(GhashTable::Pmull(PmullTable::new(key, token)));
+        }
+        for ta in &tables {
+            let mut a = Ghash::new(ta);
+            a.add(input);
+            assert_eq!(a.into_bytes(), fb, "for input: {input:02x?}");
+
+            let split = input.len().min(16);
+            let mut a = Ghash::new(ta);
+            a.add(&input[..split]);
+            a.add(&input[split..]);
+            assert_eq!(a.into_bytes(), fb, "for input: {input:02x?}, split");
         }
     }
 }
