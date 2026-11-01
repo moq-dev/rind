@@ -1083,7 +1083,7 @@ pub(crate) mod verify {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::high::asn1::{Type, pkix};
+    use crate::high::asn1::{self, Type, pkix};
 
     const ECDSA_SIGNING: [&EcdsaSigningAlgorithm; 6] = [
         &sign::ECDSA_P256_SHA256_ASN1,
@@ -1326,6 +1326,45 @@ mod tests {
             )),
             KeyFormatError::WrongLength.into()
         );
+    }
+
+    #[test]
+    fn key_loaders_refuse_trailing_bytes() {
+        type Load = fn(&[u8]) -> Result<(), Error>;
+        let cases: [(&[u8], Load); 8] = [
+            (include_bytes!("ecdsa/secp256r1.pkcs8.der"), |der| {
+                EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P256_SHA256_ASN1, der).map(drop)
+            }),
+            (include_bytes!("ecdsa/secp384r1.pkcs8.der"), |der| {
+                EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P384_SHA384_ASN1, der).map(drop)
+            }),
+            (include_bytes!("ecdsa/secp521r1.pkcs8.der"), |der| {
+                EcdsaKeyPair::from_pkcs8(&sign::ECDSA_P521_SHA512_ASN1, der).map(drop)
+            }),
+            (include_bytes!("ecdsa/secp256r1.der"), |der| {
+                EcdsaKeyPair::from_sec1(&sign::ECDSA_P256_SHA256_ASN1, der).map(drop)
+            }),
+            (include_bytes!("rsa/rsa2048.pkcs8.der"), |der| {
+                RsaKeyPair::from_pkcs8(der).map(drop)
+            }),
+            (include_bytes!("rsa/rsa2048.der"), |der| {
+                RsaKeyPair::from_pkcs1(der).map(drop)
+            }),
+            (include_bytes!("rsa/rsa2047.pub.der"), |der| {
+                PublicKey::new(&verify::legacy::RSA_PKCS1_1024_SHA256, der).map(drop)
+            }),
+            (include_bytes!("asn1/testdata/ed25519-p8v2.bin"), |der| {
+                Ed25519KeyPair::from_pkcs8(der).map(drop)
+            }),
+        ];
+        for (der, load) in cases {
+            load(der).unwrap();
+            assert_eq!(
+                rejected(load(&[der, &[0x00]].concat())),
+                KeyFormatError::Asn1(asn1::Error::UnexpectedTrailingData).into(),
+                "{der:02x?}",
+            );
+        }
     }
 
     #[test]
