@@ -41,10 +41,10 @@ fn cipher<const ENC: bool>(
     cipher_inout: &mut [u8],
 ) {
     let len = cipher_inout.len();
-    let (AesKey::Hw(hw_key), table) = (key, ghash.table) else {
+    let AesKey::Hw(hw_key) = key else {
         return composed::<ENC>(key, ghash, initial_counter, aad, cipher_inout);
     };
-    let table = match table {
+    let table = match ghash.table {
         GhashTable::Avx512(GhashTableAvx512 { vaes, .. })
             if len >= AVX512_KERNEL_MINIMUM_CIPHER_LEN =>
         {
