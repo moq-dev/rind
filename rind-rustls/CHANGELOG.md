@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/moq-dev/rind/compare/rind-rustls-v0.1.0...rind-rustls-v0.1.1) - 2026-11-01
+
+### Added
+
+- *(aarch64)* run on CPUs without the crypto extension ([#157](https://github.com/moq-dev/rind/pull/157))
+- *(rustls)* SECP256R1MLKEM768, MLKEM768, secp521r1, and ECDSA P-521, as aws-lc-rs's provider ([#150](https://github.com/moq-dev/rind/pull/150))
+
+### Fixed
+
+- *(rustls)* declare the oldest rustls rind-rustls builds and tests with ([#152](https://github.com/moq-dev/rind/pull/152))
+
 ## [0.1.0](https://github.com/moq-dev/rind/releases/tag/rind-rustls-v0.1.0) - 2026-10-31
 
 ### Added

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/moq-dev/rind/compare/rind-object-store-v0.1.0...rind-object-store-v0.1.1) - 2026-11-01
+
+### Other
+
+- updated the following local packages: rind
+
 ## [0.1.0](https://github.com/moq-dev/rind/releases/tag/rind-object-store-v0.1.0) - 2026-10-31
 
 ### Added

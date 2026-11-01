@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/moq-dev/rind/compare/rind-v0.1.0...rind-v0.1.1) - 2026-11-01
+
+### Added
+
+- *(aarch64)* run on CPUs without the crypto extension ([#157](https://github.com/moq-dev/rind/pull/157))
+- accept 33-bit RSA public exponents ([#161](https://github.com/moq-dev/rind/pull/161))
+- load PKCS#8 keys carrying attributes ([#160](https://github.com/moq-dev/rind/pull/160))
+- *(signature)* export an ECDSA key's scalar and an Ed25519 key's seed ([#158](https://github.com/moq-dev/rind/pull/158))
+- *(ring)* add rind-ring, ring 0.17's API on rind ([#151](https://github.com/moq-dev/rind/pull/151))
+- *(hkdf)* HKDF-SHA384, HKDF-SHA512, and legacy HKDF-SHA1 ([#149](https://github.com/moq-dev/rind/pull/149))
+
+### Other
+
+- cheaper ECDSA and RSA key loads and ECDSA verification ([#159](https://github.com/moq-dev/rind/pull/159))
+
 ## [0.1.0](https://github.com/moq-dev/rind/compare/rind-v0.0.0...rind-v0.1.0) - 2026-10-31
 
 ### Added

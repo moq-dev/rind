@@ -21,7 +21,7 @@ dev_urandom_fallback = []
 std = ["alloc"]
 
 [dependencies]
-rind = { version = "0.1.0", path = "../rind" }
+rind = { version = "0.1.1", path = "../rind" }
 untrusted = "0.9"
 zeroize = "1.9"
 
