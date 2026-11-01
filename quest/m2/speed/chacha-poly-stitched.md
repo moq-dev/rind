@@ -21,3 +21,7 @@ behind from 2 KB.
 - Cover each path in the forced-path tests, ctgrind, and the bench rows at
   32, 1200, 1350 bytes and 16 KB, measured in release builds.
 - Record the source and license in README's Sources table and LICENSE.
+
+## Required
+
+- [Bench forced paths in release builds](/quest/m2/speed/bench-forced-paths.md) - its slower-path numbers must come from release builds
