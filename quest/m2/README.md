@@ -8,5 +8,4 @@ to get there, and the speed and armv7 work that does not block it.
 ## Required
 
 - [Re-measure accepted costs](/quest/m2/remeasure.md) - ChaCha20-Poly1305 throughput and RSA key generation timing on rind's first release
-- [Refuse trailing bytes after a key](/quest/m2/strict-der.md) - key loaders refuse bytes past the encoded key, as ring does
 - [Fuzz the key loaders](/quest/m2/fuzz-keys.md) - arbitrary bytes into every key loader, against aws-lc-rs

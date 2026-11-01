@@ -28,8 +28,7 @@ impl<'a> Key<'a> {
         algorithm: &asn1::ObjectId,
         parameters: Option<asn1::Any<'_>>,
     ) -> Result<Self, Error> {
-        let oak = pkix::OneAsymmetricKey::parse(&mut asn1::Parser::new(slice))
-            .map_err(KeyFormatError::Asn1)?;
+        let oak = pkix::OneAsymmetricKey::from_bytes(slice).map_err(KeyFormatError::Asn1)?;
 
         match (oak.version, oak.publicKey.inner()) {
             (pkix::Pkcs8Version::Pkcs8v1, None) => {}

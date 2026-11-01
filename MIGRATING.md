@@ -200,6 +200,9 @@ ring has no `kem`.
 `PublicKey::new` refuses a compressed ECDSA point and a
 `SubjectPublicKeyInfo`, both of which aws-lc-rs takes.
 
+Every private key loader refuses bytes after the encoded key, which
+aws-lc-rs ignores and ring refuses.
+
 ## rsa
 
 rind signs and verifies with RSA through `signature`, and encrypts with none.
