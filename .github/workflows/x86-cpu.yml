@@ -73,7 +73,7 @@ jobs:
           RIND_TEST_X86_BMI2_ADX: 0
 
       # Westmere adds AES-NI and PCLMULQDQ without AVX, so rind's AES-GCM and
-      # GHASH intrinsics run without VEX encoding, and aws-lc's AES-NI CTR.
+      # GHASH intrinsics run without VEX encoding.
       - name: Check Westmere
         run: cargo test --release
         env:

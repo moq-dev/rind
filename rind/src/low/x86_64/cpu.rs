@@ -233,7 +233,7 @@ impl HaveAesHardware {
 }
 
 /// Proof that the CPU has AVX, which aws-lc's AVX SHA routines and rind's
-/// VEX-encoded AES-CTR, AES-GCM, and GHASH intrinsics use.
+/// VEX-encoded AES-GCM and GHASH intrinsics use.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HaveAvx(());
 
