@@ -72,10 +72,11 @@ jobs:
           env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test
           # test avx2/aesni aes-gcm & ML-KEM without avx512
           env RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 cargo test
-          # test s2n-bignum's _alt routines and aws-lc's Montgomery
-          # multiplication for CPUs without BMI2 and ADX, such as Haswell; the
-          # last variable fails the run that lands on the wrong path
-          env RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 cargo test
+          # test s2n-bignum's _alt routines, and aws-lc's Montgomery
+          # multiplication and RSAZ exponentiation, for CPUs with AVX2 but
+          # without BMI2 and ADX, such as Haswell; the last variables fail the
+          # run that lands on the wrong path
+          env RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 RIND_TEST_X86_AVX2=1 cargo test
           # test aws-lc's SSSE3 ChaCha20, SHA-1, and SHA-256, the portable
           # ML-KEM arithmetic, and the SSE2 selects for CPUs without AVX2,
           # such as AMD's Bulldozer and Jaguar; x86-cpu's Sandy Bridge run
