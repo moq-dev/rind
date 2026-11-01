@@ -485,6 +485,7 @@
 .Laesni_ctr32_epilogue:
 	.byte	0xf3,0xc3
 .cfi_endproc	
+.Laesni__aesni_encrypt8:
 .cfi_startproc	
 	movups	(%rcx),%xmm0
 	shll	$4,%eax

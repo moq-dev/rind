@@ -261,6 +261,19 @@ impl HaveSsse3 {
     }
 }
 
+/// Proof that the CPU has SSE4.1, and the SSSE3 it implies, which aws-lc's
+/// one-pass ChaCha20-Poly1305 uses.
+///
+/// Without it, ChaCha20 and Poly1305 run in separate passes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HaveSse41(());
+
+impl HaveSse41 {
+    pub(crate) fn check() -> Option<Self> {
+        has(SSSE3 | SSE41).then_some(Self(()))
+    }
+}
+
 /// Proof that the CPU has BMI2 and ADX, which s2n-bignum's fastest x86_64
 /// routines use (`mulx`, `adcx`, and `adox`).
 ///
@@ -377,9 +390,11 @@ fn test_toggle(_id: &str, detected: bool) -> bool {
 /// with it also tests the code for one without. `--cfg rind_cpu_disable`
 /// does the same for a release build, so benches and ctgrind time and check
 /// the code that ships; only `RUSTFLAGS` sets it, never a dependent crate.
+/// The variable drops the dot from `sse4.1`, since shells drop variables
+/// whose names have one.
 #[cfg(any(debug_assertions, rind_cpu_disable))]
 fn test_toggle(id: &str, detected: bool) -> bool {
-    if std::env::var(format!("RIND_CPU_DISABLE_{id}")).is_ok() {
+    if std::env::var(format!("RIND_CPU_DISABLE_{}", id.replace('.', ""))).is_ok() {
         println!("DEBUG: denying cpuid {id:?}");
         false
     } else {
@@ -434,6 +449,9 @@ mod tests {
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_SSSE3") {
             assert_eq!(HaveSsse3::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_SSE41") {
+            assert_eq!(HaveSse41::check().is_some(), expected == "1");
         }
     }
 }
