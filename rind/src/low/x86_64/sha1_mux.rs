@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 use crate::low::x86_64;
-use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha1, is_intel};
+use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSha1, HaveSsse3, is_intel};
 
 pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
     if let Some(token) = HaveSha1::check() {
@@ -10,7 +10,9 @@ pub(crate) fn sha1_compress_blocks(state: &mut [u32; 5], blocks: &[u8]) {
         x86_64::sha1::sha1_compress_blocks_avx2(state, blocks, token)
     } else if let Some(token) = HaveAvx::check().filter(|_| is_intel()) {
         x86_64::sha1::sha1_compress_blocks_avx(state, blocks, token)
+    } else if let Some(token) = HaveSsse3::check() {
+        x86_64::sha1::sha1_compress_blocks_ssse3(state, blocks, token)
     } else {
-        x86_64::sha1::sha1_compress_blocks_ssse3(state, blocks)
+        x86_64::sha1::sha1_compress_blocks_nohw(state, blocks)
     }
 }

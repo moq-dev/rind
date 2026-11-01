@@ -141,6 +141,7 @@ pub(crate) fn mlkem_tomont(a: &mut [i16; 256]) {
         Q!("    vmovdqa         " "[448 + rdi], ymm9"),
         Q!("    vmovdqa         " "[480 + rdi], ymm10"),
 
+        Q!("    vzeroupper      " ),
         inout("rdi") a.as_mut_ptr() => _,
         // clobbers
         out("rax") _,

@@ -169,7 +169,11 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/sha/asm/sha512-x86_64.pl",
         "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["K256"],
-        "routines": ["sha256_block_data_order_avx", "sha256_block_data_order_ssse3"],
+        "routines": [
+            "sha256_block_data_order_avx",
+            "sha256_block_data_order_ssse3",
+            "sha256_block_data_order_nohw",
+        ],
     },
     # The rest of the x86_64 imports are for CPUs without AVX2.
     {
@@ -179,7 +183,11 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/sha/asm/sha1-x86_64.pl",
         "copyright": "Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": ["K_XX_XX"],
-        "routines": ["sha1_block_data_order_avx", "sha1_block_data_order_ssse3"],
+        "routines": [
+            "sha1_block_data_order_avx",
+            "sha1_block_data_order_ssse3",
+            "sha1_block_data_order_nohw",
+        ],
     },
     {
         "arch": "x86_64",
@@ -212,6 +220,29 @@ IMPORTS_64 = [
         "tables": [],
         "routines": ["bn_sqr8x_internal"],
         "inner": ["__bn_sqr8x_internal", "__bn_sqr8x_reduction"],
+    },
+    # RSAZ, the exponentiation aws-lc runs for 1024-bit moduli with AVX2 but
+    # without ADX. `scatter_permd` runs on through `gather_permd` and `inc`,
+    # since the gather reads the former before the latter.
+    {
+        "arch": "x86_64",
+        "source": "rsaz-avx2.S",
+        "tag": "rsaz",
+        "perlasm": "crypto/fipsmodule/bn/asm/rsaz-avx2.pl",
+        "notice": [
+            "Copyright 2013-2016 The OpenSSL Project Authors. All Rights Reserved.",
+            "Copyright (c) 2012, Intel Corporation. All Rights Reserved.",
+            "SPDX-License-Identifier: Apache-2.0",
+        ],
+        "tables": ["and_mask", "scatter_permd"],
+        "routines": [
+            "rsaz_1024_sqr_avx2",
+            "rsaz_1024_mul_avx2",
+            "rsaz_1024_norm2red_avx2",
+            "rsaz_1024_red2norm_avx2",
+            "rsaz_1024_scatter5_avx2",
+            "rsaz_1024_gather5_avx2",
+        ],
     },
     # Of those, these are AES and GHASH for CPUs without AVX, or without
     # AES-NI and PCLMULQDQ.

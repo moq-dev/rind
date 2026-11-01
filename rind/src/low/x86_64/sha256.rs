@@ -9,8 +9,8 @@ pub(in crate::low) fn sha256_compress_blocks_shaext(
     _token: super::cpu::HaveSha256,
 ) {
     debug_assert!(blocks.len().is_multiple_of(64));
-    // SAFETY: `_token` proves the caller checked the `sha` and `sse4.1`
-    // features; this crate requires the `ssse3` feature
+    // SAFETY: `_token` proves the caller checked the `sha`, `ssse3`, and
+    // `sse4.1` features
     unsafe { sha256(state, blocks) }
 }
 
@@ -159,15 +159,31 @@ pub(in crate::low) fn sha256_compress_blocks_avx(
 
 /// SHA-256 without the SHA extensions or AVX2 on other vendors' CPUs, with
 /// aws-lc's `sha256_block_data_order_ssse3`, as aws-lc runs there.
-pub(in crate::low) fn sha256_compress_blocks_ssse3(state: &mut [u32; 8], blocks: &[u8]) {
+pub(in crate::low) fn sha256_compress_blocks_ssse3(
+    state: &mut [u32; 8],
+    blocks: &[u8],
+    _token: super::cpu::HaveSsse3,
+) {
     debug_assert!(blocks.len().is_multiple_of(64));
     // As for the AVX routine.
     if blocks.is_empty() {
         return;
     }
-    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and rind
-    // requires SSSE3 on x86_64.
+    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks, and `_token`
+    // proves SSSE3.
     unsafe { sha256_block_data_order_ssse3(state, blocks.as_ptr(), blocks.len() / 64) }
+}
+
+/// SHA-256 on CPUs without SSSE3, with aws-lc's integer
+/// `sha256_block_data_order_nohw`, as aws-lc runs there.
+pub(in crate::low) fn sha256_compress_blocks_nohw(state: &mut [u32; 8], blocks: &[u8]) {
+    debug_assert!(blocks.len().is_multiple_of(64));
+    // As for the AVX routine.
+    if blocks.is_empty() {
+        return;
+    }
+    // SAFETY: `blocks` is `blocks.len() / 64` readable blocks.
+    unsafe { sha256_block_data_order_nohw(state, blocks.as_ptr(), blocks.len() / 64) }
 }
 
 /// The round constants, each group of four twice for the vector additions,
@@ -177,7 +193,7 @@ struct Table([u32; 152]);
 
 static K256: Table = Table(include!("aws_lc/sha256-x86_64.K256.rs"));
 
-// Both routines take the System V ABI on every OS, since their text is
+// The routines take the System V ABI on every OS, since their text is
 // aws-lc's ELF and Mach-O flavors, which read their arguments from its
 // registers.
 
@@ -216,6 +232,26 @@ unsafe extern "sysv64" fn sha256_block_data_order_ssse3(
     #[cfg(target_vendor = "apple")]
     core::arch::naked_asm!(
         include_str!("aws_lc/sha256_block_data_order_ssse3.apple.s"),
+        K256 = sym K256,
+        options(att_syntax),
+    );
+}
+
+#[unsafe(naked)]
+unsafe extern "sysv64" fn sha256_block_data_order_nohw(
+    state: *mut [u32; 8],
+    data: *const u8,
+    blocks: usize,
+) {
+    #[cfg(not(target_vendor = "apple"))]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha256_block_data_order_nohw.linux.s"),
+        K256 = sym K256,
+        options(att_syntax),
+    );
+    #[cfg(target_vendor = "apple")]
+    core::arch::naked_asm!(
+        include_str!("aws_lc/sha256_block_data_order_nohw.apple.s"),
         K256 = sym K256,
         options(att_syntax),
     );
@@ -460,20 +496,20 @@ static K: Aligned = Aligned([
 mod tests {
     use super::*;
     use crate::low::generic;
-    use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2};
+    use crate::low::x86_64::cpu::{HaveAvx, HaveAvx2, HaveSsse3};
 
     const START: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
         0x5be0cd19,
     ];
 
-    // The SHA extensions, AVX2, and the vendor hide all but one path from
+    // The SHA extensions, AVX2, SSSE3, and the vendor hide all but one path from
     // every other test, so each the CPU can run is checked against the
     // portable code directly: odd and even block counts, with distinct bytes
     // in every block.
     #[test]
-    fn vector_paths_match_generic() {
-        let (avx, avx2) = (HaveAvx::check(), HaveAvx2::check());
+    fn paths_match_generic() {
+        let (ssse3, avx, avx2) = (HaveSsse3::check(), HaveAvx::check(), HaveAvx2::check());
         let blocks: Vec<u8> = (0..5 * 64u32)
             .map(|i| (i.wrapping_mul(0x9e3779b9) >> 24) as u8)
             .collect();
@@ -483,8 +519,13 @@ mod tests {
             generic::sha256::sha256_compress_blocks(&mut wanted, blocks);
 
             let mut got = START;
-            sha256_compress_blocks_ssse3(&mut got, blocks);
-            assert_eq!(got, wanted, "ssse3, {n} blocks");
+            sha256_compress_blocks_nohw(&mut got, blocks);
+            assert_eq!(got, wanted, "nohw, {n} blocks");
+            if let Some(token) = ssse3 {
+                let mut got = START;
+                sha256_compress_blocks_ssse3(&mut got, blocks, token);
+                assert_eq!(got, wanted, "ssse3, {n} blocks");
+            }
             if let Some(token) = avx {
                 let mut got = START;
                 sha256_compress_blocks_avx(&mut got, blocks, token);
