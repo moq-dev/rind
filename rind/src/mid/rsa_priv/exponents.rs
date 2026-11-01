@@ -3,6 +3,9 @@
 //! The private exponents of a generated key, derived from its primes in
 //! constant time on every backend.
 //!
+//! Arithmetic on secrets wraps: the bounds rule out overflow, and a debug
+//! build's overflow check would branch on secret values.
+//!
 //! References to FIPS186-5 are to:
 //! <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf>
 
@@ -123,7 +126,7 @@ fn divide_by_gcd(x: &[u64], y: &[u64], out: &mut [u64]) {
 
     // Each iteration halves at least one of u and v until one is zero, so
     // their combined width bounds the iterations.
-    let mut shift = 0;
+    let mut shift = 0usize;
     for _ in 0..len * 128 {
         // If both are odd, subtract the smaller from the larger.
         let both_odd = mask(u[0] & v[0] & 1);
@@ -135,7 +138,7 @@ fn divide_by_gcd(x: &[u64], y: &[u64], out: &mut [u64]) {
         // Now at least one is even: halve it, counting a factor of the
         // GCD when both are.
         let (u_even, v_even) = (mask(!u[0] & 1), mask(!v[0] & 1));
-        shift += (u_even & v_even & 1) as usize;
+        shift = shift.wrapping_add((u_even & v_even & 1) as usize);
         shift_right_1(u, u_even);
         shift_right_1(v, v_even);
     }
@@ -195,7 +198,7 @@ fn divide_exact_odd(x: &mut [u64], g: &[u64], out: &mut [u64]) {
 /// `d` has `d * e = t * m + 1 = 1 (mod m)`, with `d < m` because `t < e`.
 fn invert_e(m: &[u64], out: &mut [u64]) -> bool {
     // 2 ^ 64 = 1 (mod e), so m is congruent to the sum of its words.
-    let x = reduce_e(m.iter().map(|w| reduce_e(*w)).sum());
+    let x = reduce_e(m.iter().fold(0, |sum, w| sum.wrapping_add(reduce_e(*w))));
     if ct::into_public(x == 0) {
         return false;
     }
@@ -204,15 +207,17 @@ fn invert_e(m: &[u64], out: &mut [u64]) -> bool {
     // theorem: each step takes x ^ (2 ^ i - 1) to x ^ (2 ^ (i + 1) - 1).
     let mut inv = x;
     for _ in 1..16 {
-        inv = reduce_e(reduce_e(inv * inv) * x);
+        inv = reduce_e(reduce_e(inv.wrapping_mul(inv)).wrapping_mul(x));
     }
 
     // The quotient fits `m`'s width, so only the low words of `t * m + 1`
     // determine it.
-    let t = E - inv;
+    let t = E.wrapping_sub(inv);
     let mut carry = 1;
     for (out, m) in out.iter_mut().zip(m) {
-        let wide = u128::from(*m) * u128::from(t) + u128::from(carry);
+        let wide = u128::from(*m)
+            .wrapping_mul(u128::from(t))
+            .wrapping_add(u128::from(carry));
         *out = wide as u64;
         carry = (wide >> 64) as u64;
     }
@@ -244,7 +249,8 @@ fn divide_exact_e(x: &mut [u64]) {
     for x in x.iter_mut() {
         let (s, b) = x.overflowing_sub(borrow);
         *x = s.wrapping_mul(E_INV);
-        borrow = ((u128::from(*x) * u128::from(E)) >> 64) as u64 + u64::from(b);
+        borrow =
+            ((u128::from(*x).wrapping_mul(u128::from(E)) >> 64) as u64).wrapping_add(u64::from(b));
     }
 }
 
@@ -254,9 +260,11 @@ fn divide_exact_e(x: &mut [u64]) {
 fn reduce_e(v: u64) -> u64 {
     let digit = |v: u64, i: u32| (v >> (16 * i)) & 0xffff;
     // Positive, as 2e exceeds the two digits subtracted, and at most 2 ^ 18.
-    let v = digit(v, 0) + digit(v, 2) + 2 * E - digit(v, 1) - digit(v, 3);
+    let v = (digit(v, 0).wrapping_add(digit(v, 2)).wrapping_add(2 * E))
+        .wrapping_sub(digit(v, 1))
+        .wrapping_sub(digit(v, 3));
     // Below 2e, as v's second digit is below 8.
-    let v = digit(v, 0) + E - digit(v, 1);
+    let v = digit(v, 0).wrapping_add(E).wrapping_sub(digit(v, 1));
     let (r, borrow) = v.overflowing_sub(E);
     r.wrapping_add(E & mask(u64::from(borrow)))
 }

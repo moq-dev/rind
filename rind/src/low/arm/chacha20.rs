@@ -145,23 +145,9 @@ impl ChaCha20 {
     }
 }
 
-pub(crate) struct XChaCha20(ChaCha20);
-
-impl XChaCha20 {
-    pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 24]) -> Self {
-        let mut chacha_nonce = [0u8; 16];
-        chacha_nonce[8..].copy_from_slice(&nonce[16..]);
-        Self(ChaCha20::new(&hchacha20(key, nonce), &chacha_nonce))
-    }
-
-    pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        self.0.cipher(buffer)
-    }
-}
-
-/// HChaCha20 of `key` and the first 16 bytes of `nonce`: the ChaCha20 rounds
-/// without the final addition, keeping words 0-3 and 12-15.
-fn hchacha20(key: &[u8; 32], nonce: &[u8; 24]) -> [u8; 32] {
+/// HChaCha20 of `key` and `nonce`, for XChaCha20's subkey: the ChaCha20
+/// rounds without the final addition, keeping words 0-3 and 12-15.
+pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
     let mut st = [0u32; 16];
     let counter = u32::from_le_bytes([nonce[0], nonce[1], nonce[2], nonce[3]]);
     chacha20_init(&mut st, key, &nonce[4..16], counter);

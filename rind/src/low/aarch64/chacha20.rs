@@ -52,30 +52,21 @@ impl ChaCha20 {
     }
 }
 
-pub(crate) struct XChaCha20(ChaCha20);
-
-impl XChaCha20 {
-    pub(crate) fn new(key: &[u8; 32], nonce: &[u8; 24]) -> Self {
-        let hchacha_nonce = four(nonce[..16].try_into().unwrap());
-        let mut key0 = four(key[0..16].try_into().unwrap());
-        let mut key1 = four(key[16..32].try_into().unwrap());
-
-        hchacha(&mut key0, &mut key1, &hchacha_nonce);
-
-        let mut chacha_nonce = [0u8; 16];
-        chacha_nonce[8..16].copy_from_slice(&nonce[16..24]);
-        let chacha_nonce = four(&chacha_nonce);
-
-        Self(ChaCha20 {
-            key0,
-            key1,
-            nonce: chacha_nonce,
-        })
+/// HChaCha20 of `key` and `nonce`, for XChaCha20's subkey.
+pub(crate) fn hchacha20(key: &[u8; 32], nonce: &[u8; 16]) -> [u8; 32] {
+    let mut key0 = four(key[0..16].try_into().unwrap());
+    let mut key1 = four(key[16..32].try_into().unwrap());
+    hchacha(&mut key0, &mut key1, &four(nonce));
+    let mut out = [0u8; 32];
+    for (o, w) in out
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(key0.iter().chain(&key1))
+    {
+        *o = w.to_le_bytes();
     }
-
-    pub(crate) fn cipher(&mut self, buffer: &mut [u8]) {
-        self.0.cipher(buffer)
-    }
+    out
 }
 
 // Rotate each element of a uint32x4_t left by a specified number of bits.
@@ -527,24 +518,13 @@ mod tests {
             0x59, 0x27, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
         ];
 
-        let c = XChaCha20::new(&key, &nonce);
         assert_eq!(
-            c.0.key0,
-            [0x423b4182, 0xfe7bb227, 0x50420ed3, 0x737d878a],
-            "{:x?}",
-            c.0.key0
-        );
-        assert_eq!(
-            c.0.key1,
-            [0xd5e4f9a0, 0x53a8748a, 0x13c42ec1, 0xdcecd326],
-            "{:x?}",
-            c.0.key1
-        );
-        assert_eq!(
-            c.0.nonce,
-            [0, 0, 0x98badcfe, 0x10325476],
-            "{:x?}",
-            c.0.nonce
+            hchacha20(&key, nonce[..16].try_into().unwrap()),
+            [
+                0x82, 0x41, 0x3b, 0x42, 0x27, 0xb2, 0x7b, 0xfe, 0xd3, 0x0e, 0x42, 0x50, 0x8a, 0x87,
+                0x7d, 0x73, 0xa0, 0xf9, 0xe4, 0xd5, 0x8a, 0x74, 0xa8, 0x53, 0xc1, 0x2e, 0xc4, 0x13,
+                0x26, 0xd3, 0xec, 0xdc,
+            ]
         );
     }
 
@@ -559,7 +539,12 @@ mod tests {
             0x9c, 0x9d, 0x9e, 0x9f,
         ];
         let nonce = *b"@ABCDEFGHIJKLMNOPQRSTUVX";
-        let mut c = XChaCha20::new(&key, &nonce);
+        let mut counter_nonce = [0u8; 16];
+        counter_nonce[8..].copy_from_slice(&nonce[16..]);
+        let mut c = ChaCha20::new(
+            &hchacha20(&key, nonce[..16].try_into().unwrap()),
+            &counter_nonce,
+        );
 
         let mut buffer = [
             0x54, 0x68, 0x65, 0x20, 0x64, 0x68, 0x6f, 0x6c, 0x65, 0x20, 0x28, 0x70, 0x72, 0x6f,

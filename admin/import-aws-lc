@@ -21,18 +21,21 @@ the object format, so aws-lc's `linux` flavor serves ELF and COFF, and its
 Apple flavor, which spells alignment and page relocations differently, serves
 Mach-O. The tables move to Rust statics, written as array literals beside the
 routines, which the routines reach through `sym` operands; a label inside a
-table becomes the table's operand plus the label's offset. Helpers, the local
-routines the others `bl` to, become naked functions of their own, reached the
-same way, as are the routines of another import that a routine `calls`. An
-`inner` label, an entry point inside a routine that falls through to it,
-does not end the routine, which drops the label line; one naming a helper
-gives that helper its own copy from the label on, which opens a CFI frame of
-its own where the copy closes one. A routine that calls into
-the middle of a helper `carries` it: the helper's body follows the routine's
-in the same file, so the call reaches it as a local label. An import's `cpp`
-defines drop branches rind never takes. Its `inserts` add an instruction
-before one that names a symbol: a deliberate change to aws-lc's code, each
-saying why.
+table becomes the table's operand plus the label's offset. A `packed` table
+runs on through changes of width, written as bytes, for routines that load
+across its labels. Helpers, the local routines the others `bl` to, become
+naked functions of their own, reached the same way, as are the routines of
+another import that a routine `calls`. An `inner` label, an entry point
+inside a routine that falls through to it, does not end the routine, which
+drops the label line; one naming a helper gives that helper its own copy from
+the label on, which opens a CFI frame of its own where the copy closes one.
+One of an import's `labels`, a jump target inside a routine, does not end it
+either, and stays as a local label. A routine that jumps or calls into
+another routine of its file `carries` it: the other's label and body follow
+the routine's in the same file, as local labels. An import's `cpp` defines
+drop branches rind never takes. Its `inserts` add an instruction before one
+that names a symbol, and its `replaces` swap one instruction for another:
+deliberate changes to aws-lc's code, each saying why.
 """
 
 import os
@@ -266,7 +269,7 @@ IMPORTS_64 = [
         "copyright": "Copyright 2009-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": [],
         "routines": ["aes_hw_ctr32_encrypt_blocks"],
-        "carries": ["_aesni_encrypt8"],
+        "carries": {"aes_hw_ctr32_encrypt_blocks": ["_aesni_encrypt8"]},
     },
     {
         "arch": "x86_64",
@@ -297,6 +300,31 @@ IMPORTS_64 = [
         "notice": ["Copyright (c) 2019, Google Inc.", "SPDX-License-Identifier: ISC"],
         "tables": ["reverse_bytes", "low4_mask"],
         "routines": ["gcm_ghash_ssse3"],
+    },
+    # ChaCha20-Poly1305 in one pass, with SSE4.1 or AVX2. The routine picks
+    # its AVX2 half from aws-lc's `OPENSSL_ia32cap_P`, which rind does not
+    # have, so rind's copy reads the same bits from the data block rind
+    # passes it instead, as rind picks each path once per process.
+    {
+        "arch": "x86_64",
+        "source": "chacha20_poly1305_x86_64.S",
+        "dir": "cipher_extra",
+        "tag": "chacha_poly",
+        "perlasm": "crypto/cipher_extra/asm/chacha20_poly1305_x86_64.pl",
+        "notice": ["Copyright (c) 2015, CloudFlare Ltd.", "SPDX-License-Identifier: ISC"],
+        "tables": ["chacha20_consts", "and_masks"],
+        "packed": ["chacha20_consts"],
+        "routines": ["chacha20_poly1305_open", "chacha20_poly1305_seal"],
+        "helpers": ["poly_hash_ad_internal"],
+        "labels": ["process_extra_in_trailer"],
+        "carries": {
+            "chacha20_poly1305_open": ["chacha20_poly1305_open_avx2"],
+            "chacha20_poly1305_seal": ["chacha20_poly1305_seal_avx2"],
+        },
+        "replaces": {
+            name: [("movl", "OPENSSL_ia32cap_P+8(%rip),%eax", "movl\t64(%r9),%eax")]
+            for name in ["chacha20_poly1305_open", "chacha20_poly1305_seal"]
+        },
     },
     {
         "arch": "aarch64",
@@ -357,6 +385,19 @@ IMPORTS_64 = [
         ],
         "inner": ["_vpaes_schedule_low_round"],
     },
+    # ChaCha20-Poly1305 in one pass, with NEON.
+    {
+        "arch": "aarch64",
+        "source": "chacha20_poly1305_armv8.S",
+        "dir": "cipher_extra",
+        "tag": "chacha_poly",
+        "perlasm": "crypto/cipher_extra/asm/chacha20_poly1305_armv8.pl",
+        "notice": ["Copyright (c) 2020, CloudFlare Ltd.", "SPDX-License-Identifier: ISC"],
+        "tables": ["chacha20_consts"],
+        "packed": ["chacha20_consts"],
+        "routines": ["chacha20_poly1305_seal", "chacha20_poly1305_open"],
+        "helpers": ["poly_hash_ad_internal"],
+    },
 ]
 
 
@@ -398,6 +439,14 @@ def routine(lines, name):
     return lines[start : end + 1]
 
 
+def spelling(lines, name, local):
+    """How `lines` label `name`: as is, or with the `local` prefix."""
+    for s in (name, local + name):
+        if [s + ":"] in map(str.split, lines):
+            return s
+    sys.exit(f"missing label: {name}")
+
+
 def body(lines, label, local, inner=()):
     """What follows `label` up to the next directive or label that ends a
     routine: Apple's flavor has no `.size`, so the next routine's label ends
@@ -411,29 +460,42 @@ def body(lines, label, local, inner=()):
         if words and words[0].endswith(":") and not words[0].startswith(local) and words[0][:-1] not in inner:
             break
         end += 1
+    # Some routines close their CFI frame after `.size`.
+    after = [line.split()[:1] for line in lines[end : end + 2]]
+    closing = lines[end + 1 : end + 2] if after == [[".size"], [".cfi_endproc"]] else []
     # What separates it from the next routine: blank lines, comments, and
     # the next routine's alignment.
     while lines[end - 1].split()[:1] in ([], [".align"]) or lines[end - 1].lstrip().startswith(("//", "#")):
         end -= 1
-    return lines[start:end]
+    return lines[start:end] + closing
 
 
-def table(lines, label, local):
+def table(lines, label, local, packed=False):
     """The values from `label` up to the first line that is not one of the
     same width, their width in bytes, and the offset of each label within
     them, keyed without `local`. A label just before a change of width starts
-    the next table, which a spec names separately."""
+    the next table, which a spec names separately, unless the table is
+    `packed`: then it runs on to the first line that is not data, as bytes."""
     start = find(lines, [label]) + 1
     widths = {".quad": 8, ".long": 4, ".byte": 1}
     values, width, offsets = [], None, {}
     for line in lines[start:]:
+        # Character constants, such as the ChaCha20 constant's.
+        line = re.sub(r"'(.)'", lambda m: str(ord(m[1])), line)
         words = re.sub(r"(//|#).*", "", line).replace(",", " ").split()
         if not words:
             continue
         if len(words) == 1 and words[0].startswith(local) and words[0].endswith(":"):
             offsets[words[0][len(local) : -1]] = len(values) * width if width else 0
             continue
-        if words[0] not in widths or width not in (None, widths[words[0]]):
+        if words[0] not in widths:
+            break
+        if packed:
+            size = widths[words[0]]
+            values += [f"0x{b:02x}" for v in words[1:] for b in int(v, 0).to_bytes(size, "little")]
+            width = 1
+            continue
+        if width not in (None, widths[words[0]]):
             break
         width = widths[words[0]]
         values += words[1:]
@@ -525,8 +587,8 @@ def import_64(aws_lc):
             # label inside it by the table's operand plus its offset.
             operands = {}
             for name in spec["tables"]:
-                label = next(s for s in (name, local + name) if [s + ":"] in map(str.split, lines))
-                values, width, offsets = table(lines, label + ":", local)
+                label = spelling(lines, name, local)
+                values, width, offsets = table(lines, label + ":", local, name in spec.get("packed", []))
                 operand = name.lstrip("_")
                 operands |= {s: (operand, 0) for s in (name, local + name)}
                 operands |= {local + sub: (operand, offset) for sub, offset in offsets.items()}
@@ -536,21 +598,26 @@ def import_64(aws_lc):
                     rs = os.path.join(out_dir, f"{stem}.{operand}.rs")
                     write(rs, header("//", spec, source) + ["["] + rows + ["]"])
 
+            # And a helper with or without it.
             helpers = spec.get("helpers", [])
-            operands |= {name: (name.lstrip("_"), 0) for name in helpers}
+            operands |= {s: (name.lstrip("_"), 0) for name in helpers for s in (name, local + name)}
             # Routines of another import that these call.
             operands |= {prefix + name: (name, 0) for name in spec.get("calls", [])}
             entries = [(f"{prefix}{name}:", name) for name in spec["routines"]]
-            entries += [(f"{name}:", name.lstrip("_")) for name in helpers]
+            entries += [(spelling(lines, name, local) + ":", name.lstrip("_")) for name in helpers]
             inner = spec.get("inner", [])
+            labels = spec.get("labels", [])
             # A routine falls through these labels, which name helpers with
             # their own copy.
             dropped = [[f"{name}:"] for name in inner]
-            carried = [line for name in spec.get("carries", []) for line in body(lines, f"{name}:", local)]
             for label, name in entries:
-                text = [line for line in body(lines, label, local, inner) if line.split() not in dropped]
-                if name in spec["routines"]:
-                    text += carried
+                text = [line for line in body(lines, label, local, inner + labels) if line.split() not in dropped]
+                carried = spec.get("carries", {}).get(name, [])
+                for other in carried:
+                    text += [f"{local}{other}:"] + body(lines, f"{other}:", local)
+                if labels or carried:
+                    local_re = words(labels + carried)
+                    text = [local_re.sub(lambda m: local + m[1], line) for line in text]
                 directives = [line.split()[:1] for line in text]
                 if label[:-1] in inner and [".cfi_endproc"] in directives and [".cfi_startproc"] not in directives:
                     text = [".cfi_startproc"] + text
@@ -560,6 +627,12 @@ def import_64(aws_lc):
                     if len(at) != 1:
                         sys.exit(f"{name}: expected one {op} {symbol}")
                     text.insert(at[0], "\t" + line)
+                # The one instruction with these operands, which name a symbol.
+                for op, args, line in spec.get("replaces", {}).get(name, []):
+                    at = [i for i, old in enumerate(text) if old.split() == [op, prefix + args]]
+                    if len(at) != 1:
+                        sys.exit(f"{name}: expected one {op} {args}")
+                    text[at[0]] = "\t" + line
                 text = escape(text, operands, local, spec["tag"], arch["comment"])
                 write(os.path.join(out_dir, f"{name}.{flavor}.s"), header(arch["comment"], spec, source) + list(text))
 
