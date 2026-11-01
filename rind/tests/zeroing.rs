@@ -75,6 +75,7 @@ fn ecdsa() {
     ] {
         let key = EcdsaKeyPair::from_pkcs8(algorithm, pkcs8).unwrap();
         check_zeroed_on_drop(Box::pin(key.to_pkcs8()));
+        check_zeroed_on_drop(Box::pin(key.to_scalar()));
         check_zeroed_on_drop(Box::pin(key));
     }
 }
@@ -86,6 +87,7 @@ fn ed25519() {
         Ed25519KeyPair::from_pkcs8(include_bytes!("../src/high/asn1/testdata/ed25519-p8v2.bin"))
             .unwrap();
     check_zeroed_on_drop(Box::pin(ed25519.to_pkcs8()));
+    check_zeroed_on_drop(Box::pin(ed25519.to_seed()));
     check_zeroed_on_drop(Box::pin(ed25519));
 }
 

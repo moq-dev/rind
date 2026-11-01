@@ -152,6 +152,11 @@ impl Ed25519SigningKey {
             .map(|seed| Self(ed25519::SigningKey::from_seed(&seed)))
             .map_err(|_| KeyFormatError::WrongLength.into())
     }
+
+    /// Return the 32-byte seed, still secret, which [`Self::from_bytes`] loads.
+    pub(crate) fn seed(&self) -> &[u8; 32] {
+        self.0.as_seed_bytes()
+    }
 }
 
 #[cfg(test)]
