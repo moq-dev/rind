@@ -48,6 +48,52 @@ jobs:
       - name: Build (release)
         run: cargo build --release --tests
 
+      # Merom, the first Core 2, has SSSE3 but not SSE4.1 or AES-NI, so it
+      # runs every slowest path: aws-lc's vpaes, SSSE3 GHASH, ChaCha20, SHA-1,
+      # and SHA-256, the portable ML-KEM arithmetic, s2n-bignum's `_alt`
+      # routines, and aws-lc's Montgomery multiplication.
+      - name: Check Merom
+        run: cargo test --release
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -mrm --"
+          RIND_TEST_X86_AES_HARDWARE: 0
+          RIND_TEST_X86_AVX: 0
+          RIND_TEST_X86_AVX2: 0
+          RIND_TEST_X86_BMI2_ADX: 0
+
+      # Nehalem adds SSE4.2 and POPCNT, but still lacks AES-NI, so it runs
+      # Merom's paths.
+      - name: Check Nehalem
+        run: cargo test --release
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -nhm --"
+          RIND_TEST_X86_AES_HARDWARE: 0
+          RIND_TEST_X86_AVX: 0
+          RIND_TEST_X86_AVX2: 0
+          RIND_TEST_X86_BMI2_ADX: 0
+
+      # Westmere adds AES-NI and PCLMULQDQ without AVX, so rind's AES-GCM and
+      # GHASH intrinsics run without VEX encoding, and aws-lc's AES-NI CTR.
+      - name: Check Westmere
+        run: cargo test --release
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -wsm --"
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 0
+          RIND_TEST_X86_AVX2: 0
+          RIND_TEST_X86_BMI2_ADX: 0
+
+      # Goldmont, an Atom, runs Westmere's paths, but SHA-1 and SHA-256 on
+      # its SHA extensions.
+      - name: Check Goldmont
+        run: cargo test --release
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -glm --"
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 0
+          RIND_TEST_X86_AVX2: 0
+          RIND_TEST_X86_BMI2_ADX: 0
+
       # Sandy Bridge lacks AVX2, BMI2, and ADX, so aws-lc's AVX SHA and SSSE3
       # ChaCha20 routines, the portable ML-KEM arithmetic, s2n-bignum's
       # `_alt` routines, and aws-lc's Montgomery multiplication run.
@@ -55,6 +101,8 @@ jobs:
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -snb --"
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 1
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
 

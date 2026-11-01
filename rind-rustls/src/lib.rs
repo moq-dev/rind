@@ -130,12 +130,14 @@ mod tests {
     #[test]
     fn prefers_chacha20_without_aes_hardware() {
         // CI runs armv7 on a CPU model with the crypto extension and one
-        // without, and aarch64 with it and with it denied, and names which,
-        // so both orders are checked.
-        match std::env::var_os("RIND_TEST_ARM_CRYPTO_EXT") {
-            Some(expected) => assert_eq!(rind::cpu::has_aes_hardware(), expected == "1"),
-            None if cfg!(target_arch = "x86_64") => assert!(rind::cpu::has_aes_hardware()),
-            None => {}
+        // without, and aarch64 and x86_64 with AES hardware and with it denied,
+        // and names which, so both orders are checked.
+        let expected = match cfg!(target_arch = "x86_64") {
+            true => std::env::var_os("RIND_TEST_X86_AES_HARDWARE"),
+            false => std::env::var_os("RIND_TEST_ARM_CRYPTO_EXT"),
+        };
+        if let Some(expected) = expected {
+            assert_eq!(rind::cpu::has_aes_hardware(), expected == "1");
         }
 
         let expected = if rind::cpu::has_aes_hardware() {

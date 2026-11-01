@@ -123,7 +123,7 @@ fn composed<const ENC: bool>(
         if !ENC {
             ghash.add(chunk);
         }
-        aes_ctr::apply_8(key, nonce, ctr, chunk);
+        aes_ctr::apply(key, nonce, ctr, chunk);
         if ENC {
             ghash.add(chunk);
         }
@@ -133,16 +133,7 @@ fn composed<const ENC: bool>(
     if !ENC {
         ghash.add(remainder);
     }
-    for block in remainder.chunks_mut(16) {
-        let mut keystream = [0u8; 16];
-        keystream[..12].copy_from_slice(nonce);
-        keystream[12..].copy_from_slice(&ctr.to_be_bytes());
-        key.encrypt_block(&mut keystream);
-        for (c, k) in block.iter_mut().zip(keystream) {
-            *c ^= k;
-        }
-        ctr = ctr.wrapping_add(1);
-    }
+    aes_ctr::apply(key, nonce, ctr, remainder);
     if ENC {
         ghash.add(remainder);
     }

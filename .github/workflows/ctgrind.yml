@@ -42,12 +42,23 @@ jobs:
   # Valgrind hides ADX, which `admin/ctgrind`'s build switch overrides to
   # check s2n-bignum's ADX routines, so this job denies it to check what
   # CPUs without ADX run: their `_alt` twins, and aws-lc's Montgomery
-  # multiplication for RSA. It denies AVX2 and the SHA extensions too, and
-  # the vendor, for what CPUs such as AMD's Bulldozer run: aws-lc's SSSE3
-  # ChaCha20, SHA-1, and SHA-256, the portable ML-KEM arithmetic, and the
-  # SSE2 selects. The denial takes debug assertions, which the optimised
-  # build then keeps.
+  # multiplication for RSA. It denies AVX, the SHA extensions, and the vendor
+  # too, for what CPUs such as Westmere run: aws-lc's SSSE3 ChaCha20, SHA-1,
+  # and SHA-256, the portable ML-KEM arithmetic, the SSE2 selects, rind's
+  # AES-GCM and GHASH intrinsics without VEX encoding, and aws-lc's AES-NI
+  # CTR. The `no-aes` row also denies AES-NI and PCLMULQDQ, for aws-lc's vpaes
+  # and SSSE3 GHASH, as Core 2 and Nehalem run. The denial takes debug
+  # assertions, which the optimised build then keeps.
   x86_64-portable:
+    name: x86_64-portable (${{ matrix.cpu }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cpu: no-avx
+            deny: RIND_TEST_X86_AES_HARDWARE=1
+          - cpu: no-aes
+            deny: RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_TEST_X86_AES_HARDWARE=0
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,14 +75,20 @@ jobs:
       - name: Install valgrind
         run: sudo apt-get update && sudo apt-get install -y valgrind
 
+      # A denial set to any value takes effect, so a row's extra variables
+      # are words for `env`.
       - name: ctgrind tests
-        run: admin/ctgrind --release
+        run: |
+          read -ra deny <<< "$DENY"
+          env "${deny[@]}" admin/ctgrind --release
         env:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
+          DENY: ${{ matrix.deny }}
           RIND_CPU_DISABLE_adx: 1
-          RIND_CPU_DISABLE_avx2: 1
+          RIND_CPU_DISABLE_avx: 1
           RIND_CPU_DISABLE_intel: 1
           RIND_CPU_DISABLE_sha: 1
+          RIND_TEST_X86_AVX: 0
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
 

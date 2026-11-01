@@ -53,10 +53,12 @@ jobs:
   # aarch64, the crypto extension and the SHA-512 and SHA-3 instructions, as
   # a Raspberry Pi 4 lacks them; on x86_64, what Sandy Bridge lacks: AVX2,
   # BMI1 and BMI2, ADX, the SHA extensions, AVX-512, VAES, and VPCLMULQDQ.
-  # rind's denial takes debug assertions, which the optimised build then
-  # keeps.
+  # Two more x86_64 rows time only AES: one also denies AVX, as Westmere and
+  # the Goldmont Atoms lack it, and one AES-NI and PCLMULQDQ too, as Core 2
+  # and Nehalem lack them. rind's denial takes debug assertions, which the
+  # optimised build then keeps.
   native:
-    name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }})
+    name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }}${{ matrix.cpu && format(', {0}', matrix.cpu) || '' }})
     strategy:
       fail-fast: false
       matrix:
@@ -78,6 +80,18 @@ jobs:
             runner: ubuntu-24.04
             personality: linux64
             portable: true
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+            portable: true
+            cpu: no-avx
+            benches: --bench aes_gcm --bench cipher
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            personality: linux64
+            portable: true
+            cpu: no-aes
+            benches: --bench aes_gcm --bench cipher
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -132,10 +146,22 @@ jobs:
                 # ECX (AVX-512 VBMI, VBMI2, VNNI, BITALG, and VPOPCNTDQ, VAES,
                 # and VPCLMULQDQ).
                 export OPENSSL_ia32cap='~0x0:~0x5e42f02b0128'
+                # And for these rows, CPUID leaf 1's ECX: AVX, then AES-NI
+                # and PCLMULQDQ.
+                case "${{ matrix.cpu }}" in
+                  no-avx)
+                    export RIND_CPU_DISABLE_avx=1
+                    export OPENSSL_ia32cap='~0x1000000000000000:~0x5e42f02b0128'
+                    ;;
+                  no-aes)
+                    export RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1
+                    export OPENSSL_ia32cap='~0x1200000200000000:~0x5e42f02b0128'
+                    ;;
+                esac
                 ;;
             esac
           fi
-          cargo bench -p rind-bench --target ${{ matrix.target }} -- --noplot '(^|/)(rind|aws-lc-rs)(/|$)'
+          cargo bench -p rind-bench ${{ matrix.benches }} --target ${{ matrix.target }} -- --noplot '(^|/)(rind|aws-lc-rs)(/|$)'
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
