@@ -201,7 +201,20 @@ IMPORTS_64 = [
         "tables": ["zero", "rot16"],
         "routines": ["ChaCha20_ctr32_nohw", "ChaCha20_ctr32_ssse3_4x"],
     },
-    # Every routine aws-lc's `bn_mul_mont` picks from, by width and CPU.
+    # The routines aws-lc's `bn_mul_mont` picks from, by width and CPU, but
+    # for `bn_sqr8x_mont`'s mulx branch: its `bn_sqrx8x_internal` reads two
+    # scratch words it never wrote, which memcheck then sees in every result.
+    {
+        "arch": "x86_64",
+        "source": "x86_64-mont.S",
+        "tag": "mont",
+        "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont.pl",
+        "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
+        "cpp": ["-DMY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2"],
+        "tables": [],
+        "routines": ["bn_mul4x_mont", "bn_sqr8x_mont"],
+        "calls": ["bn_sqr8x_internal"],
+    },
     {
         "arch": "x86_64",
         "source": "x86_64-mont.S",
@@ -209,8 +222,7 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont.pl",
         "copyright": "Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": [],
-        "routines": ["bn_mul_mont_nohw", "bn_mul4x_mont", "bn_mulx4x_mont", "bn_sqr8x_mont"],
-        "calls": ["bn_sqr8x_internal", "bn_sqrx8x_internal"],
+        "routines": ["bn_mul_mont_nohw", "bn_mulx4x_mont"],
     },
     {
         "arch": "x86_64",
@@ -219,13 +231,8 @@ IMPORTS_64 = [
         "perlasm": "crypto/fipsmodule/bn/asm/x86_64-mont5.pl",
         "copyright": "Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved.",
         "tables": [],
-        "routines": ["bn_sqr8x_internal", "bn_sqrx8x_internal"],
-        "inner": [
-            "__bn_sqr8x_internal",
-            "__bn_sqr8x_reduction",
-            "__bn_sqrx8x_internal",
-            "__bn_sqrx8x_reduction",
-        ],
+        "routines": ["bn_sqr8x_internal"],
+        "inner": ["__bn_sqr8x_internal", "__bn_sqr8x_reduction"],
     },
     # RSAZ, the exponentiation aws-lc runs for 1024-bit moduli with AVX2 but
     # without ADX. `scatter_permd` runs on through `gather_permd` and `inc`,
