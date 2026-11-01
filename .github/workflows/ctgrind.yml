@@ -40,12 +40,13 @@ jobs:
         run: admin/ctgrind ${{ matrix.build }}
 
   # Valgrind hides ADX, which `admin/ctgrind`'s build switch overrides to
-  # check s2n-bignum's ADX routines, so this job denies it to check their
-  # `_alt` twins, which CPUs without ADX run. It denies AVX2 and the SHA
-  # extensions too, and the vendor, for what CPUs such as AMD's Bulldozer
-  # run: aws-lc's SSSE3 ChaCha20, SHA-1, and SHA-256, the portable ML-KEM
-  # arithmetic, and the SSE2 selects. The denial takes debug assertions,
-  # which the optimised build then keeps.
+  # check s2n-bignum's ADX routines, so this job denies it to check what
+  # CPUs without ADX run: their `_alt` twins, and aws-lc's Montgomery
+  # multiplication for RSA. It denies AVX2 and the SHA extensions too, and
+  # the vendor, for what CPUs such as AMD's Bulldozer run: aws-lc's SSSE3
+  # ChaCha20, SHA-1, and SHA-256, the portable ML-KEM arithmetic, and the
+  # SSE2 selects. The denial takes debug assertions, which the optimised
+  # build then keeps.
   x86_64-portable:
     runs-on: ubuntu-latest
     steps:

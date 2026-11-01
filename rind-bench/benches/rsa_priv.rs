@@ -101,6 +101,42 @@ fn rsa2048_pss_sha256_sign(c: &mut Criterion) {
     });
 }
 
+/// Signing at the other sizes, whose primes take a different Montgomery
+/// multiplication from RSA-2048's on some CPUs.
+fn rsa_pkcs1_sha256_sign_sizes(c: &mut Criterion) {
+    let keys: [(u32, &[u8]); 2] = [
+        (3072, include_bytes!("../../rind/src/high/rsa/rsa3072.der")),
+        (4096, include_bytes!("../../rind/src/high/rsa/rsa4096.der")),
+    ];
+    let message = b"hello";
+    for (bits, private_key) in keys {
+        let mut group = c.benchmark_group(format!("rsa{bits}-pkcs1-sha256-sign"));
+        group.throughput(Throughput::Elements(1));
+
+        group.bench_function("aws-lc-rs", |b| {
+            use aws_lc_rs::{rand, rsa, signature};
+
+            let key = rsa::KeyPair::from_der(private_key).unwrap();
+            let rng = rand::SystemRandom::new();
+            let mut signature = vec![0u8; key.public_modulus_len()];
+
+            b.iter(|| {
+                black_box(key.sign(&signature::RSA_PKCS1_SHA256, &rng, message, &mut signature))
+                    .unwrap();
+            })
+        });
+
+        group.bench_function("rind", |b| {
+            use rind::signature::{RsaKeyPair, sign};
+            let key = RsaKeyPair::from_pkcs1(private_key).unwrap();
+
+            b.iter(|| {
+                black_box(key.sign(&sign::RSA_PKCS1_SHA256, message)).unwrap();
+            })
+        });
+    }
+}
+
 /// Loading a key checks its components agree, which should stay small next
 /// to a signature at every size.
 fn rsa_load(c: &mut Criterion) {
@@ -136,6 +172,7 @@ criterion_group!(
     benches,
     rsa2048_pkcs1_sha256_sign,
     rsa2048_pss_sha256_sign,
+    rsa_pkcs1_sha256_sign_sizes,
     rsa_load
 );
 criterion_main!(benches);

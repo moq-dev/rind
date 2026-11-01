@@ -49,8 +49,8 @@ jobs:
         run: cargo build --release --tests
 
       # Sandy Bridge lacks AVX2, BMI2, and ADX, so aws-lc's AVX SHA and SSSE3
-      # ChaCha20 routines, the portable ML-KEM arithmetic, and s2n-bignum's
-      # `_alt` routines run.
+      # ChaCha20 routines, the portable ML-KEM arithmetic, s2n-bignum's
+      # `_alt` routines, and aws-lc's Montgomery multiplication run.
       - name: Check Sandy Bridge
         run: cargo test --release
         env:
@@ -58,8 +58,8 @@ jobs:
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
 
-      # Haswell lacks ADX, so s2n-bignum's `_alt` routines run, beside the
-      # AVX2 kernels.
+      # Haswell lacks ADX, so s2n-bignum's `_alt` routines and aws-lc's
+      # Montgomery multiplication run, beside the AVX2 kernels.
       - name: Check Haswell
         run: cargo test --release
         env:
