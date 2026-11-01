@@ -53,8 +53,11 @@ but there is also a public API for general-purpose use.
   run [aws-lc]'s NEON and scalar assembly instead (see
   [Algorithms](#algorithms)), `rind::cpu::has_aes_hardware()` is false, and
   rind-rustls and rind-dimpl prefer ChaCha20-Poly1305.
-- `x86_64` requires `aes`, `ssse3`, `popcnt`, `avx`, `avx2`, `adx`, `bmi2`, and `pclmulqdq` CPU features.
-  (This is most x86_64 CPUs made since around ~2014.)
+- `x86_64` requires `aes`, `ssse3`, `popcnt`, `avx`, `avx2`, `bmi2`, and `pclmulqdq` CPU features.
+  (This is most x86_64 CPUs made since around 2013.) Without `adx`, as on
+  Haswell and AMD's cores before Zen, [s2n-bignum]'s `_alt` routines replace
+  those that use it, and its schoolbook multiplication and reduction replace
+  its Karatsuba ones for RSA.
 - 32-bit `arm` (tested on `armv7-unknown-linux-gnueabihf`, and built for
   `armv7-linux-androideabi`) runs portable Rust instead, mostly from
   [libcrux] (see [Algorithms](#algorithms)), and needs no CPU features. Where

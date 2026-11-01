@@ -1,4 +1,4 @@
-# [L] x86_64 without AVX2, BMI2, ADX, or AES-NI
+# [L] x86_64 without AVX2, BMI2, or AES-NI
 
 ## Goal
 
@@ -15,10 +15,18 @@ the fastest one per path wins, verified only on a tie, as for aarch64's
 portable path.
 
 - Today `rind::cpu::check()` requires `aes`, `ssse3`, `popcnt`, `avx`,
-  `avx2`, `adx`, `bmi2`, and `pclmulqdq`. Keep the current kernels as the
-  fast path, and add a path for each missing group:
-  - bignum, ECC, and X25519 without `bmi2`/`adx`: s2n-bignum's `_alt`
-    routines, which rind's import already knows;
+  `avx2`, `bmi2`, and `pclmulqdq`; bignum, ECC, and X25519 already run
+  s2n-bignum's `_alt` routines without `bmi2` and `adx`, behind
+  `low::x86_64::adx_mux`. `bmi2` stays required only for the AVX2 SHA-1 and
+  SHA-256 rounds and ML-KEM's rejection sampling, so it goes with `avx2`.
+  Keep the current kernels as the fast path, and add a path for each missing
+  group:
+  - RSA without `adx`: s2n-bignum has no `_alt` Karatsuba or 8n
+    reduction, and its generic schoolbook routines sign RSA-2048 2.3x slower
+    than aws-lc-rs on the same path (its generic `bignum_montmul` is slower
+    still). aws-lc's `bn_mul4x_mont` and `bn_sqr8x_mont` are what aws-lc-rs
+    runs there; they compute a whole Montgomery product, so `posint`'s
+    multiply-then-reduce split likely moves into `low`;
   - AES and GHASH without `aes`/`pclmulqdq`: aws-lc's `vpaes-x86_64` and
     `ghash-ssse3` through `admin/import-aws-lc`;
   - code that needs `avx`/`avx2` (ChaCha20, SHA, ML-KEM, intrinsic code):
@@ -27,10 +35,6 @@ portable path.
   `has_aes_hardware()` false without AES-NI so the adapters prefer
   ChaCha20-Poly1305. `check()` refuses only CPUs below SSSE3 (and `popcnt` if
   a path still needs it).
-- Valgrind hides ADX ([KDE bug 494162](https://bugs.kde.org/show_bug.cgi?id=494162)),
-  so the `VALGRIND_BUG_494162` build switch becomes unnecessary: valgrind
-  takes the `_alt` path. Keep the switch only if ctgrind must still cover the
-  ADX path, and say which in the PR.
 - Test every path on every x86_64 CI run by forcing each one, as aarch64
   does, and cover each in ctgrind and the benchmarks. README's Limitations
   drop the x86_64 feature list.
