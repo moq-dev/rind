@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/moq-dev/rind/compare/rind-v0.1.5...rind-v0.1.6) - 2026-11-02
+
+### Fixed
+
+- build on the declared MSRV, raised to 1.90 ([#199](https://github.com/moq-dev/rind/pull/199))
+- *(hash)* admin/structure reports only real layering edges ([#197](https://github.com/moq-dev/rind/pull/197))
+- *(rsa)* redraw q when it is within 2^(nlen/2 - 100) of p ([#204](https://github.com/moq-dev/rind/pull/204))
+- *(fuzz)* allow the PKCS#8 v2 refusal without a public key for ECDSA and RSA ([#198](https://github.com/moq-dev/rind/pull/198))
+
+### Other
+
+- drop the redundant RSA key generation tests from the gate ([#201](https://github.com/moq-dev/rind/pull/201))
+- *(x86-cpu)* run one SDE model per dispatch path set ([#205](https://github.com/moq-dev/rind/pull/205))
+
 ## [0.1.5](https://github.com/moq-dev/rind/compare/rind-v0.1.4...rind-v0.1.5) - 2026-11-01
 
 ### Other
