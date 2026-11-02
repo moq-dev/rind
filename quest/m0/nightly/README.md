@@ -17,4 +17,3 @@ Decided with the maintainer on 2026-11-01, from the merge-gate and CI audit. Set
 ## Required
 
 - [MSRV builds again](/quest/m0/nightly/msrv.md) - rind builds on its declared rust-version 1.89
-- [admin/structure reports only real layering edges](/quest/m0/nightly/structure.md) - its mid-to-high edges are fixed or shown to be a cargo-modules false positive

@@ -206,12 +206,6 @@ impl Sha512_256Context {
         inner[..Self::OUTPUT_SZ].try_into().unwrap()
     }
 
-    /// As [`Sha512Context::finish_block`].
-    pub(crate) fn finish_block(&self, tail: &[u8]) -> [u8; Self::OUTPUT_SZ] {
-        let inner = self.inner.finish_block(tail);
-        inner[..Self::OUTPUT_SZ].try_into().unwrap()
-    }
-
     /// The output size of SHA512/256.
     pub(crate) const OUTPUT_SZ: usize = 32;
 }
