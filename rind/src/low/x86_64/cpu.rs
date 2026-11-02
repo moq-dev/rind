@@ -349,7 +349,10 @@ fn detect() -> u32 {
     }
 
     // "GenuineIntel", spread over ebx, edx, and ecx.
-    let id = __cpuid(0);
+    // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
+    #[allow(unused_unsafe)]
+    // SAFETY: every x86_64 CPU has `cpuid`.
+    let id = unsafe { __cpuid(0) };
     let intel = (id.ebx, id.edx, id.ecx) == (0x756e_6547, 0x4965_6e69, 0x6c65_746e);
 
     // Valgrind runs ADX instructions but hides them from `cpuid`
