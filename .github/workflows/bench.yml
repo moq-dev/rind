@@ -159,11 +159,13 @@ jobs:
                 # aws-lc's AES, SHA1, SHA256, PMULL, SHA512, and SHA3 bits.
                 export OPENSSL_armcap='~0x87c'
                 ;;
-              # Haswell's path: without ADX, and for aws-lc without BMI2 and
-              # ADX in CPUID leaf 7's EBX, so both run RSAZ for RSA-2048.
+              # Haswell's path: without ADX, and for aws-lc without BMI2,
+              # ADX, and AVX-512 F, DQ, IFMA, CD, BW, and VL in CPUID leaf
+              # 7's EBX, so both run RSAZ for RSA-2048, and aws-lc not its
+              # AVX-512 RSA, which rind lacks.
               x86_64-*/no-adx)
                 export RIND_CPU_DISABLE_adx=1
-                export OPENSSL_ia32cap='~0x0:~0x80100'
+                export OPENSSL_ia32cap='~0x0:~0xd02b0100'
                 ;;
               x86_64-*)
                 # rind's AVX-512 and VAES paths also need AVX2.
