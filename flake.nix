@@ -85,6 +85,7 @@
                   pkg-config
                   openssl
                   cargo-deny
+                  cargo-nextest
                   cargo-semver-checks
                   # Linters used by `just check` and `just fix`, which skip a
                   # module whose tools aren't on $PATH. CI sets CI_STRICT=1, which

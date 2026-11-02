@@ -2,14 +2,21 @@
 # Print the Cargo package arguments for the crates a diff touches, plus every
 # workspace crate depending on them, one argument per line.
 #
-# Usage: sh/select.sh CHANGED_FILE [ALL]
+# Usage: sh/select.sh CHANGED_FILE [ALL] [--lib]
 # A change outside any crate's directory (the root manifest, the lockfile,
 # thirdparty/ test vectors) can reach every crate, so it selects --workspace,
-# as does a non-empty ALL.
+# as does a non-empty ALL. --lib keeps only the crates with a library, which
+# `cargo test --doc` requires.
 set -euo pipefail
 
-changed=${1:?usage: sh/select.sh CHANGED_FILE [ALL]}
+usage="usage: sh/select.sh CHANGED_FILE [ALL] [--lib]"
+changed=${1:?$usage}
 all=${2:-}
+lib=${3:-}
+if [[ $# -gt 3 || (-n "$lib" && "$lib" != --lib) ]]; then
+    echo "$usage" >&2
+    exit 2
+fi
 
 if [[ -n "$all" ]]; then
     echo --workspace
@@ -49,6 +56,9 @@ while [[ -n "$grew" ]]; do
     done <<<"$edges"
 done
 
+libs=$(jq -r '.packages[] | select(any(.targets[]; .kind | index("lib"))) | .name' <<<"$metadata")
 for name in "${!selected[@]}"; do
-    printf -- '-p\n%s\n' "$name"
+    if [[ -z "$lib" ]] || grep -qxF "$name" <<<"$libs"; then
+        printf -- '-p\n%s\n' "$name"
+    fi
 done
