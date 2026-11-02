@@ -53,6 +53,11 @@
               "rust-src"
               "rust-analyzer"
             ];
+            # The gate lints rind's other backends without their C toolchains.
+            targets = [
+              "aarch64-unknown-linux-gnu"
+              "armv7-unknown-linux-gnueabihf"
+            ];
           };
 
           quest-cli = quest.packages.${system}.default;
