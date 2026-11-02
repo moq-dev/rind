@@ -416,41 +416,48 @@ mod tests {
         );
     }
 
+    /// `x + step`, for a step that does not carry out of the last two bytes.
+    fn offset(x: &[u8], step: u16) -> Vec<u8> {
+        let (head, tail) = x.split_at(x.len() - 2);
+        let tail = u16::from_be_bytes(tail.try_into().unwrap()) + step;
+        [head, &tail.to_be_bytes()].concat()
+    }
+
     #[test]
     fn test_p_q_close() {
-        let mut bytes = read_hex_from_file(include_str!(
+        let mut p = read_hex_from_file(include_str!(
             "../../testdata/rsa.phi-not-coprime-e.2048.txt"
         ));
-        bytes.truncate(128);
-        let p = PosInt::from_bytes(&bytes).unwrap();
+        p.truncate(128);
 
-        // q is the next prime after p, far within 2 ^ 924 of it.
-        let tail = u16::from_be_bytes([bytes[126], bytes[127]]) + 814;
-        bytes.extend_from_within(..126);
-        bytes.extend_from_slice(&tail.to_be_bytes());
-        let q = PosInt::from_bytes(&bytes[128..]).unwrap();
+        // The next prime after p, far within 2 ^ 924 of it.
+        let close = offset(&p, 814);
         assert_eq!(
             is_prime(
-                &q,
+                &PosInt::from_bytes(&close).unwrap(),
                 RsaKeySize::Rsa2048,
                 &mut HmacDrbg::<Sha256>::new(b"", b"", b"")
             ),
             Ok(true)
         );
 
-        let mut fixed_source = SliceRandomSource(&bytes);
-        let mut retry_source = SystemRandom;
-        let mut candidate_source = ChainRandomSource::First(&mut fixed_source, &mut retry_source);
+        // A prime below p by about 2 ^ 1008, which completes a key with p.
+        let mut far = p.clone();
+        far[1] ^= 1;
+        let far = offset(&far, 346);
+
+        let candidates = [&p[..], &close, &far].concat();
         let key = generate_key(
             RsaKeySize::Rsa2048,
-            &mut candidate_source,
+            &mut SliceRandomSource(&candidates),
             &mut SystemRandom,
         )
         .unwrap();
 
         // p is kept and only q is drawn again.
-        assert!(public(key.p.equals(&p) | key.q.equals(&p)));
-        assert!(!public(key.p.equals(&q) | key.q.equals(&q)));
+        let p = PosInt::from_bytes(&p).unwrap();
+        let far = PosInt::from_bytes(&far).unwrap();
+        assert!(public(key.p.equals(&p) & key.q.equals(&far)));
     }
 
     #[test]
