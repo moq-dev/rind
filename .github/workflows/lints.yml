@@ -1,5 +1,8 @@
 name: quality lints
 
+# Every job but the unstable rustfmt one runs the flake's pinned tools, so a
+# new stable release can't fail it. `just ci` already runs x86_64 clippy and
+# rustfmt on every merge.
 on:
   schedule:
     - cron: "0 18 * * *"
@@ -20,17 +23,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read MSRV
-        id: msrv
-        run: echo "version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
-
-      - name: Install MSRV toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.msrv.outputs.version }}
+      - uses: ./.github/actions/nix
 
       - name: Check MSRV
-        run: cargo build --workspace --lib --bins
+        run: nix develop .#msrv --command cargo build --workspace --lib --bins
 
   checks:
     runs-on: ubuntu-latest
@@ -39,71 +35,52 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
+      # The codegen calls the cross tools by their Debian names, which the dev
+      # shell's PATH falls through to. The image ships the x86_64 ones.
       - name: install codegen deps
         run: |
           sudo apt-get update
           sudo apt-get install -y cpp-aarch64-linux-gnu binutils-aarch64-linux-gnu
-          sudo apt-get install -y valgrind
-          sudo apt-get install -y graphviz
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-          components: rustfmt
-
-      - name: Install cargo-modules
-        uses: taiki-e/cache-cargo-install-action@v2
-        with:
-          tool: cargo-modules
+      - uses: ./.github/actions/nix
 
       # The codegen reads s2n-bignum's assembly; nothing else does.
       - name: fetch s2n-bignum
         run: git submodule update --init --depth 1 thirdparty/s2n-bignum
 
       - name: check codegen
-        working-directory: admin/parse-asm
         run: |
-          ./all.sh
+          nix develop --command sh -c 'cd admin/parse-asm && ./all.sh'
           git diff --exit-code
 
       - name: check module structure
-        run: ./admin/structure
+        run: nix develop --command ./admin/structure
 
-  lints:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-          - os: ubuntu-24.04-arm
-
-    runs-on: ${{ matrix.os }}
+  clippy-aarch64:
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@master
+      - uses: ./.github/actions/nix
+
+      - name: clippy
+        run: nix develop --command cargo clippy --workspace --all-targets --locked -- --deny warnings
+
+  # Checks the unstable style options, which only a nightly rustfmt reads.
+  rustfmt-unstable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
         with:
-          toolchain: stable
-          components: rustfmt, clippy
+          persist-credentials: false
 
       - name: Install nightly toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-02-14
           components: rustfmt
-
-      - name: clippy
-        run: cargo +stable clippy --all-targets -- --deny warnings
-
-      - name: rustfmt
-        run: cargo +stable fmt --check
 
       - name: rustfmt (nightly)
         run: cargo +nightly-2025-02-14 fmt --check -- --config-path=.rustfmt.unstable.toml

@@ -33,8 +33,7 @@ settled; don't ask them again. The chosen option is marked ✅.
 - Nightly baselines: aws-lc-rs and ring, so regressions show; other sources
   are measured once by the audit ✅ / every source nightly / aws-lc-rs only.
 - Verification breaks ties only: a verified source wins when it is within
-  measurement noise, about 2%, of the fastest ✅ / within 5% / never. This
-  refines `AGENTS.md`'s fastest-source rule.
+  measurement noise, about 2%, of the fastest ✅ / within 5% / never.
 - Scope: every exported primitive, plus rind-rustls full and resumed
   handshakes and bulk transfer against aws-lc-rs's and ring's providers ✅ /
   primitives only / also every adapter.
@@ -47,5 +46,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
-- [AGENTS.md states the 2% tie rule](/quest/m2/speed/agents-rule.md) - the fastest-source rule says a verified source wins only within about 2%
 - [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - aws-lc's Montgomery routines beyond 1024 and 2048 bits, on x86_64 and aarch64

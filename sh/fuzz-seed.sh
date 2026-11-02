@@ -23,7 +23,7 @@ seed() {
 }
 
 # pkcs8_v2 SELECTOR FILE FIELD: the PKCS#8 v1 FILE as version 2, ending in
-# the public key FIELD, a file of its DER.
+# the public key FIELD, a file of its DER, or none if FIELD is empty.
 pkcs8_v2() {
     local selector=$1 file=$2 field=$3 header len
     # A long-form length of one or two bytes follows the tag.
@@ -62,10 +62,13 @@ seed 22 "$ring/ed25519_test_public_key.der"
 { printf '\x17'; head -c 1184 /dev/zero; } >"$corpus/23-zero"
 
 # Version 2 documents, which the ECDSA and RSA loaders refuse: one with its
-# public key, and one with an empty one.
+# public key, one with an empty one, and two without, which aws-lc-rs takes.
 field=$(mktemp)
 trap 'rm -f "$field"' EXIT
 { printf '\x81\x42\x00'; tail -c 65 "$ecdsa/secp256r1.der"; } >"$field"
 pkcs8_v2 0 "$ecdsa/secp256r1.pkcs8.der" "$field"
 printf '\x81\x01\x00' >"$field"
 pkcs8_v2 12 "$rsa/rsa2048.pkcs8.der" "$field"
+: >"$field"
+pkcs8_v2 2 "$ecdsa/secp521r1.pkcs8.der" "$field"
+pkcs8_v2 12 "$rsa/rsa3072.pkcs8.der" "$field"

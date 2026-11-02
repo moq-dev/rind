@@ -349,7 +349,10 @@ fn detect() -> u32 {
     }
 
     // "GenuineIntel", spread over ebx, edx, and ecx.
-    let id = __cpuid(0);
+    // `__cpuid` is safe from Rust 1.94 but `unsafe` on the 1.90 MSRV.
+    #[allow(unused_unsafe)]
+    // SAFETY: every x86_64 CPU has `cpuid`.
+    let id = unsafe { __cpuid(0) };
     let intel = (id.ebx, id.edx, id.ecx) == (0x756e_6547, 0x4965_6e69, 0x6c65_746e);
 
     // Valgrind runs ADX instructions but hides them from `cpuid`
@@ -452,6 +455,19 @@ mod tests {
         }
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_SSE41") {
             assert_eq!(HaveSse41::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_SHA") {
+            assert_eq!(HaveSha256::check().is_some(), expected == "1");
+            assert_eq!(HaveSha1::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_VAES_AES_GCM") {
+            assert_eq!(HaveVaesAvx2ForAesGcm::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_AES_GCM") {
+            assert_eq!(HaveAvx512ForAesGcm::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_ML_KEM") {
+            assert_eq!(HaveAvx512ForMlKem::check().is_some(), expected == "1");
         }
     }
 }

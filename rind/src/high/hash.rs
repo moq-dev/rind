@@ -3,7 +3,7 @@
 
 use core::ops::{Deref, DerefMut};
 
-use super::digest::{Algorithm, Digest, SHA1, SHA256, SHA384, SHA512, SHA512_256};
+use super::digest::{Algorithm, Digest, SHA1, SHA256, SHA384, SHA512};
 use crate::mid::{sha1, sha2};
 
 /// One block of hash function input.
@@ -78,6 +78,10 @@ pub(crate) trait SignatureHash: Hash {}
 /// prefix can be computed, without reprocessing the prefix.
 /// This property is essential to efficiently compute HMAC
 /// when used for PBKDF2.
+///
+/// Implemented on newtypes here rather than on the `mid` contexts:
+/// `admin/structure` names a trait impl's methods by the type's path, so
+/// an impl on a `mid` type returning [`Digest`] reads as `mid` using `high`.
 pub(crate) trait HashContext: Clone {
     /// Hash the given `bytes`.
     fn update(&mut self, bytes: &[u8]);
@@ -102,11 +106,11 @@ pub(crate) trait HashContext: Clone {
 pub(crate) struct LegacySha1;
 
 impl Hash for LegacySha1 {
-    type Context = sha1::Sha1Context;
+    type Context = Sha1Context;
     const ALGORITHM: &'static Algorithm = &SHA1;
 
     fn new() -> Self::Context {
-        sha1::Sha1Context::new()
+        Sha1Context(sha1::Sha1Context::new())
     }
 
     fn zeroed_block() -> HashBlock {
@@ -114,17 +118,20 @@ impl Hash for LegacySha1 {
     }
 }
 
-impl HashContext for sha1::Sha1Context {
+#[derive(Clone)]
+pub(crate) struct Sha1Context(sha1::Sha1Context);
+
+impl HashContext for Sha1Context {
     fn update(&mut self, bytes: &[u8]) {
-        Self::update(self, bytes)
+        self.0.update(bytes)
     }
 
     fn finish(self) -> Digest {
-        Digest::new(LegacySha1::ALGORITHM, &Self::finish(self))
+        Digest::new(LegacySha1::ALGORITHM, &self.0.finish())
     }
 
     fn finish_block(&self, tail: &[u8]) -> Digest {
-        Digest::new(LegacySha1::ALGORITHM, &Self::finish_block(self, tail))
+        Digest::new(LegacySha1::ALGORITHM, &self.0.finish_block(tail))
     }
 }
 
@@ -135,11 +142,11 @@ impl HashContext for sha1::Sha1Context {
 pub(crate) struct Sha256;
 
 impl Hash for Sha256 {
-    type Context = sha2::Sha256Context;
+    type Context = Sha256Context;
     const ALGORITHM: &'static Algorithm = &SHA256;
 
     fn new() -> Self::Context {
-        sha2::Sha256Context::new()
+        Sha256Context(sha2::Sha256Context::new())
     }
 
     fn zeroed_block() -> HashBlock {
@@ -149,17 +156,20 @@ impl Hash for Sha256 {
 
 impl SignatureHash for Sha256 {}
 
-impl HashContext for sha2::Sha256Context {
+#[derive(Clone)]
+pub(crate) struct Sha256Context(sha2::Sha256Context);
+
+impl HashContext for Sha256Context {
     fn update(&mut self, bytes: &[u8]) {
-        Self::update(self, bytes)
+        self.0.update(bytes)
     }
 
     fn finish(self) -> Digest {
-        Digest::new(Sha256::ALGORITHM, &Self::finish(self))
+        Digest::new(Sha256::ALGORITHM, &self.0.finish())
     }
 
     fn finish_block(&self, tail: &[u8]) -> Digest {
-        Digest::new(Sha256::ALGORITHM, &Self::finish_block(self, tail))
+        Digest::new(Sha256::ALGORITHM, &self.0.finish_block(tail))
     }
 }
 
@@ -170,11 +180,11 @@ impl HashContext for sha2::Sha256Context {
 pub(crate) struct Sha384;
 
 impl Hash for Sha384 {
-    type Context = sha2::Sha384Context;
+    type Context = Sha384Context;
     const ALGORITHM: &'static Algorithm = &SHA384;
 
     fn new() -> Self::Context {
-        sha2::Sha384Context::new()
+        Sha384Context(sha2::Sha384Context::new())
     }
 
     fn zeroed_block() -> HashBlock {
@@ -184,17 +194,20 @@ impl Hash for Sha384 {
 
 impl SignatureHash for Sha384 {}
 
-impl HashContext for sha2::Sha384Context {
+#[derive(Clone)]
+pub(crate) struct Sha384Context(sha2::Sha384Context);
+
+impl HashContext for Sha384Context {
     fn update(&mut self, bytes: &[u8]) {
-        Self::update(self, bytes)
+        self.0.update(bytes)
     }
 
     fn finish(self) -> Digest {
-        Digest::new(Sha384::ALGORITHM, &Self::finish(self))
+        Digest::new(Sha384::ALGORITHM, &self.0.finish())
     }
 
     fn finish_block(&self, tail: &[u8]) -> Digest {
-        Digest::new(Sha384::ALGORITHM, &Self::finish_block(self, tail))
+        Digest::new(Sha384::ALGORITHM, &self.0.finish_block(tail))
     }
 }
 
@@ -205,11 +218,11 @@ impl HashContext for sha2::Sha384Context {
 pub(crate) struct Sha512;
 
 impl Hash for Sha512 {
-    type Context = sha2::Sha512Context;
+    type Context = Sha512Context;
     const ALGORITHM: &'static Algorithm = &SHA512;
 
     fn new() -> Self::Context {
-        sha2::Sha512Context::new()
+        Sha512Context(sha2::Sha512Context::new())
     }
 
     fn zeroed_block() -> HashBlock {
@@ -219,31 +232,19 @@ impl Hash for Sha512 {
 
 impl SignatureHash for Sha512 {}
 
-impl HashContext for sha2::Sha512Context {
+#[derive(Clone)]
+pub(crate) struct Sha512Context(sha2::Sha512Context);
+
+impl HashContext for Sha512Context {
     fn update(&mut self, bytes: &[u8]) {
-        Self::update(self, bytes)
+        self.0.update(bytes)
     }
 
     fn finish(self) -> Digest {
-        Digest::new(Sha512::ALGORITHM, &Self::finish(self))
+        Digest::new(Sha512::ALGORITHM, &self.0.finish())
     }
 
     fn finish_block(&self, tail: &[u8]) -> Digest {
-        Digest::new(Sha512::ALGORITHM, &Self::finish_block(self, tail))
-    }
-}
-
-// SHA-512/256 has no `Hash` impl: no HMAC or signature uses it.
-impl HashContext for sha2::Sha512_256Context {
-    fn update(&mut self, bytes: &[u8]) {
-        Self::update(self, bytes)
-    }
-
-    fn finish(self) -> Digest {
-        Digest::new(&SHA512_256, &Self::finish(self))
-    }
-
-    fn finish_block(&self, tail: &[u8]) -> Digest {
-        Digest::new(&SHA512_256, &Self::finish_block(self, tail))
+        Digest::new(Sha512::ALGORITHM, &self.0.finish_block(tail))
     }
 }
