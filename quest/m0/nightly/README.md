@@ -1,4 +1,4 @@
-# Nightly passes on main
+# [XS] Nightly passes on main
 
 ## Goal
 
@@ -13,7 +13,3 @@ Decided with the maintainer on 2026-11-01, from the merge-gate and CI audit. Set
 - Milestone: m0 ✅ / m1 / m2.
 - Cranelift: delete the job ✅ / keep it red until Cranelift supports
   `asm!` sym operands.
-
-## Required
-
-- [MSRV builds again](/quest/m0/nightly/msrv.md) - rind builds on its declared rust-version 1.89
