@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-rust-version = "1.89"
+rust-version = "1.90"
 
 [profile.dev.build-override]
 # Left unset, cargo gives a build dependency debuginfo only when the same
