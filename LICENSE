@@ -102,7 +102,7 @@ aws-lc <https://github.com/aws/aws-lc>, from OpenSSL and BoringSSL
     routines and tables of rsaz-avx2 (RSA); the
     aes_hw_ctr32_encrypt_blocks routine of aesni-x86_64 (AES-CTR), and the
     vpaes_* routines and table of vpaes-x86_64 (AES); for aarch64,
-    the vpaes_*
+    the bn_mul_mont routine of armv8-mont (RSA), the vpaes_*
     routines and table of vpaes-armv8 (AES), the gcm_*_neon routines and
     table of ghash-neon-armv8 (GHASH), and the *_block_data_order_nohw
     routines and table of sha1-armv8 (SHA1) and sha256-armv8 (SHA256). All

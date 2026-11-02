@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/moq-dev/rind/compare/rind-v0.1.4...rind-v0.1.5) - 2026-11-01
+
+### Other
+
+- *(aarch64)* aws-lc's Montgomery multiplication for RSA at other sizes ([#179](https://github.com/moq-dev/rind/pull/179))
+
 ## [0.1.4](https://github.com/moq-dev/rind/compare/rind-v0.1.3...rind-v0.1.4) - 2026-11-01
 
 ### Fixed

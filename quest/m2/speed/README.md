@@ -47,5 +47,6 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 ## Required
 
+- [AGENTS.md states the 2% tie rule](/quest/m2/speed/agents-rule.md) - the fastest-source rule says a verified source wins only within about 2%
 - [Audit every algorithm's speed](/quest/m2/speed/audit.md) - measure every algorithm on every path against every source, and recommend a quest per gap
 - [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - aws-lc's Montgomery routines beyond 1024 and 2048 bits, on x86_64 and aarch64
