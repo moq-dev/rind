@@ -170,17 +170,36 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
 }
 
 /// Verification at the other sizes, whose moduli take a different Montgomery
-/// multiplication from RSA-2048's on some CPUs.
+/// multiplication from RSA-2048's on some CPUs: 2056 bits for an odd number
+/// of words.
 fn rsa_pkcs1_sha256_verify_sizes(c: &mut Criterion) {
     use rind::signature::{RsaKeyPair, sign};
 
-    let keys: [(u32, &[u8]); 2] = [
-        (3072, include_bytes!("../../rind/src/high/rsa/rsa3072.der")),
-        (4096, include_bytes!("../../rind/src/high/rsa/rsa4096.der")),
+    let keys: [(u32, &[u8]); 5] = [
+        (
+            2056,
+            include_bytes!("../../rind/src/high/rsa/rsa2056.pkcs8.der"),
+        ),
+        (
+            3072,
+            include_bytes!("../../rind/src/high/rsa/rsa3072.pkcs8.der"),
+        ),
+        (
+            4096,
+            include_bytes!("../../rind/src/high/rsa/rsa4096.pkcs8.der"),
+        ),
+        (
+            6144,
+            include_bytes!("../../rind/src/high/rsa/rsa6144.pkcs8.der"),
+        ),
+        (
+            8192,
+            include_bytes!("../../rind/src/high/rsa/rsa8192.pkcs8.der"),
+        ),
     ];
     let message = b"hello";
     for (bits, private_key) in keys {
-        let private_key = RsaKeyPair::from_pkcs1(private_key).unwrap();
+        let private_key = RsaKeyPair::from_pkcs8(private_key).unwrap();
         let public_key = private_key.public_key(&sign::RSA_PKCS1_SHA256);
         let public_key = public_key.as_ref();
         let signature = private_key.sign(&sign::RSA_PKCS1_SHA256, message).unwrap();

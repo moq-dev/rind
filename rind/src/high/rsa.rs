@@ -716,6 +716,15 @@ mod tests {
         check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
     }
 
+    /// Primes of 20 words, a multiple of four but not of eight.
+    #[test]
+    fn pairwise_rsa2560_sign_verify() {
+        let private_key =
+            SigningKey::from_pkcs8_der(include_bytes!("rsa/rsa2560.pkcs8.der")).unwrap();
+
+        check_all_algs(&mut [0u8; 320], &private_key, &private_key.public_key());
+    }
+
     #[test]
     fn pairwise_rsa3072_sign_verify() {
         let private_key = SigningKey::from_pkcs1_der(include_bytes!("rsa/rsa3072.der")).unwrap();
@@ -771,6 +780,7 @@ mod tests {
         check_pkcs1(include_bytes!("rsa/rsa8192.der"));
 
         check_pkcs8(include_bytes!("rsa/rsa2048.pkcs8.der"));
+        check_pkcs8(include_bytes!("rsa/rsa2560.pkcs8.der"));
         check_pkcs8(include_bytes!("rsa/rsa3072.pkcs8.der"));
         check_pkcs8(include_bytes!("rsa/rsa4096.pkcs8.der"));
         check_pkcs8(include_bytes!("rsa/rsa6144.pkcs8.der"));
