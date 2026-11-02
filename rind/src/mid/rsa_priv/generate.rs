@@ -22,24 +22,38 @@ pub(super) fn generate_key(
     checks_random: &mut dyn RandomSource,
 ) -> Result<super::RsaPrivateKey, Error> {
     let len = size.prime_bits() / 64;
+
+    // 2 ^ (nlen / 2 - 100), the closest p and q may be.
+    let mut min_distance = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+    let bit = size.prime_bits() - 100;
+    min_distance[bit / 64] = 1 << (bit % 64);
+    let min_distance: super::RsaPosIntModP = PosInt::from_words(&min_distance[..len])?;
+
     loop {
         let p = random_prime(size, candidate_random, checks_random)?;
-        let q = random_prime(size, candidate_random, checks_random)?;
+        let (p, q) = loop {
+            let q = random_prime(size, candidate_random, checks_random)?;
 
-        if public(p.equals(&q)) {
-            // for the set of `RsaSizes` supported here, choosing p == q
-            // means `random` is hosed.
-            return Err(Error::RngFailed);
-        }
+            if public(p.equals(&q)) {
+                // for the set of `RsaSizes` supported here, choosing p == q
+                // means `random` is hosed.
+                return Err(Error::RngFailed);
+            }
 
-        // arrange that q < p, without revealing which was drawn first.
-        let swap = u64::from(p.less_than(&q));
-        let mut words = [[0u64; MAX_PRIVATE_MODULUS_WORDS]; 2];
-        let [hi, lo] = &mut words;
-        low::bignum_mux(swap, &mut hi[..len], q.as_words(), p.as_words());
-        low::bignum_mux(swap, &mut lo[..len], p.as_words(), q.as_words());
-        let p: super::RsaPosIntModP = PosInt::from_words(&hi[..len])?;
-        let q: super::RsaPosIntModP = PosInt::from_words(&lo[..len])?;
+            // arrange that q < p, without revealing which was drawn first.
+            let swap = u64::from(p.less_than(&q));
+            let mut words = [[0u64; MAX_PRIVATE_MODULUS_WORDS]; 2];
+            let [hi, lo] = &mut words;
+            low::bignum_mux(swap, &mut hi[..len], q.as_words(), p.as_words());
+            low::bignum_mux(swap, &mut lo[..len], p.as_words(), q.as_words());
+            let hi: super::RsaPosIntModP = PosInt::from_words(&hi[..len])?;
+            let lo: super::RsaPosIntModP = PosInt::from_words(&lo[..len])?;
+
+            // A.1.3 step 5.4: draw q again if |p - q| <= 2 ^ (nlen / 2 - 100).
+            if public(min_distance.less_than(&hi.sub(&lo))) {
+                break (hi, lo);
+            }
+        };
 
         let Some(k) = Exponents::derive(p.as_words(), q.as_words()) else {
             // e divides p - 1 or q - 1, or d is too small: throw away both
@@ -268,9 +282,6 @@ fn public<T>(v: T) -> T {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use core::time::Duration;
-    use std::time::Instant;
-
     use super::*;
     use crate::high::hash::Sha256;
     use crate::high::hmac_drbg::HmacDrbg;
@@ -296,60 +307,6 @@ mod tests {
                     .map(|i| u8::from_str_radix(&line[i..i + 2], 16).unwrap())
                     .collect()
             })
-    }
-
-    /// `testdata/rsa.bench.2048.txt` is a transcript of candidate primes, with one
-    /// candidate per line.  see:
-    /// <https://github.com/C2SP/CCTV/tree/main/keygen>
-    ///
-    /// The results from this should be comparable with the results of:
-    ///
-    /// ```
-    /// $ go test crypto/rsa -bench BenchmarkGenerateKey/2048
-    /// goos: linux
-    /// goarch: amd64
-    /// pkg: crypto/rsa
-    /// cpu: AMD Ryzen 9 7940HS w/ Radeon 780M Graphics
-    /// BenchmarkGenerateKey/2048-16    10    111795391 ns/op
-    ///
-    /// $ cargo test --release test_rsa_bench -- --nocapture
-    /// running 1 test
-    /// Results: min=31038596ns, mean=31920351ns, max=35448808ns
-    /// test mid::rsa_priv::generate::tests::test_rsa_bench ... ok
-    ///
-    /// test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 102 filtered out; finished in 1.02s
-    /// ```
-    #[test]
-    fn test_rsa_bench() {
-        let bytes = read_hex_from_file(include_str!("../../testdata/rsa.bench.2048.txt"));
-        let mut results = vec![];
-
-        // If running under Valgrind, which is slow, do fewer iterations.
-        #[cfg(feature = "__ctgrind")]
-        const NUM_ITERATIONS: usize = 1;
-
-        #[cfg(not(feature = "__ctgrind"))]
-        const NUM_ITERATIONS: usize = 32;
-
-        for _ in 0..NUM_ITERATIONS {
-            let mut candidate_source = SliceRandomSource(&bytes);
-            let mut witness_source = SystemRandom;
-
-            let start = Instant::now();
-            generate_key(
-                RsaKeySize::Rsa2048,
-                &mut candidate_source,
-                &mut witness_source,
-            )
-            .unwrap();
-            results.push(start.elapsed());
-        }
-        println!(
-            "Results: min={}ns, mean={}ns, max={}ns",
-            results.iter().min().unwrap().as_nanos(),
-            results.iter().sum::<Duration>().as_nanos() / results.len() as u128,
-            results.iter().max().unwrap().as_nanos(),
-        )
     }
 
     #[test]
@@ -400,6 +357,50 @@ mod tests {
             .err(),
             Some(Error::RngFailed),
         );
+    }
+
+    /// `x + step`, for a step that does not carry out of the last two bytes.
+    fn offset(x: &[u8], step: u16) -> Vec<u8> {
+        let (head, tail) = x.split_at(x.len() - 2);
+        let tail = u16::from_be_bytes(tail.try_into().unwrap()) + step;
+        [head, &tail.to_be_bytes()].concat()
+    }
+
+    #[test]
+    fn test_p_q_close() {
+        let mut p = read_hex_from_file(include_str!(
+            "../../testdata/rsa.phi-not-coprime-e.2048.txt"
+        ));
+        p.truncate(128);
+
+        // The next prime after p, far within 2 ^ 924 of it.
+        let close = offset(&p, 814);
+        assert_eq!(
+            is_prime(
+                &PosInt::from_bytes(&close).unwrap(),
+                RsaKeySize::Rsa2048,
+                &mut HmacDrbg::<Sha256>::new(b"", b"", b"")
+            ),
+            Ok(true)
+        );
+
+        // A prime below p by about 2 ^ 1008, which completes a key with p.
+        let mut far = p.clone();
+        far[1] ^= 1;
+        let far = offset(&far, 346);
+
+        let candidates = [&p[..], &close, &far].concat();
+        let key = generate_key(
+            RsaKeySize::Rsa2048,
+            &mut SliceRandomSource(&candidates),
+            &mut SystemRandom,
+        )
+        .unwrap();
+
+        // p is kept and only q is drawn again.
+        let p = PosInt::from_bytes(&p).unwrap();
+        let far = PosInt::from_bytes(&far).unwrap();
+        assert!(public(key.p.equals(&p) & key.q.equals(&far)));
     }
 
     #[test]

@@ -14,7 +14,7 @@ publish = false
 
 [dependencies]
 instant-acme = { git = "https://github.com/djc/instant-acme", rev = "1cbc35cca446e6d6813b3c13ac843d50948facd0", default-features = false }
-rind = { version = "0.1.5", path = "../rind" }
+rind = { version = "0.1.6", path = "../rind" }
 rustls-pki-types = "1"
 
 [dev-dependencies]

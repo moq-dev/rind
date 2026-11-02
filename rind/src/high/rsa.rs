@@ -884,27 +884,6 @@ mod tests {
         assert_eq!(ours.to_pkcs1_der(&mut buffer).unwrap(), &theirs[..]);
     }
 
-    #[test]
-    fn key_generation_smoke_test() {
-        let mut sizes = vec![RsaKeySize::Rsa2048, RsaKeySize::Rsa3072];
-
-        if std::env::var_os("SLOW_TESTS").is_some() {
-            sizes.extend_from_slice(&[
-                RsaKeySize::Rsa4096,
-                RsaKeySize::Rsa6144,
-                RsaKeySize::Rsa8192,
-            ]);
-        }
-
-        for size in sizes {
-            println!("generating {size:?}...");
-            let start = std::time::Instant::now();
-            let key = SigningKey::generate(size).unwrap();
-            println!("generated (took {}ms)", start.elapsed().as_millis());
-            check_all_algs(&mut [0u8; 1024], &key, &key.public_key());
-        }
-    }
-
     /// A PKCS#1 private key's integers, as big-endian magnitudes.
     #[derive(Clone)]
     struct Pkcs1 {

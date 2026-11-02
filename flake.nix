@@ -41,8 +41,8 @@
 
           # Pinned build toolchain so `nix develop` and CI compile against the
           # same rustc. The workspace declares a lower floor (rust-version),
-          # which the MSRV job in lints.yml checks. No rust-toolchain.toml: it
-          # would override the nightly, cranelift, and MSRV jobs' toolchains.
+          # which `devShells.msrv` builds with. No rust-toolchain.toml: it
+          # would override the nightly jobs' toolchains.
           rust-stable = pkgs.rust-bin.stable."1.98.1";
           rust-toolchain = rust-stable.minimal.override {
             # `minimal` rather than `default`, which adds offline HTML docs to
@@ -52,6 +52,11 @@
               "clippy"
               "rust-src"
               "rust-analyzer"
+            ];
+            # The gate lints rind's other backends without their C toolchains.
+            targets = [
+              "aarch64-unknown-linux-gnu"
+              "armv7-unknown-linux-gnueabihf"
             ];
           };
 
@@ -91,6 +96,8 @@
                   nixfmt
                   # admin/ scripts.
                   python3
+                  cargo-modules
+                  graphviz
                   quest-cli
                   # rind-instant-acme's end-to-end test issues a certificate from it.
                   pebble
@@ -105,6 +112,18 @@
               # What sh/dispatch.sh checks before a scoped `just check` or `just
               # fix`. IN_NIX_SHELL would also pass inside another project's shell.
               env.IN_RIND_DEV_SHELL = "1";
+            };
+
+            # The nightly MSRV job builds in it. The workspace's rust-version
+            # names a minor release, which resolves to its latest patch, as
+            # rustup does.
+            msrv = pkgs.mkShell {
+              packages = [
+                (pkgs.rust-bin.fromRustupToolchain {
+                  channel = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.rust-version;
+                  profile = "minimal";
+                })
+              ];
             };
           }
           # `just armv7` enters it to lint and test the armv7 build under qemu.

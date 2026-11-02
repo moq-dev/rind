@@ -1,6 +1,6 @@
 [package]
 name = "rind-jsonwebtoken"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 repository = "https://github.com/moq-dev/rind"
 license = "Apache-2.0 OR ISC OR MIT-0"
@@ -10,7 +10,7 @@ rust-version.workspace = true
 readme = "README.md"
 
 [dependencies]
-rind = { version = "0.1.5", path = "../rind" }
+rind = { version = "0.1.6", path = "../rind" }
 jsonwebtoken = { version = "11.1", default-features = false }
 pkcs1 = { version = "0.7.5", default-features = false, features = ["alloc"] }
 

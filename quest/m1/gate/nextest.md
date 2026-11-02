@@ -10,5 +10,4 @@ i7-8700, more on a host with more cores.
 
 - Add `cargo-nextest` to the dev shell and swap it in in `sh/dispatch.sh`.
 - With `CI_STRICT`, the pebble test must still fail when pebble is missing.
-- Measure the gate before and after, starting after
-  [the keygen test cuts](/quest/m1/gate/rsa-keygen-tests.md).
+- Measure the gate before and after.

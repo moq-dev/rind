@@ -30,16 +30,42 @@ pub(super) fn generate_key(
     let len = size.prime_bits() / 64;
     let sieve = Sieve::new();
 
+    // 2 ^ (nlen / 2 - 100), the closest p and q may be.
+    let mut min_distance = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+    let bit = size.prime_bits() - 100;
+    min_distance[bit / 64] = 1 << (bit % 64);
+
     loop {
         let mut p = random_prime(size, &sieve, candidate_random, checks_random)?;
-        let mut q = random_prime(size, &sieve, candidate_random, checks_random)?;
-        let (p, q) = (&mut p.0[..len], &mut q.0[..len]);
+        let mut q = loop {
+            let q = random_prime(size, &sieve, candidate_random, checks_random)?;
+            let (p, q_words) = (&p.0[..len], &q.0[..len]);
 
-        if public(bignum64::eq_mask(len as u32, p, q)) != 0 {
-            // for the set of `RsaSizes` supported here, choosing p == q
-            // means `random` is hosed.
-            return Err(Error::RngFailed);
-        }
+            if public(bignum64::eq_mask(len as u32, p, q_words)) != 0 {
+                // for the set of `RsaSizes` supported here, choosing p == q
+                // means `random` is hosed.
+                return Err(Error::RngFailed);
+            }
+
+            // A.1.3 step 5.4: draw q again if |p - q| <= 2 ^ (nlen / 2 - 100).
+            let swap = bignum64::lt_mask(len as u32, p, q_words);
+            let mut distance = [[0u64; MAX_PRIVATE_MODULUS_WORDS]; 2];
+            let [p_q, q_p] = &mut distance;
+            bignum64::sub(len as u32, p, q_words, &mut p_q[..len]);
+            bignum64::sub(len as u32, q_words, p, &mut q_p[..len]);
+            for (p_q, q_p) in p_q.iter_mut().zip(q_p.iter()) {
+                *p_q ^= (*p_q ^ *q_p) & swap;
+            }
+            if public(bignum64::lt_mask(
+                len as u32,
+                &min_distance[..len],
+                &p_q[..len],
+            )) != 0
+            {
+                break q;
+            }
+        };
+        let (p, q) = (&mut p.0[..len], &mut q.0[..len]);
 
         // arrange that q < p, without revealing which was drawn first.
         let swap = bignum64::lt_mask(len as u32, p, q);
@@ -566,6 +592,49 @@ mod tests {
             .err(),
             Some(Error::RngFailed),
         );
+    }
+
+    /// `x + step`, for a step that does not carry out of the last two bytes.
+    fn offset(x: &[u8], step: u16) -> Vec<u8> {
+        let (head, tail) = x.split_at(x.len() - 2);
+        let tail = u16::from_be_bytes(tail.try_into().unwrap()) + step;
+        [head, &tail.to_be_bytes()].concat()
+    }
+
+    #[test]
+    fn p_q_close() {
+        let mut p = read_hex(include_str!(
+            "../../../testdata/rsa.phi-not-coprime-e.2048.txt"
+        ));
+        p.truncate(128);
+
+        // The next prime after p, far within 2 ^ 924 of it.
+        let close = offset(&p, 814);
+        check_primes(
+            &close.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            true,
+        );
+
+        // A prime below p by about 2 ^ 1008, which completes a key with p.
+        let mut far = p.clone();
+        far[1] ^= 1;
+        let far = offset(&far, 346);
+
+        let candidates = [&p[..], &close, &far].concat();
+        let key = generate_key(
+            RsaKeySize::Rsa2048,
+            &mut SliceRandomSource(&candidates),
+            &mut SystemRandom,
+        )
+        .unwrap();
+
+        // p is kept and only q is drawn again.
+        let p = PosInt::<MAX_PRIVATE_MODULUS_WORDS>::from_bytes(&p).unwrap();
+        let far = PosInt::<MAX_PRIVATE_MODULUS_WORDS>::from_bytes(&far).unwrap();
+        let w = p.as_words().len() as u32;
+        let kept = bignum64::eq_mask(w, key.p.as_words(), p.as_words())
+            & bignum64::eq_mask(w, key.q.as_words(), far.as_words());
+        assert_eq!(public(kept), u64::MAX);
     }
 
     #[test]
