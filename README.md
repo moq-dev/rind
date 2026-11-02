@@ -145,6 +145,50 @@ or a [quest][quests] covers it. The table describes
 
 The tests use [Wycheproof]'s vectors.
 
+### Speed
+
+Each cell is rind's time over the fastest of aws-lc-rs and ring on that path,
+in the benchmark where rind trails most, which a gap names in parentheses:
+1.00 is par, and anything above about 1.02 is a gap. The nightly `bench`
+workflow times every cell and keeps the live numbers in its summary; this
+table is from [run 41363822221], and each change that moves a cell refreshes
+it.
+
+x86_64 and aarch64 run every feature the runner has, on an AMD EPYC 7763
+(Zen 3) and a Neoverse-N2. The other x86_64 columns deny features as
+`bench.yml` describes, each adding to the one before from no AVX2 on: ADX
+alone (Haswell's path); AVX2, BMI2, SHA-NI, and AVX-512; AVX; AES-NI,
+PCLMULQDQ, and SSE4.1; and SSSE3, leaving SSE2. aarch64's second column
+denies the crypto extension, and armv7 runs on the Neoverse-N2 in 32-bit
+mode, with the crypto extension. ring cannot be denied a feature, so the
+denied columns compare with aws-lc-rs alone. An empty cell runs the same
+code as the cell to its left, so it is not timed again.
+RSA without ADX is pending [run 41378010740], the first to deny aws-lc its
+AVX-512 RSA on that row, as Haswell lacks it.
+
+| Algorithm | x86_64 | no ADX | no AVX2 | no AVX | no AES-NI | SSE2 | aarch64 | aarch64 no crypto | armv7 |
+|---|---|---|---|---|---|---|---|---|---|
+| AES-128-GCM, AES-256-GCM | 1.34 (AES-256, 32B) |  | 1.05 (AES-256, 16KB) | 0.90 | 1.03 (AES-128, 32B) | 0.81 | 1.02 | 1.00 | 0.99 |
+| AES block, AES-CTR | 1.00 |  | 1.00 | 1.00 | 1.01 | 0.81 | 1.17 (AES-128 mask) | 1.00 | 0.99 |
+| ChaCha20 (header protection) | 0.96 |  | 0.93 | 0.96 | 0.93 | 0.93 | 1.03 (ChaCha20 mask) | 0.96 | 0.87 |
+| ChaCha20-Poly1305, XChaCha20-Poly1305 | 1.02 |  | 1.00 |  | 1.14 (16KB) | 1.08 (16KB) | 1.01 | 1.00 | 1.06 (32B) |
+| SHA-1 | 1.00 |  | 1.00 | 1.00 |  | 1.00 | 1.01 | 1.00 | 1.01 |
+| SHA-256 | 1.20 (1B updates) |  | 1.26 (1B updates) | 1.34 (1B updates) |  | 1.24 (1B updates) | 1.30 (16KB) | 1.14 (1B updates) | 1.04 (64B) |
+| SHA-384, SHA-512, SHA-512/256 | 1.02 |  | 1.00 | 1.00 |  | 1.00 | 1.00 | 1.00 | 1.12 (SHA-512-256, 64B) |
+| HMAC | 1.09 (SHA-256, 64B) |  | 1.01 |  |  |  | 1.30 (SHA-256, 16KB) | 1.00 | 1.28 (SHA-384, 32B) |
+| HKDF | 1.34 (SHA-256 AES-GCM key) |  | 0.96 |  |  |  | 1.48 (SHA-256 AES-GCM key) | 0.99 | 1.59 (SHA-256 extract) |
+| PBKDF2 | 0.94 |  | 0.91 |  |  |  | 0.95 | 0.93 | 0.99 |
+| X25519 | 1.02 | 0.99 | 1.00 |  |  |  | 0.81 | 0.80 | 0.79 |
+| Ed25519 | 1.03 (keygen) | 1.00 | 1.01 |  |  |  | 0.89 | 0.77 | 0.88 |
+| P-256 ECDH, ECDSA | 1.11 (keygen) | 1.20 (keygen) | 1.08 (keygen) |  |  |  | 1.02 | 0.99 | 2.61 (sign) |
+| P-384 ECDH, ECDSA | 0.90 | 0.92 | 0.92 |  |  |  | 0.78 | 0.78 | 1.09 (verify) |
+| P-521 ECDH, ECDSA | 0.94 | 0.95 | 0.95 |  |  |  | 0.65 | 0.65 | 1.06 (verify parsed) |
+| ML-KEM-768 | 1.22 (encapsulate) |  | 0.95 |  |  |  | 1.12 (encapsulate) | 0.99 | 1.05 (encapsulate) |
+| RSA signatures, key generation | 1.05 (3072 sign) | pending | 1.06 (2048 sign) |  |  |  | 1.98 (3072 sign) | 1.21 (4096 verify) | 6.44 (2048 load) |
+| rind-rustls full handshake | 0.99 |  | 1.05 (rsa-4096) |  |  |  | 1.87 (rsa-3072) | 1.09 (rsa-3072) | 2.49 (rsa-4096) |
+| rind-rustls resumed handshake | 0.84 |  | 0.87 |  |  |  | 0.94 | 0.82 | 1.18 (secp256r1) |
+| rind-rustls 1 MB transfer | 1.08 (aes256-gcm) |  | 1.04 (aes256-gcm) |  |  |  | 1.00 | 1.00 | 1.01 |
+
 ### Sources
 
 | Source | How rind uses it | License | What is verified |
@@ -189,6 +233,8 @@ different one, updates this table and [LICENSE] in the same PR.
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof
+[run 41363822221]: https://github.com/moq-dev/rind/actions/runs/41363822221
+[run 41378010740]: https://github.com/moq-dev/rind/actions/runs/41378010740
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://crates.io/crates/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
