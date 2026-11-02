@@ -90,8 +90,8 @@ impl<'a> Key<'a> {
 
     /// Returns the `privateKey` body of a v1 document, refusing v2.
     ///
-    /// For key types whose v2 public key the caller does not check: aws-lc-rs
-    /// and ring read ECDSA and RSA keys as v1 only.
+    /// For key types whose v2 public key the caller does not check: ring reads
+    /// ECDSA and RSA keys as v1 only, and aws-lc-rs refuses their public key.
     pub(crate) fn v1_private_key(&self) -> Result<&'a [u8], Error> {
         match self.public_key() {
             Some(_) => Err(KeyFormatError::UnsupportedPkcs8Version.into()),
