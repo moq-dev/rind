@@ -16,5 +16,4 @@ Decided with the maintainer on 2026-11-01, from the merge-gate and CI audit. Set
 
 ## Required
 
-- [Lints use the flake's toolchain](/quest/m0/nightly/lints-toolchain.md) - nightly lints fail on code, not on a new stable rustfmt; the gate's duplicate row and the Cranelift job go
 - [MSRV builds again](/quest/m0/nightly/msrv.md) - rind builds on its declared rust-version 1.89

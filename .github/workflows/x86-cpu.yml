@@ -48,6 +48,11 @@ jobs:
       - name: Build (release)
         run: cargo build --release --tests
 
+      # Each step runs one SDE model for each distinct set of dispatch paths
+      # that `rind/src/low/x86_64/cpu.rs` picks from cpuid, and asserts that
+      # set with `RIND_TEST_X86_*`. Its comment names the other models that
+      # select the same set.
+
       # Prescott, a Pentium 4, lacks SSSE3, so it runs every slowest path:
       # aws-lc's SSE2 AES and integer GHASH, ChaCha20, SHA-1, and SHA-256, the
       # portable ML-KEM arithmetic, s2n-bignum's `_alt` routines, and aws-lc's
@@ -56,69 +61,107 @@ jobs:
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -p4p --"
+          RIND_TEST_X86_SSSE3: 0
+          RIND_TEST_X86_SSE41: 0
           RIND_TEST_X86_AES_HARDWARE: 0
           RIND_TEST_X86_AVX: 0
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
-          RIND_TEST_X86_SSSE3: 0
+          RIND_TEST_X86_SHA: 0
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
       # Merom, the first Core 2, adds SSSE3 but not SSE4.1 or AES-NI, so it
       # runs aws-lc's vpaes and SSSE3 GHASH, ChaCha20, SHA-1, and SHA-256,
-      # beside Prescott's other paths.
+      # beside Prescott's other paths. Saltwell selects the same paths.
       - name: Check Merom
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -mrm --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 0
           RIND_TEST_X86_AES_HARDWARE: 0
           RIND_TEST_X86_AVX: 0
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
-          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SHA: 0
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
-      # Nehalem adds SSE4.2 and POPCNT, but still lacks AES-NI, so it runs
-      # Merom's paths.
+      # Nehalem adds SSE4.1, so ChaCha20-Poly1305 runs in one pass, but still
+      # lacks AES-NI, so it otherwise runs Merom's paths. Penryn selects the
+      # same paths.
       - name: Check Nehalem
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -nhm --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
           RIND_TEST_X86_AES_HARDWARE: 0
           RIND_TEST_X86_AVX: 0
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
+          RIND_TEST_X86_SHA: 0
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
       # Westmere adds AES-NI and PCLMULQDQ without AVX, so rind's AES-GCM and
-      # GHASH intrinsics run without VEX encoding.
+      # GHASH intrinsics run without VEX encoding. Silvermont selects the same
+      # paths.
       - name: Check Westmere
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -wsm --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
           RIND_TEST_X86_AES_HARDWARE: 1
           RIND_TEST_X86_AVX: 0
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
+          RIND_TEST_X86_SHA: 0
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
       # Goldmont, an Atom, runs Westmere's paths, but SHA-1 and SHA-256 on
-      # its SHA extensions.
+      # its SHA extensions. Goldmont Plus, Tremont, and Snow Ridge select the
+      # same paths.
       - name: Check Goldmont
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -glm --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
           RIND_TEST_X86_AES_HARDWARE: 1
           RIND_TEST_X86_AVX: 0
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
+          RIND_TEST_X86_SHA: 1
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
       # Sandy Bridge lacks AVX2, BMI2, and ADX, so aws-lc's AVX SHA and SSSE3
       # ChaCha20 routines, the portable ML-KEM arithmetic, s2n-bignum's
-      # `_alt` routines, and aws-lc's Montgomery multiplication run.
+      # `_alt` routines, and aws-lc's Montgomery multiplication run. Ivy
+      # Bridge selects the same paths.
       - name: Check Sandy Bridge
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -snb --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
           RIND_TEST_X86_AES_HARDWARE: 1
           RIND_TEST_X86_AVX: 1
           RIND_TEST_X86_AVX2: 0
           RIND_TEST_X86_BMI2_ADX: 0
+          RIND_TEST_X86_SHA: 0
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
       # Haswell lacks ADX, so s2n-bignum's `_alt` routines, aws-lc's
       # Montgomery multiplication, and its RSAZ exponentiation for RSA-2048
@@ -127,110 +170,102 @@ jobs:
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -hsw --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 1
           RIND_TEST_X86_AVX2: 1
           RIND_TEST_X86_BMI2_ADX: 0
+          RIND_TEST_X86_SHA: 0
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
-      - name: Check Skylake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -skl --"
-
-      - name: Check Cannon Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -cnl --"
-
-      - name: Check Ice Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -icl --"
-
+      # Skylake server has AVX-512 but neither SHA nor VAES, so it runs the
+      # AVX2 kernels with s2n-bignum's BMI2 and ADX routines, and aws-lc's AVX
+      # SHA. Broadwell, Skylake, Cascade Lake, and Cooper Lake select the
+      # same paths.
       - name: Check Skylake server
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -skx --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 1
+          RIND_TEST_X86_AVX2: 1
+          RIND_TEST_X86_BMI2_ADX: 1
+          RIND_TEST_X86_SHA: 0
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
-      - name: Check Cascade Lake
+      # Cannon Lake adds SHA, but lacks VAES and AVX-512 VBMI2, so it runs
+      # Skylake server's paths with SHA-1 and SHA-256 on the SHA extensions.
+      - name: Check Cannon Lake
         run: cargo test --release
         env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -clx --"
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -cnl --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 1
+          RIND_TEST_X86_AVX2: 1
+          RIND_TEST_X86_BMI2_ADX: 1
+          RIND_TEST_X86_SHA: 1
+          RIND_TEST_X86_VAES_AES_GCM: 0
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
-      - name: Check Cooper Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -cpx --"
-
-      - name: Check Ice Lake server
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -icx --"
-
-      - name: Check Tiger Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -tgl --"
-
+      # Alder Lake adds VAES without AVX-512, so AES-GCM runs on 256-bit
+      # vectors. Meteor, Raptor, Arrow, Lunar, and Panther Lake, and Sierra
+      # and Clearwater Forest, select the same paths.
       - name: Check Alder Lake
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -adl --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 1
+          RIND_TEST_X86_AVX2: 1
+          RIND_TEST_X86_BMI2_ADX: 1
+          RIND_TEST_X86_SHA: 1
+          RIND_TEST_X86_VAES_AES_GCM: 1
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
-      - name: Check Meteor Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -mtl --"
-
-      - name: Check Raptor Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -rpl --"
-
-      - name: Check Sapphire Rapids
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -spr --"
-
-      - name: Check Emerald Rapids
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -emr --"
-
-      - name: Check Granite Rapids
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -gnr --"
-
+      # Granite Rapids limited to 256-bit AVX10 hides AVX-512F, so it selects
+      # Alder Lake's paths, checking that rind takes no AVX-512 path there.
       - name: Check Granite Rapids (AVX10.1 / 256VL)
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -gnr256 --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 1
+          RIND_TEST_X86_AVX2: 1
+          RIND_TEST_X86_BMI2_ADX: 1
+          RIND_TEST_X86_SHA: 1
+          RIND_TEST_X86_VAES_AES_GCM: 1
+          RIND_TEST_X86_AVX512_AES_GCM: 0
+          RIND_TEST_X86_AVX512_ML_KEM: 0
 
+      # Diamond Rapids selects every path, including AVX-512 AES-GCM and
+      # ML-KEM. Ice Lake, Ice Lake server, Tiger Lake, and Sapphire, Emerald,
+      # and Granite Rapids select the same paths.
       - name: Check Diamond Rapids
         run: cargo test --release
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -dmr --"
-
-      - name: Check Sierra Forest
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -srf --"
-
-      - name: Check Arrow Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -arl --"
-
-      - name: Check Lunar Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -lnl --"
-
-      - name: Check Panther Lake
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -ptl --"
-
-      - name: Check Clearwater Forest
-        run: cargo test --release
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sde -cwf --"
+          RIND_TEST_X86_SSSE3: 1
+          RIND_TEST_X86_SSE41: 1
+          RIND_TEST_X86_AES_HARDWARE: 1
+          RIND_TEST_X86_AVX: 1
+          RIND_TEST_X86_AVX2: 1
+          RIND_TEST_X86_BMI2_ADX: 1
+          RIND_TEST_X86_SHA: 1
+          RIND_TEST_X86_VAES_AES_GCM: 1
+          RIND_TEST_X86_AVX512_AES_GCM: 1
+          RIND_TEST_X86_AVX512_ML_KEM: 1
