@@ -54,6 +54,8 @@ declare -A scope=(
     # Advisories, licenses, and sources move with any manifest or the policy.
     [deny]='(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
     [license]='^(rind/src/|admin/scan-license$)'
+    # rind's aarch64 and armv7 backends, which the host's own build skips.
+    [cross]='^(rind/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$)'
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
@@ -75,6 +77,7 @@ declare -A tools=(
     [rs]='cargo jq'
     [deny]='cargo-deny'
     [license]='find grep'
+    [cross]='cargo'
     [inplace]='python3'
     [quest]='quest'
     [gh]='actionlint yq jq'
@@ -87,7 +90,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs deny license inplace quest gh hooks shell nix) ;;
+    check) modules=(rs cross deny license inplace quest gh hooks shell nix) ;;
     fix) modules=(rs nix) ;;
 esac
 
@@ -159,6 +162,11 @@ for module in "${selected[@]}"; do
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all
             cargo clippy "${packages[@]}" --all-targets --fix --allow-dirty --allow-staged
+            ;;
+        check:cross)
+            for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
+                cargo clippy -p rind --lib --locked --target "$target" -- --deny warnings
+            done
             ;;
         check:deny) cargo deny --locked check ;;
         check:quest) quest check ;;
