@@ -18,4 +18,3 @@ Decided with the maintainer on 2026-11-01, from the merge-gate and CI audit. Set
 
 - [Lints use the flake's toolchain](/quest/m0/nightly/lints-toolchain.md) - nightly lints fail on code, not on a new stable rustfmt; the gate's duplicate row and the Cranelift job go
 - [MSRV builds again](/quest/m0/nightly/msrv.md) - rind builds on its declared rust-version 1.89
-- [The keys fuzzer allows the PKCS#8 v2 refusal](/quest/m0/nightly/fuzz-pkcs8-v2.md) - fuzz smoke stops reporting the ECDSA and RSA PKCS#8 v2 refusal as a difference

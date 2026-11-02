@@ -1223,8 +1223,8 @@ mod pkcs8_attributes {
         [header, body].concat()
     }
 
-    /// ECDSA and RSA documents are v1 only, on both sides: a v2 document's
-    /// public key would go unchecked. Ed25519 checks it.
+    /// Both sides refuse an ECDSA or RSA v2 document with its public key, which
+    /// would go unchecked. Ed25519 checks it.
     #[test]
     fn ecdsa_and_rsa_refuse_v2() {
         for key in keys() {
