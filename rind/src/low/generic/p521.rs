@@ -841,21 +841,26 @@ mod tests {
         }
 
         #[test]
-        fn scalar_multiply(k in raw(), p in point()) {
-            let (mut ours, mut theirs) = ([0; 27], [0; 27]);
-            p521_jscalarmul(&mut ours, &into_secret(k), &into_secret(p));
-            low::p521_jscalarmul(&mut theirs, &k, &p);
-            let ours = into_public(ours);
-            prop_assert!(same_point(&ours, &theirs));
-        }
-
-        #[test]
         fn point_select(table in prop::collection::vec(any::<u64>(), 288), index: u8) {
             let index = index % 20;
             let (mut ours, mut theirs) = ([0; 18], [0; 18]);
             bignum_aff_point_select_p521(&mut ours, &table, into_secret(index));
             low::bignum_aff_point_select_p521(&mut theirs, &table, index);
             prop_assert_eq!(into_public(ours), theirs);
+        }
+    }
+
+    // Each case scalar-multiplies or inverts, which is slow in a debug build.
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(32))]
+
+        #[test]
+        fn scalar_multiply(k in raw(), p in point()) {
+            let (mut ours, mut theirs) = ([0; 27], [0; 27]);
+            p521_jscalarmul(&mut ours, &into_secret(k), &into_secret(p));
+            low::p521_jscalarmul(&mut theirs, &k, &p);
+            let ours = into_public(ours);
+            prop_assert!(same_point(&ours, &theirs));
         }
 
         #[test]

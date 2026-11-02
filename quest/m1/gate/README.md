@@ -23,5 +23,4 @@ Decided with the maintainer on 2026-11-01, from the merge-gate and CI audit. Set
 
 ## Required
 
-- [Drop the redundant RSA key generation tests](/quest/m1/gate/rsa-keygen-tests.md) - the gate stops spending 6-7 CPU-seconds on keygen tests that repeat others
 - [Run the gate's tests with nextest](/quest/m1/gate/nextest.md) - test binaries run in parallel
