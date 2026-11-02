@@ -8,3 +8,4 @@ all its cryptography from rind, on every target MoQ releases, and publishes it.
 ## Required
 
 - [rind covers MoQ](/quest/m1/moq/README.md) - the primitives, CPU check, armv7 backend, and `rind-*` adapters MoQ needs, verified and released
+- [Lean merge gate](/quest/m1/gate/README.md) - `just ci` keeps only high-signal checks and compiles every backend before merge
