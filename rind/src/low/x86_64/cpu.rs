@@ -456,5 +456,18 @@ mod tests {
         if let Some(expected) = std::env::var_os("RIND_TEST_X86_SSE41") {
             assert_eq!(HaveSse41::check().is_some(), expected == "1");
         }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_SHA") {
+            assert_eq!(HaveSha256::check().is_some(), expected == "1");
+            assert_eq!(HaveSha1::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_VAES_AES_GCM") {
+            assert_eq!(HaveVaesAvx2ForAesGcm::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_AES_GCM") {
+            assert_eq!(HaveAvx512ForAesGcm::check().is_some(), expected == "1");
+        }
+        if let Some(expected) = std::env::var_os("RIND_TEST_X86_AVX512_ML_KEM") {
+            assert_eq!(HaveAvx512ForMlKem::check().is_some(), expected == "1");
+        }
     }
 }
