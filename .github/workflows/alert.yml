@@ -17,7 +17,6 @@ on:
       - build
       - Check
       - coverage
-      - cranelift
       - ctgrind
       - fuzz
       - quality lints
