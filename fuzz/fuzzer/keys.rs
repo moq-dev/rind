@@ -33,11 +33,13 @@ fuzz_target!(|data: &[u8]| {
             input,
             ours::RsaKeyPair::from_pkcs8,
             their_rsa::KeyPair::from_pkcs8,
+            (trailing(input) || v2_without_public_key(input)).into(),
         ),
         13 => rsa_private(
             input,
             ours::RsaKeyPair::from_pkcs1,
             their_rsa::KeyPair::from_der,
+            trailing(input).into(),
         ),
         14 => rsa_public(&RSA_1024, input),
         15 => rsa_public(&RSA_2048, input),
@@ -200,8 +202,8 @@ fn spki(input: &[u8]) -> bool {
 }
 
 /// Whether `input` is a PKCS#8 version 2 document without a public key, which
-/// aws-lc-rs takes for Ed25519. RFC 5958 sets version 2 only when the public
-/// key is present.
+/// aws-lc-rs takes for every key type. RFC 5958 sets version 2 only when the
+/// public key is present.
 fn v2_without_public_key(input: &[u8]) -> bool {
     let Some(contents) = sequence(input) else {
         return false;
@@ -240,7 +242,7 @@ fn ecdsa_pkcs8(curve: &Curve, input: &[u8]) {
     let ours = ours::EcdsaKeyPair::from_pkcs8(curve.ours, input);
     let theirs = theirs::EcdsaKeyPair::from_pkcs8(curve.theirs, input);
     let point = pkcs8_private_key(input).and_then(sec1_public_key);
-    let refused = trailing(input) || point.is_some_and(hybrid);
+    let refused = trailing(input) || v2_without_public_key(input) || point.is_some_and(hybrid);
     agree_ecdsa(curve, ours, theirs, refused.into());
 }
 
@@ -328,9 +330,10 @@ fn rsa_private(
     input: &[u8],
     ours: fn(&[u8]) -> Result<ours::RsaKeyPair, rind::Error>,
     theirs: fn(&[u8]) -> Result<their_rsa::KeyPair, aws_lc_rs::error::KeyRejected>,
+    expect: Expect,
 ) {
     let (ours, theirs) = (ours(input), theirs(input));
-    agree(&ours, &theirs, trailing(input).into());
+    agree(&ours, &theirs, expect);
     let Ok(ours) = ours else {
         return;
     };

@@ -23,6 +23,5 @@ Decided with the maintainer on 2026-11-01, from the merge-gate and CI audit. Set
 
 ## Required
 
-- [Clippy aarch64 and armv7 in the gate](/quest/m1/gate/cross-clippy.md) - a compile break on either backend fails before merge
 - [Build aws-lc-sys once per gate](/quest/m1/gate/aws-lc-sys-once.md) - clippy and the test build share one aws-lc-sys build, saving about 30-36 CPU-seconds cold
 - [Run the gate's tests with nextest](/quest/m1/gate/nextest.md) - test binaries run in parallel
