@@ -22,24 +22,38 @@ pub(super) fn generate_key(
     checks_random: &mut dyn RandomSource,
 ) -> Result<super::RsaPrivateKey, Error> {
     let len = size.prime_bits() / 64;
+
+    // 2 ^ (nlen / 2 - 100), the closest p and q may be.
+    let mut min_distance = [0u64; MAX_PRIVATE_MODULUS_WORDS];
+    let bit = size.prime_bits() - 100;
+    min_distance[bit / 64] = 1 << (bit % 64);
+    let min_distance: super::RsaPosIntModP = PosInt::from_words(&min_distance[..len])?;
+
     loop {
         let p = random_prime(size, candidate_random, checks_random)?;
-        let q = random_prime(size, candidate_random, checks_random)?;
+        let (p, q) = loop {
+            let q = random_prime(size, candidate_random, checks_random)?;
 
-        if public(p.equals(&q)) {
-            // for the set of `RsaSizes` supported here, choosing p == q
-            // means `random` is hosed.
-            return Err(Error::RngFailed);
-        }
+            if public(p.equals(&q)) {
+                // for the set of `RsaSizes` supported here, choosing p == q
+                // means `random` is hosed.
+                return Err(Error::RngFailed);
+            }
 
-        // arrange that q < p, without revealing which was drawn first.
-        let swap = u64::from(p.less_than(&q));
-        let mut words = [[0u64; MAX_PRIVATE_MODULUS_WORDS]; 2];
-        let [hi, lo] = &mut words;
-        low::bignum_mux(swap, &mut hi[..len], q.as_words(), p.as_words());
-        low::bignum_mux(swap, &mut lo[..len], p.as_words(), q.as_words());
-        let p: super::RsaPosIntModP = PosInt::from_words(&hi[..len])?;
-        let q: super::RsaPosIntModP = PosInt::from_words(&lo[..len])?;
+            // arrange that q < p, without revealing which was drawn first.
+            let swap = u64::from(p.less_than(&q));
+            let mut words = [[0u64; MAX_PRIVATE_MODULUS_WORDS]; 2];
+            let [hi, lo] = &mut words;
+            low::bignum_mux(swap, &mut hi[..len], q.as_words(), p.as_words());
+            low::bignum_mux(swap, &mut lo[..len], p.as_words(), q.as_words());
+            let hi: super::RsaPosIntModP = PosInt::from_words(&hi[..len])?;
+            let lo: super::RsaPosIntModP = PosInt::from_words(&lo[..len])?;
+
+            // A.1.3 step 5.4: draw q again if |p - q| <= 2 ^ (nlen / 2 - 100).
+            if public(min_distance.less_than(&hi.sub(&lo))) {
+                break (hi, lo);
+            }
+        };
 
         let Some(k) = Exponents::derive(p.as_words(), q.as_words()) else {
             // e divides p - 1 or q - 1, or d is too small: throw away both
@@ -400,6 +414,43 @@ mod tests {
             .err(),
             Some(Error::RngFailed),
         );
+    }
+
+    #[test]
+    fn test_p_q_close() {
+        let mut bytes = read_hex_from_file(include_str!(
+            "../../testdata/rsa.phi-not-coprime-e.2048.txt"
+        ));
+        bytes.truncate(128);
+        let p = PosInt::from_bytes(&bytes).unwrap();
+
+        // q is the next prime after p, far within 2 ^ 924 of it.
+        let tail = u16::from_be_bytes([bytes[126], bytes[127]]) + 814;
+        bytes.extend_from_within(..126);
+        bytes.extend_from_slice(&tail.to_be_bytes());
+        let q = PosInt::from_bytes(&bytes[128..]).unwrap();
+        assert_eq!(
+            is_prime(
+                &q,
+                RsaKeySize::Rsa2048,
+                &mut HmacDrbg::<Sha256>::new(b"", b"", b"")
+            ),
+            Ok(true)
+        );
+
+        let mut fixed_source = SliceRandomSource(&bytes);
+        let mut retry_source = SystemRandom;
+        let mut candidate_source = ChainRandomSource::First(&mut fixed_source, &mut retry_source);
+        let key = generate_key(
+            RsaKeySize::Rsa2048,
+            &mut candidate_source,
+            &mut SystemRandom,
+        )
+        .unwrap();
+
+        // p is kept and only q is drawn again.
+        assert!(public(key.p.equals(&p) | key.q.equals(&p)));
+        assert!(!public(key.p.equals(&q) | key.q.equals(&q)));
     }
 
     #[test]
