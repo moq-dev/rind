@@ -13,6 +13,7 @@ quest names how to check it and is deleted once it holds.
 
 ## Required
 
+- [armv7 debug ctgrind, end of m2](/quest/m3/armv7-debug-ct.md) - recurring check that armv7 stays constant-time in debug builds
 - [MoQ runs on rind](/quest/m3/moq-on-rind.md) - waiting on MoQ to finish its migration
 - [dimpl checks signatures for every provider](/quest/m3/dimpl-crypto-common.md) - waiting on a dimpl release, then rind-dimpl drops dimpl's internal feature
 - [armv7 raw ciphers from libcrux](/quest/m3/libcrux-ciphers.md) - drop rind's copy once libcrux exports its AES
