@@ -49,3 +49,4 @@ settled; don't ask them again. The chosen option is marked ✅.
 
 - [AGENTS.md states the 2% tie rule](/quest/m2/speed/agents-rule.md) - the fastest-source rule says a verified source wins only within about 2%
 - [Audit every algorithm's speed](/quest/m2/speed/audit.md) - measure every algorithm on every path against every source, and recommend a quest per gap
+- [RSA at every key size as fast as aws-lc-rs](/quest/m2/speed/rsa-sizes.md) - x86_64 signing's exponentiation beyond the Karatsuba sizes, as aws-lc's windows and `bn_power5` run it
