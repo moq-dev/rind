@@ -70,11 +70,12 @@ declare -A scope=(
     [nix]=''
 )
 
-# The tools each module needs. A module missing one is skipped locally; under
-# CI_STRICT (CI) it is an error, since there a skip is indistinguishable from
-# a pass.
+# The tools each module needs, or a `verb:module` entry's tools for that verb.
+# A module missing one is skipped locally; under CI_STRICT (CI) it is an error,
+# since there a skip is indistinguishable from a pass.
 declare -A tools=(
     [rs]='cargo jq'
+    [check:rs]='cargo cargo-nextest jq'
     [deny]='cargo-deny'
     [license]='find grep'
     [cross]='cargo'
@@ -107,7 +108,7 @@ for module in "${modules[@]}"; do
         continue
     fi
     absent=()
-    for tool in ${tools[$module]}; do
+    for tool in ${tools[$verb:$module]-${tools[$module]}}; do
         command -v "$tool" >/dev/null 2>&1 || absent+=("$tool")
     done
     if ((${#absent[@]} == 0)); then
@@ -156,7 +157,15 @@ for module in "${selected[@]}"; do
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
             cargo fmt --all --check
             cargo clippy "${packages[@]}" --all-targets --locked -- --deny warnings
-            cargo test "${packages[@]}" --locked
+            # nextest runs the test binaries in parallel but not doc tests. Like
+            # `cargo test`, it passes a selection with no tests, such as the
+            # benches alone.
+            cargo nextest run "${packages[@]}" --locked --no-tests=warn
+            # Doc tests need a library. No packages at all means the workspace.
+            mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
+            if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then
+                cargo test "${libs[@]}" --locked --doc
+            fi
             ;;
         fix:rs)
             mapfile -t packages < <(sh/select.sh "$changed" "$all")
