@@ -141,7 +141,7 @@ or a [quest][quests] covers it. The table describes
 | P-384 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola verification's other scalar multiplication ⚡, and ECDSA | [fiat-crypto] field and scalar arithmetic ✓; scalar multiplication over it ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator, and Graviola other scalar multiplication; Graviola ECDSA |
 | P-521 ECDH, ECDSA | [s2n-bignum] field and point arithmetic, and other scalar multiplication ✓; rind comb multiplication of the generator ⚡; Graviola ECDSA | [s2n-bignum] field and point arithmetic, and other secret scalar multiplication ✓; rind comb multiplication of the generator ⚡, and verification's other scalar multiplication ⚡; Graviola ECDSA | [fiat-crypto] field arithmetic ✓; rind arithmetic mod the group order ⚡; scalar multiplication over them ⚡, from rind point formulas, inversion, table lookup, and comb multiplication of the generator; Graviola ECDSA |
 | ML-KEM-768 | AVX2: [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 and AVX-512 sampling ⚡; otherwise: rind port of [mlkem-native] polynomial arithmetic ⚡, [s2n-bignum] Keccak-f ✓, Graviola FIPS 203 ⚡ | [s2n-bignum] polynomial arithmetic and Keccak-f ✓; Graviola FIPS 203 ⚡ | [libcrux-ml-kem] ✓, except its SHA-3 |
-| RSA PKCS#1 v1.5 and PSS signatures, key generation | Exponentiation: [aws-lc] RSAZ (copied) ⚡ for 1024-bit primes with AVX2 but without ADX, otherwise Graviola ⚡ over Montgomery multiplication: [s2n-bignum] Karatsuba for 1024- and 2048-bit moduli with ADX ✓, otherwise [aws-lc] (copied) ⚡; other [s2n-bignum] bignum arithmetic ✓; Graviola CRT, padding, and prime search; rind private exponents and Miller-Rabin | Graviola exponentiation ⚡ over Montgomery multiplication: [s2n-bignum] Karatsuba for 1024- and 2048-bit moduli ✓, [aws-lc] (copied) ⚡ for 1536-, 3072-, and 4096-bit moduli, otherwise [s2n-bignum] ✓; other [s2n-bignum] bignum arithmetic ✓; Graviola CRT, padding, and prime search; rind private exponents and Miller-Rabin | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
+| RSA PKCS#1 v1.5 and PSS signatures, key generation | Exponentiation: [aws-lc] RSAZ (copied) ⚡ for 1024-bit primes with AVX2 but without ADX, otherwise Graviola ⚡ over Montgomery multiplication: [s2n-bignum] Karatsuba for 1024- and 2048-bit moduli with ADX ✓, otherwise [aws-lc] (copied) ⚡; other [s2n-bignum] bignum arithmetic ✓; Graviola CRT, padding, and prime search; rind private exponents and Miller-Rabin | Graviola exponentiation ⚡ over Montgomery multiplication: [s2n-bignum] Karatsuba for 1024- and 2048-bit moduli ✓, otherwise [aws-lc] (copied) ⚡; other [s2n-bignum] bignum arithmetic ✓; Graviola CRT, padding, and prime search; rind private exponents and Miller-Rabin | [HACL\*] bignum arithmetic and exponentiation ✓; rind CRT and key generation; Graviola padding |
 
 The tests use [Wycheproof]'s vectors.
 
@@ -205,11 +205,11 @@ whose width in 64-bit words is a multiple of four, `bn_sqr8x_mont` for
 squaring a multiple of eight, each by `mulx` with ADX, and `bn_mul_mont_nohw`
 for other widths), other than 1024- and 2048-bit moduli on CPUs with ADX,
 where s2n-bignum's Karatsuba routines are as fast or faster. aarch64 runs
-aws-lc's `bn_mul_mont`, which picks its own squaring or 4x routine by the
-width, for 1536-, 3072-, and 4096-bit moduli, where it measured twice as fast
-as s2n-bignum's generic routines on a Neoverse-N2. 1024- and 2048-bit moduli
-run s2n-bignum's Karatsuba routines, and other sizes its generic ones. armv7
-uses HACL\*'s arithmetic and exponentiation instead. On x86_64 CPUs with AVX2
+s2n-bignum's Karatsuba routines for 1024- and 2048-bit moduli, and aws-lc's
+`bn_mul_mont`, which picks its own squaring or 4x routine by the width, for
+every other size, where it measured 1.15 to 2 times as fast as s2n-bignum's
+generic routines on a Neoverse-N2.
+armv7 uses HACL\*'s arithmetic and exponentiation instead. On x86_64 CPUs with AVX2
 but without ADX, the private operation's exponentiation modulo each 1024-bit
 prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
 products on AVX2 over 29-bit limbs, and a 5-bit fixed window whose table

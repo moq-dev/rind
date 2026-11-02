@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! Montgomery multiplication modulo an RSA modulus or prime: s2n-bignum's
-//! Karatsuba routines and 8n reduction for 1024- and 2048-bit moduli;
-//! aws-lc's `bn_mul_mont`, which picks its own squaring or 4x routine by the
-//! width, for 1536-, 3072-, and 4096-bit moduli, where it measured twice as
-//! fast as s2n-bignum's generic `bignum_montmul` and `bignum_montsqr` on a
-//! Neoverse-N2; and those generic routines for the sizes not measured.
+//! Karatsuba routines and 8n reduction for 16 and 32 words, and otherwise,
+//! from two words, aws-lc's `bn_mul_mont`, which picks its own squaring or 4x
+//! routine by the width as aws-lc does. On a Neoverse-N2 it measured faster
+//! than s2n-bignum's generic `bignum_montmul` and `bignum_montsqr` in every
+//! width class it branches on: 1.15x at 17 and 33 words, 1.6x at 20, and
+//! twice as fast at 24, 48, 64, 96, and 128. The generic routines run only
+//! below two words.
 
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below `m`, where `k` is the
 /// length of each and `n0` is `-m^-1 mod 2^64`.
@@ -13,7 +15,7 @@ pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) 
     debug_assert!(z.len() == m.len() && x.len() == m.len() && y.len() == m.len());
     match m.len() {
         16 | 32 => karatsuba_mul(z, x, y, m, n0),
-        24 | 48 | 64 => mul_mont(z, x, y, m, n0),
+        k if k >= 2 => mul_mont(z, x, y, m, n0),
         _ => super::bignum_montmul::bignum_montmul(z, x, y, m),
     }
 }
@@ -24,7 +26,7 @@ pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
     debug_assert!(z.len() == m.len() && x.len() == m.len());
     match m.len() {
         16 | 32 => karatsuba_sqr(z, x, m, n0),
-        24 | 48 | 64 => mul_mont(z, x, x, m, n0),
+        k if k >= 2 => mul_mont(z, x, x, m, n0),
         _ => super::bignum_montsqr::bignum_montsqr(z, x, m),
     }
 }
@@ -99,8 +101,8 @@ mod tests {
     struct Rng(u64);
 
     impl Rng {
-        fn words(&mut self, k: usize) -> [u64; 64] {
-            let mut out = [0; 64];
+        fn words(&mut self, k: usize) -> [u64; 128] {
+            let mut out = [0; 128];
             for word in &mut out[..k] {
                 self.0 ^= self.0 << 13;
                 self.0 ^= self.0 >> 7;
@@ -118,7 +120,9 @@ mod tests {
     #[test]
     fn matches_generic() {
         let mut rng = Rng(0x2545_f491_4f6c_dd1d);
-        for k in [2, 3, 5, 8, 9, 12, 16, 17, 18, 24, 32, 33, 36, 48, 64] {
+        for k in [
+            2, 3, 5, 8, 9, 12, 16, 17, 18, 24, 32, 33, 36, 48, 64, 96, 128,
+        ] {
             for case in 0..16 {
                 let mut m = rng.words(k);
                 let m = &mut m[..k];
@@ -156,9 +160,9 @@ mod tests {
                 }
                 let (x, y) = (&x[..k], &y[..k]);
 
-                let mut want = [0; 64];
+                let mut want = [0; 128];
                 let want = &mut want[..k];
-                let mut got = [0; 64];
+                let mut got = [0; 128];
                 let got = &mut got[..k];
 
                 bignum_montmul::bignum_montmul(want, x, y, m);
