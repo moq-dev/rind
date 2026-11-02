@@ -116,7 +116,7 @@ impl Context {
             State::Sha256(ctx) => HashContext::finish(ctx),
             State::Sha384(ctx) => HashContext::finish(ctx),
             State::Sha512(ctx) => HashContext::finish(ctx),
-            State::Sha512_256(ctx) => HashContext::finish(ctx),
+            State::Sha512_256(ctx) => Digest::new(&SHA512_256, &ctx.finish()),
         }
     }
 }
