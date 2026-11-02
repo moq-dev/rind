@@ -3,9 +3,11 @@
 //! Montgomery multiplication modulo an RSA modulus or prime: s2n-bignum's
 //! Karatsuba routines and 8n reduction for 16 and 32 words, and otherwise,
 //! from two words, aws-lc's `bn_mul_mont`, which picks its own squaring or 4x
-//! routine by the width as aws-lc does. On a Neoverse-N2 it measured twice
-//! as fast as s2n-bignum's generic `bignum_montmul` and `bignum_montsqr` at
-//! 24, 48, and 64 words; those run only below two words.
+//! routine by the width as aws-lc does. On a Neoverse-N2 it measured faster
+//! than s2n-bignum's generic `bignum_montmul` and `bignum_montsqr` in every
+//! width class it branches on: 1.15x at 17 and 33 words, 1.6x at 20, and
+//! twice as fast at 24, 48, 64, 96, and 128. The generic routines run only
+//! below two words.
 
 /// `z = x * y / 2^(64k) mod m`, for `x` and `y` below `m`, where `k` is the
 /// length of each and `n0` is `-m^-1 mod 2^64`.

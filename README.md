@@ -207,7 +207,8 @@ for other widths), other than 1024- and 2048-bit moduli on CPUs with ADX,
 where s2n-bignum's Karatsuba routines are as fast or faster. aarch64 runs
 s2n-bignum's Karatsuba routines for 1024- and 2048-bit moduli, and aws-lc's
 `bn_mul_mont`, which picks its own squaring or 4x routine by the width, for
-every other size.
+every other size, where it measured 1.15 to 2 times as fast as s2n-bignum's
+generic routines on a Neoverse-N2.
 armv7 uses HACL\*'s arithmetic and exponentiation instead. On x86_64 CPUs with AVX2
 but without ADX, the private operation's exponentiation modulo each 1024-bit
 prime of RSA-2048 runs aws-lc's RSAZ, as aws-lc does there: Montgomery
