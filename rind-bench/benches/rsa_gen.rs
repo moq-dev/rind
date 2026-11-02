@@ -18,6 +18,11 @@ fn rsa_key_generation(c: &mut Criterion) {
             rind::signature::RsaKeySize::Rsa2048,
         ),
         (
+            3072,
+            aws_lc_rs::rsa::KeySize::Rsa3072,
+            rind::signature::RsaKeySize::Rsa3072,
+        ),
+        (
             4096,
             aws_lc_rs::rsa::KeySize::Rsa4096,
             rind::signature::RsaKeySize::Rsa4096,
@@ -26,6 +31,9 @@ fn rsa_key_generation(c: &mut Criterion) {
     for (bits, theirs, ours) in sizes {
         let mut group = c.benchmark_group(format!("rsa{bits}-key-generation"));
         group.throughput(Throughput::Elements(1));
+        // Each key takes tens to hundreds of milliseconds, so the default
+        // hundred samples would take minutes.
+        group.sample_size(10);
 
         group.bench_function("aws-lc-rs", |b| {
             b.iter(|| {

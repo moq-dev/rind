@@ -30,7 +30,7 @@ fn test_rind_sha1(data: &[u8]) {
 
 fn sha1(c: &mut Criterion) {
     let mut group = c.benchmark_group("sha1");
-    for (size, size_name) in [(32, "32B"), (8192, "8KB"), (65536, "64KB")] {
+    for (size, size_name) in criterion::HASH_SIZES {
         let input = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));
 

@@ -45,9 +45,9 @@ jobs:
           mode: simulation
           run: cargo codspeed run
 
-  # Each row reads rind's time relative to aws-lc-rs in the same run, not as
-  # a device's: the arm64 runner's Neoverse core is no phone or board, and it
-  # times the armv7 build natively too.
+  # Each row reads rind's time relative to the fastest of aws-lc-rs and ring
+  # in the same run, not as a device's: the arm64 runner's Neoverse core is
+  # no phone or board, and it times the armv7 build natively too.
   #
   # A portable row denies both libraries what the slower path lacks: on
   # aarch64, the crypto extension and the SHA-512 and SHA-3 instructions, as
@@ -60,7 +60,9 @@ jobs:
   # `qemu64` model and pre-Core 2 CPUs lack it, and times the primitives that
   # then run integer or SSE2 code. rind's denial takes `--cfg
   # rind_cpu_disable`, so these rows time release code, without the debug
-  # assertions that would otherwise enable it.
+  # assertions that would otherwise enable it. ring has no way to deny it a
+  # feature, so these rows leave it out. Each times the benchmarks whose
+  # code the denied features change.
   native:
     name: native (${{ matrix.target }}${{ matrix.portable && ', portable' || '' }}${{ matrix.cpu && format(', {0}', matrix.cpu) || '' }})
     strategy:
@@ -89,25 +91,25 @@ jobs:
             personality: linux64
             portable: true
             cpu: no-adx
-            benches: --bench rsa_priv
+            benches: --bench rsa_priv --bench rsa_pub --bench rsa_gen --bench p256 --bench p384 --bench p521 --bench x25519 --bench ed25519
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
             portable: true
             cpu: no-avx
-            benches: --bench aes_gcm --bench cipher
+            benches: --bench aes_gcm --bench cipher --bench sha1 --bench sha2
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
             portable: true
             cpu: no-aes
-            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305
+            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305 --bench xchacha20poly1305
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             personality: linux64
             portable: true
             cpu: no-ssse3
-            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305 --bench sha1 --bench sha2
+            benches: --bench aes_gcm --bench cipher --bench chacha20poly1305 --bench xchacha20poly1305 --bench sha1 --bench sha2
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -144,10 +146,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf libssl-dev:armhf
 
-      # Only rind and aws-lc-rs, the library it is measured against.
+      # Only rind and the libraries it is measured against.
       - name: Run benchmarks
         run: |
+          libs='rind|aws-lc-rs|ring'
           if [ "${{ matrix.portable }}" = true ]; then
+            libs='rind|aws-lc-rs'
             export RUSTFLAGS='--cfg rind_cpu_disable'
             case "${{ matrix.target }}/${{ matrix.cpu }}" in
               aarch64-*)
@@ -155,11 +159,13 @@ jobs:
                 # aws-lc's AES, SHA1, SHA256, PMULL, SHA512, and SHA3 bits.
                 export OPENSSL_armcap='~0x87c'
                 ;;
-              # Haswell's path: without ADX, and for aws-lc without BMI2 and
-              # ADX in CPUID leaf 7's EBX, so both run RSAZ for RSA-2048.
+              # Haswell's path: without ADX, and for aws-lc without BMI2,
+              # ADX, and AVX-512 F, DQ, IFMA, CD, BW, and VL in CPUID leaf
+              # 7's EBX, so both run RSAZ for RSA-2048, and aws-lc not its
+              # AVX-512 RSA, which rind lacks.
               x86_64-*/no-adx)
                 export RIND_CPU_DISABLE_adx=1
-                export OPENSSL_ia32cap='~0x0:~0x80100'
+                export OPENSSL_ia32cap='~0x0:~0xd02b0100'
                 ;;
               x86_64-*)
                 # rind's AVX-512 and VAES paths also need AVX2.
@@ -189,29 +195,32 @@ jobs:
                 ;;
             esac
           fi
-          cargo bench -p rind-bench ${{ matrix.benches }} --target ${{ matrix.target }} -- --noplot '(^|/)(rind|aws-lc-rs)(/|$)'
+          cargo bench -p rind-bench ${{ matrix.benches }} --target ${{ matrix.target }} -- --noplot "(^|/)($libs)(/|\$)"
         env:
+          # Times RSA key generation too, which varies from run to run.
+          NOISY_BENCHMARKS: 1
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
           CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_INCLUDE_DIR: /usr/include
           ARMV7_UNKNOWN_LINUX_GNUEABIHF_OPENSSL_LIB_DIR: /usr/lib/arm-linux-gnueabihf
 
-      # One row per benchmark, in run order, with rind's time over aws-lc-rs's.
+      # One row per benchmark, in run order, with rind's time over the fastest
+      # baseline's.
       - name: Summarize
         shell: bash
         run: |
           find target/criterion -path '*/new/benchmark.json' -printf '%T@ %p\n' | sort -n | cut -d' ' -f2- |
             while read -r f; do
               jq -c --slurpfile e "${f%benchmark.json}estimates.json" '.full_id | split("/")
-                | {lib: map(select(. == "rind" or . == "aws-lc-rs"))[0],
-                   key: map(if . == "rind" or . == "aws-lc-rs" then "*" else . end) | join("/"),
+                | {lib: map(select(. == "rind" or . == "aws-lc-rs" or . == "ring"))[0],
+                   key: map(if . == "rind" or . == "aws-lc-rs" or . == "ring" then "*" else . end) | join("/"),
                    ns: ($e[0].slope // $e[0].mean).point_estimate}' "$f"
             done |
             jq -rs 'def time: if . == null then "-" elif . < 1e3 then "\(round) ns"
                       elif . < 1e6 then "\(. / 10 | round / 100) µs" else "\(. / 1e4 | round / 100) ms" end;
               reduce (.[] | select(.lib)) as $b ({}; .[$b.key][$b.lib] = $b.ns)
-              | "| benchmark | rind | aws-lc-rs | rind / aws-lc-rs |", "|---|---|---|---|",
-                (to_entries[] | .value as $v
-                  | "| \(.key) | \($v.rind | time) | \($v["aws-lc-rs"] | time) | \(if $v.rind and $v["aws-lc-rs"] then $v.rind / $v["aws-lc-rs"] * 100 | round / 100 else "-" end) |")' |
+              | "| benchmark | rind | aws-lc-rs | ring | rind / fastest |", "|---|---|---|---|---|",
+                (to_entries[] | .value as $v | ([$v["aws-lc-rs"], $v.ring] | map(select(.)) | min) as $best
+                  | "| \(.key) | \($v.rind | time) | \($v["aws-lc-rs"] | time) | \($v.ring | time) | \(if $v.rind and $best then $v.rind / $best * 100 | round / 100 else "-" end) |")' |
             tee -a "$GITHUB_STEP_SUMMARY"

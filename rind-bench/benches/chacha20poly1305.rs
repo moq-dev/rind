@@ -49,12 +49,7 @@ fn bench_chacha20poly1305(c: &mut Criterion) {
     let aad = [0u8; 32];
 
     let mut group = c.benchmark_group("chacha20poly1305");
-    for (size, size_name) in [
-        (32, "32B"),
-        (1200, "1200B"),
-        (1350, "1350B"),
-        (16384, "16KB"),
-    ] {
+    for (size, size_name) in criterion::SIZES {
         let input = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));
 

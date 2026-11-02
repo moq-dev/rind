@@ -57,13 +57,7 @@ fn aes128_gcm(c: &mut Criterion) {
     let aad = [0u8; 32];
 
     let mut group = c.benchmark_group("aes128-gcm");
-    for (size, size_name) in [
-        (32, "32B"),
-        (1200, "1200B"),
-        (2048, "2KB"),
-        (8192, "8KB"),
-        (16384, "16KB"),
-    ] {
+    for (size, size_name) in criterion::SIZES {
         let input = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));
 
@@ -106,13 +100,7 @@ fn aes256_gcm(c: &mut Criterion) {
     let aad = [0u8; 32];
 
     let mut group = c.benchmark_group("aes256-gcm");
-    for (size, size_name) in [
-        (32, "32B"),
-        (1200, "1200B"),
-        (2048, "2KB"),
-        (8192, "8KB"),
-        (16384, "16KB"),
-    ] {
+    for (size, size_name) in criterion::SIZES {
         let input = vec![0u8; size];
         group.throughput(Throughput::Bytes(size as u64));
 
