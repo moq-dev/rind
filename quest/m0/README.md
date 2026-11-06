@@ -9,6 +9,6 @@ nothing is urgent.
 
 ## Required
 
-- [Confine release credentials to publishing](/quest/m0/confine-release-credentials.md) -
-  keep release credentials behind the protected publish path and replace the
-  long-lived crates.io token
+- [Retire the crates.io registry token](/quest/m0/confine-release-credentials.md) -
+  delete the long-lived crates.io token once a release publishes through
+  trusted publishing

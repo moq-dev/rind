@@ -1,8 +1,8 @@
 name: Release
 
+# The job writes through the GitHub App token, never GITHUB_TOKEN.
 permissions:
-  pull-requests: write
-  contents: write
+  contents: read
 
 # Only one release job can run at a time.
 concurrency:
@@ -31,9 +31,15 @@ jobs:
     name: Plz
     runs-on: ubuntu-latest
     if: ${{ github.repository_owner == 'moq-dev' && github.ref == 'refs/heads/main' }}
-    # The environment, which only `main` can deploy to, holds the App key and
-    # the crates.io token, so a workflow on another branch cannot read them.
+    # The environment, which only `main` can deploy to, holds the App key, and
+    # crates.io trusts only this workflow in it, so a workflow on another
+    # branch can neither read the key nor publish.
     environment: publish
+    permissions:
+      contents: read
+      # release-plz exchanges the job's OIDC token for a short-lived crates.io
+      # publish token (trusted publishing).
+      id-token: write
 
     steps:
       # A GitHub App token, since the repository does not let GITHUB_TOKEN open
@@ -60,4 +66,3 @@ jobs:
           # publishes; empty when dispatched.
           BEFORE: ${{ github.event.before }}
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

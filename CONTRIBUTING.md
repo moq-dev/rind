@@ -72,3 +72,8 @@ Each `Written for Graviola by ...` header is attribution; keep it on files that 
 
 release-plz opens a release PR from `main`, and publishing happens only when that PR merges.
 release-plz owns crate versions; bump one only when asked.
+
+The release job publishes through crates.io trusted publishing, so no registry token is stored: crates.io issues a short-lived token only to `release.yml` running in the `publish` environment, which only `main` can deploy to.
+Trusted publishing cannot create a crate, so the maintainer publishes a new crate's first version by hand from `main` before the release PR that would publish it merges.
+Use a crates.io token scoped to `publish-new` for that crate name with a short expiry, never stored as a secret, and revoke it afterwards.
+Then add the crate's trusted publisher for `release.yml` and the `publish` environment, so release-plz publishes every later version.
