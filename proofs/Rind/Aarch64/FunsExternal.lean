@@ -338,4 +338,9 @@ opaque mid.p384.PrivateKey.Insts.RindHighAgreementAgree.load
 opaque mid.p521.PrivateKey.Insts.RindHighAgreementAgree.load
   : high.agreement.Source → Result (core.result.Result mid.p521.PrivateKey error.Error)
 
+/-! The constant-time compare, which the translation never calls, but the HMAC
+model does: its inline assembly is left to HOL Light, and `CtEqual` states it. -/
+
+opaque low.generic.ct_equal.ct_equal : Slice Std.U8 → Slice Std.U8 → Result Bool
+
 end rind.aarch64

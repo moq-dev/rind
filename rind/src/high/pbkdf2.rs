@@ -7,6 +7,7 @@
 use core::fmt;
 use core::num::NonZeroU32;
 
+use super::digest::Digest;
 use super::hmac;
 use crate::Error;
 use crate::low::{Entry, ct, ct_equal};
@@ -54,9 +55,13 @@ impl Secret {
     pub fn derive(&self, iterations: NonZeroU32, salt: &[u8], out: &mut [u8]) -> Result<(), Error> {
         let _entry = Entry::new_secret();
         self.check_len(out.len())?;
-        self.blocks(iterations, salt, out.len(), |offset, block| {
-            out[offset..offset + block.len()].copy_from_slice(block);
-        });
+        let salted = self.salted(salt);
+        let hash_len = self.0.algorithm().tag_len();
+        for (index, offset) in (1..=u32::MAX).zip((0..out.len()).step_by(hash_len)) {
+            let block = self.block(&salted, iterations, index);
+            let len = hash_len.min(out.len() - offset);
+            out[offset..offset + len].copy_from_slice(&block.as_ref()[..len]);
+        }
         Ok(())
     }
 
@@ -79,15 +84,17 @@ impl Secret {
         }
         self.check_len(previously_derived.len())?;
         // Block by block, so verifying needs no buffer as long as the key.
+        let salted = self.salted(salt);
+        let hash_len = self.0.algorithm().tag_len();
         let mut equal = true;
-        self.blocks(
-            iterations,
-            salt,
-            previously_derived.len(),
-            |offset, block| {
-                equal &= ct_equal(block, &previously_derived[offset..offset + block.len()]);
-            },
-        );
+        for (index, offset) in (1..=u32::MAX).zip((0..previously_derived.len()).step_by(hash_len)) {
+            let block = self.block(&salted, iterations, index);
+            let len = hash_len.min(previously_derived.len() - offset);
+            equal &= ct_equal(
+                &block.as_ref()[..len],
+                &previously_derived[offset..offset + len],
+            );
+        }
         match ct::into_public(equal) {
             true => Ok(()),
             false => Err(Error::BadSignature),
@@ -97,38 +104,42 @@ impl Secret {
     // RFC 8018 numbers blocks with a 32-bit counter starting at 1.
     fn check_len(&self, len: usize) -> Result<(), Error> {
         let blocks = len.div_ceil(self.0.algorithm().tag_len());
-        match blocks == 0 || blocks > u32::MAX as usize {
-            true => Err(Error::WrongLength),
-            false => Ok(()),
+        if blocks == 0 || blocks > u32::MAX as usize {
+            Err(Error::WrongLength)
+        } else {
+            Ok(())
         }
     }
 
-    // Computes each block of a `len`-byte key in turn, handing `sink` its
-    // offset and the bytes of it that fall within `len`.
-    fn blocks(
-        &self,
-        iterations: NonZeroU32,
-        salt: &[u8],
-        len: usize,
-        mut sink: impl FnMut(usize, &[u8]),
-    ) {
+    // The secret's HMAC with the salt absorbed, which begins every block's
+    // first message.
+    fn salted(&self, salt: &[u8]) -> hmac::Streaming {
         let mut salted = self.0.start();
         salted.update(salt);
+        salted
+    }
 
-        let hash_len = self.0.algorithm().tag_len();
-        for (index, offset) in (1..=u32::MAX).zip((0..len).step_by(hash_len)) {
-            let mut ctx = salted.clone();
-            ctx.update(&index.to_be_bytes());
-            let mut u = ctx.finish();
-            let mut t = u.clone();
-            for _ in 1..iterations.get() {
-                u = self.0.tag(u.as_ref());
-                for (t, u) in t.as_mut().iter_mut().zip(u.as_ref()) {
-                    *t ^= u;
-                }
+    // RFC 8018's block `index` of the key, `T_index`, from `salted`.
+    //
+    // A function each caller loops over, rather than one loop handing each
+    // block to a closure, which Aeneas mistranslates when it captures `&mut`.
+    #[allow(clippy::needless_range_loop)]
+    fn block(&self, salted: &hmac::Streaming, iterations: NonZeroU32, index: u32) -> Digest {
+        let mut ctx = salted.clone();
+        ctx.update(&index.to_be_bytes());
+        let mut u = ctx.finish();
+        let mut t = u.clone();
+        for _ in 1..iterations.get() {
+            u = self.0.tag(u.as_ref());
+            // Indexes rather than zipping `iter_mut`, which Aeneas cannot
+            // translate; slicing `u` to `t`'s length elides the bounds checks.
+            let sum = t.as_mut();
+            let next = &u.as_ref()[..sum.len()];
+            for i in 0..sum.len() {
+                sum[i] ^= next[i];
             }
-            sink(offset, &t.as_ref()[..hash_len.min(len - offset)]);
         }
+        t
     }
 }
 

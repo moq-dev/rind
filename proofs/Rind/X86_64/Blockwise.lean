@@ -435,18 +435,18 @@ theorem absorbed_append {n : Usize} {compress : List (BitVec 32) → List Byte �
 /-! ## SHA-256's digest -/
 
 /-- The bytes `u32::to_be_bytes` writes. -/
-def beBytes (w : U32) : List U8 := w.bv.toBEBytes.map (@UScalar.mk UScalarTy.U8)
+def beBytes32 (w : U32) : List U8 := w.bv.toBEBytes.map (@UScalar.mk UScalarTy.U8)
 
 theorem sha256_digest_loop_spec
     (it : core.iter.adapters.enumerate.Enumerate (core.slice.iter.Iter Std.U32))
     (r : Std.Array U8 32#usize) (V : List U32) (hVl : V.length = 8)
     (hV : it.iter.slice.val = V) (hi : it.iter.i = it.count.val) (hk : it.count.val ≤ 8)
-    (hr : r.val.take (4 * it.count.val) = (V.take it.count.val).flatMap beBytes) :
-    low.generic.blockwise.sha256_digest_loop it r ⦃ r' => r'.val = V.flatMap beBytes ⦄ := by
+    (hr : r.val.take (4 * it.count.val) = (V.take it.count.val).flatMap beBytes32) :
+    low.generic.blockwise.sha256_digest_loop it r ⦃ r' => r'.val = V.flatMap beBytes32 ⦄ := by
   unfold low.generic.blockwise.sha256_digest_loop
   apply loop.spec_decr_nat (fun x => 8 - x.1.count.val)
     (fun x => x.1.iter.slice.val = V ∧ x.1.iter.i = x.1.count.val ∧ x.1.count.val ≤ 8 ∧
-      x.2.val.take (4 * x.1.count.val) = (V.take x.1.count.val).flatMap beBytes)
+      x.2.val.take (4 * x.1.count.val) = (V.take x.1.count.val).flatMap beBytes32)
   · rintro ⟨it, r⟩ ⟨hV, hi, hk, hr⟩
     simp only at hV hi hk hr ⊢
     unfold low.generic.blockwise.sha256_digest_loop.body
@@ -473,7 +473,7 @@ theorem sha256_digest_loop_spec
         rw [show 4 * x.val = i1.val + 4 by rw [x_post, i1_post]; ring, this, i1_post,
           show it.count.val * 4 = 4 * it.count.val by ring, hr, x_post, List.take_add_one,
           List.flatMap_append, List.getElem?_eq_getElem (by omega)]
-        simp [a_post, hw, beBytes]
+        simp [a_post, hw, beBytes32]
     · rename_i hlt
       have hk4 : it.count.val = 8 := by omega
       have hr32 : (r.val).length = 32 := r.property
@@ -482,13 +482,13 @@ theorem sha256_digest_loop_spec
   · exact ⟨hV, hi, hk, hr⟩
 
 theorem bv_flatMap_beBytes (V : List U32) :
-    bv (V.flatMap beBytes) = (words V).flatMap BitVec.toBEBytes := by
+    bv (V.flatMap beBytes32) = (words V).flatMap BitVec.toBEBytes := by
   induction V with
   | nil => rfl
   | cons w V ih =>
     simp only [List.flatMap_cons, bv, List.map_append, words, List.map_cons] at ih ⊢
     rw [ih]
-    simp [beBytes, List.map_map, Function.comp_def]
+    simp [beBytes32, List.map_map, Function.comp_def]
 
 /-- The digest is the hash value's words, big-endian. -/
 theorem sha256_digest_spec (h : Std.Array U32 8#usize) :

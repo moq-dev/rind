@@ -1,5 +1,6 @@
 import Rind.X86_64.AwsLc
 import Rind.X86_64.DigestDispatch
+import Rind.X86_64.Sha
 import Rind.Bytes
 open Aeneas Aeneas.Std Result rind.spec
 
@@ -19,17 +20,8 @@ namespace rind.x86_64
 
 /-! ## Padding, `low::generic::blockwise` -/
 
-@[step]
-theorem as_flattened_mut_spec {T : Type} {N : Usize} (s : Slice (Std.Array T N))
-    (h : (s.val.flatMap (·.val)).length ≤ Usize.max) :
-    core.slice.SliceArray.as_flattened_mut s ⦃ f _ => f.val = s.val.flatMap (·.val) ⦄ := by
-  unfold core.slice.SliceArray.as_flattened_mut
-  simp only
-  rw [dite_eq_left_of_eq_true (eq_true h)]
-  simp
-
 /-- The list `pad` writes. -/
-theorem pad_list (r l : List U8) (P : Nat) (hl : l.length = 16) (hP : r.length + 17 ≤ P) :
+theorem sha512_pad_list (r l : List U8) (P : Nat) (hl : l.length = 16) (hP : r.length + 17 ≤ P) :
     (((List.replicate P 0#u8).setSlice! 0 r).set r.length 0x80#u8).setSlice! (P - 16) l =
       r ++ 0x80#u8 :: List.replicate (P - r.length - 17) 0#u8 ++ l := by
   have hA : (List.replicate P 0#u8).setSlice! 0 r = r ++ List.replicate (P - r.length) 0#u8 := by
@@ -56,7 +48,7 @@ theorem zero_blocks_flat :
 
 /-- `pad` writes the message's tail, the 0x80 byte, zeros, and the length. -/
 @[step]
-theorem pad_spec (rest : Slice U8) (length : Std.Array U8 16#usize)
+theorem sha512_pad_spec (rest : Slice U8) (length : Std.Array U8 16#usize)
     (hr : rest.length < 256) (hr' : 128 ≤ rest.length → rest.length % 128 ≤ 111) :
     low.generic.blockwise.pad (N := 128#usize) rest length
       (Std.Array.repeat 2#usize (Std.Array.repeat 128#usize 0#u8)) ⦃ s _ =>
@@ -83,11 +75,11 @@ theorem pad_spec (rest : Slice U8) (length : Std.Array U8 16#usize)
     | have hP : rest.length + 17 ≤ padded.val := by scalar_tac
       have hz : padded.val - rest.length - 17 = (239 - rest.length % 128) % 128 := by scalar_tac
       rw [s4_post2, hlast3, s6_post, s5_post, Array.val_to_slice, i6_post,
-        pad_list _ _ _ (by simp) hP, hz]
+        sha512_pad_list _ _ _ (by simp) hP, hz]
 
 /-- `split_tail` leaves whole blocks, then a tail that `pad` fits in two blocks. -/
 @[step]
-theorem split_tail_spec (message : Slice U8) :
+theorem sha512_split_tail_spec (message : Slice U8) :
     low.generic.blockwise.split_tail 128#usize 16#usize message ⦃ blocks rest =>
       blocks.val ++ rest.val = message.val ∧ blocks.length % 128 = 0 ∧
       rest.length % 128 = message.length % 128 ∧ rest.length < 256 ∧
@@ -252,7 +244,7 @@ theorem take_setSlice!_zero {α : Type _} (buf r : List α) (h : r.length ≤ bu
 
 /-- `complete_blocks` compresses the buffered bytes and `bytes` up to their
 last 1 to 128 bytes, which it buffers. -/
-theorem complete_blocks_spec (h : RunsSha512) (bw : low.generic.blockwise.Blockwise 128#usize)
+theorem sha512_complete_blocks_spec (h : RunsSha512) (bw : low.generic.blockwise.Blockwise 128#usize)
     (bytes : Slice U8) (st : mid.sha2.Sha512State) (hu : bw.used.val ≤ 128)
     (hlong : 128 < bw.used.val + bytes.length)
     (hn : st.nblocks.val + (bw.used.val + bytes.length) / 128 < 2 ^ 64) :
@@ -399,7 +391,7 @@ theorem context_update_spec (h : RunsSha512) (iv : List U64) (c : mid.sha2.Sha51
     have hlong' : 128 < c.blockwise.used.val + bytes.val.length := by
       have : ¬ bytes.len.val ≤ x.val := hlong
       omega
-    step with complete_blocks_spec h c.blockwise bytes c.state hu hlong' (by simp only [Slice.length] at *; omega)
+    step with sha512_complete_blocks_spec h c.blockwise bytes c.state hu hlong' (by simp only [Slice.length] at *; omega)
       as ⟨bw', st', hst, hst', hbu, hbb⟩
     rw [hb] at hst hst' hbu hbb
     generalize hA : m.drop (128 * c.state.nblocks.val) ++ bytes.val = A at hst hst' hbu hbb
@@ -507,7 +499,7 @@ theorem finish_initial_spec (h : RunsSha512) (iv : List U64) (st : mid.sha2.Sha5
     mid.sha2.Sha512State.finish_with st data ⦃ r => r.val = sha512Words iv data.val ⦄ := by
   apply WP.spec_mono (finish_with_spec h st data)
   intro r hr
-  rw [hr, hh, hn, sha512Words, show pad data.val = [] ++ padAfter 0 data.val from
+  rw [hr, hh, hn, sha512Words, show sha512Pad data.val = [] ++ padAfter 0 data.val from
     pad_append [] data.val rfl]
   simp
 
@@ -732,5 +724,226 @@ theorem sha512_family_digest (h : RunsSha512) (algorithm : high.digest.Algorithm
   · exact sha384_digest h data
   · exact sha512_digest h data
   · exact sha512_256_digest h data
+
+/-! ## The `Hash` impls, `high::hash`, as HMAC reads them -/
+
+/-- Spec bytes as translated bytes, `bv`'s inverse. -/
+def ofBv (l : List Byte) : List U8 := l.map (@UScalar.mk UScalarTy.U8)
+
+theorem ofBv_bv (l : List U8) : ofBv (bv l) = l := by
+  induction l <;> simp_all [ofBv, bv]
+
+/-- SHA-512 over spec bytes, as `HashSpec` takes a hash. -/
+def sha512Bytes (m : List Byte) : List Byte := bv (sha512 (ofBv m))
+
+/-- SHA-384 over spec bytes, as `HashSpec` takes a hash. -/
+def sha384Bytes (m : List Byte) : List Byte := bv (sha384 (ofBv m))
+
+/-- The compression function keeps eight words: aws-lc's routine returns them. -/
+theorem processBlock_length (h : RunsSha512) (hv : List U64) (hl : hv.length = 8)
+    (block : List U8) (hb : block.length = 128) :
+    (processBlock hv (blockWords block)).length = 8 := by
+  obtain ⟨r, hr⟩ := WP.spec_exists (sha512_compress_blocks_spec h
+    (Std.Array.from hv (by simp [hl])) (Slice.from block (by rw [hb]; scalar_tac)) (by
+      simp [Slice.length, hb]))
+  have hr' : r.val = compress hv block := by simpa using hr
+  rw [compress_block _ _ (by omega), List.take_of_length_le (by omega),
+    show block.drop 128 = [] by simp [hb], compress_nil] at hr'
+  rw [← hr']
+  simp
+
+theorem compress_length (h : RunsSha512) (hv : List U64) (hl : hv.length = 8) (bytes : List U8) :
+    (compress hv bytes).length = 8 := by
+  by_cases hb : 128 ≤ bytes.length
+  · rw [compress_block _ _ hb]
+    exact compress_length h _ (processBlock_length h hv hl _ (by simp; omega)) _
+  · rwa [compress_short _ _ (by omega)]
+termination_by bytes.length
+decreasing_by simp; omega
+
+theorem sha512Words_length (h : RunsSha512) (iv : List U64) (hiv : iv.length = 8) (m : List U8) :
+    (sha512Words iv m).length = 64 := by
+  have h8 : ∀ a : U64, a.bv.toBEBytes.length = 8 := fun a => by simp [BitVec.toBEBytes_length]
+  simp only [sha512Words, List.length_flatMap, beBytes, List.length_map, h8, List.map_const',
+    List.sum_replicate, compress_length h iv hiv]
+  rfl
+
+/-- A SHA-512 state, from initial value `iv`, that has compressed `P`, a whole
+number of blocks. -/
+def Sha512Absorbed (iv : List U64) (P : List U8) (s : mid.sha2.Sha512State) : Prop :=
+  s.h.val = compress iv P ∧ 128 * s.nblocks.val = P.length
+
+theorem absorbed_initial (iv : List U64) (s : mid.sha2.Sha512State) (hh : s.h.val = iv)
+    (hn : s.nblocks.val = 0) : Sha512Absorbed iv [] s := by
+  simp [Sha512Absorbed, hh, hn]
+
+theorem absorbed_update_blocks_spec (h : RunsSha512) (iv : List U64) (P : List U8)
+    (s : mid.sha2.Sha512State) (b : Slice U8) (hs : Sha512Absorbed iv P s)
+    (hb : b.length % 128 = 0) (hm : P.length + b.length ≤ maxInput) :
+    mid.sha2.Sha512State.Insts.RindLowGenericBlockwiseUpdateBlocks.update_blocks s b ⦃ s' =>
+      Sha512Absorbed iv (P ++ b.val) s' ⦄ := by
+  obtain ⟨hh, hn⟩ := hs
+  unfold maxInput at hm
+  simp only [U64.max_eq, Slice.length] at hm hb
+  apply WP.spec_mono (update_blocks_spec h s b hb (by simp only [Slice.length]; omega))
+  rintro s' ⟨h1, h2⟩
+  refine ⟨?_, ?_⟩
+  · rw [h1, hh, compress_append _ _ _ (by omega)]
+  · rw [h2]; simp only [Slice.length, List.length_append]; omega
+
+theorem absorbed_finish_with_spec (h : RunsSha512) (iv : List U64) (P : List U8)
+    (s : mid.sha2.Sha512State) (m : Slice U8) (hs : Sha512Absorbed iv P s) :
+    mid.sha2.Sha512State.finish_with s m ⦃ r => r.val = sha512Words iv (P ++ m.val) ⦄ := by
+  obtain ⟨hh, hn⟩ := hs
+  have hP : P.length % 128 = 0 := by omega
+  apply WP.spec_mono (finish_with_spec h s m)
+  intro r hr
+  rw [hr, hh, hn, ← compress_append _ _ _ hP, ← pad_append _ _ hP, sha512Words]
+
+theorem sha512_state_clone_spec (s : mid.sha2.Sha512State) :
+    mid.sha2.Sha512State.Insts.CoreCloneClone.clone s ⦃ s' => s' = s ⦄ := by
+  unfold mid.sha2.Sha512State.Insts.CoreCloneClone.clone
+  simp only [core.clone.impls.CloneU64.clone, lift, bind_ok]
+  step*
+  subst_vars
+  rfl
+
+theorem absorbed_clone_spec (iv : List U64) (P : List U8) (s : mid.sha2.Sha512State)
+    (hs : Sha512Absorbed iv P s) :
+    mid.sha2.Sha512State.Insts.CoreCloneClone.clone s ⦃ s' => Sha512Absorbed iv P s' ⦄ :=
+  WP.spec_mono (sha512_state_clone_spec s) fun _ h => h ▸ hs
+
+theorem absorbed_resume_spec (iv : List U64) (P : List U8) (s : mid.sha2.Sha512State)
+    (hs : Sha512Absorbed iv P s) :
+    mid.sha2.Sha512Context.resume s ⦃ c => Hashed iv c P ⦄ := by
+  obtain ⟨hh, hn⟩ := hs
+  simp [mid.sha2.Sha512Context.resume, low.generic.blockwise.Blockwise.new, Hashed, hh, hn]
+
+theorem sha512_ctx_clone_spec (c : mid.sha2.Sha512Context) :
+    mid.sha2.Sha512Context.Insts.CoreCloneClone.clone c ⦃ c' => c' = c ⦄ := by
+  unfold mid.sha2.Sha512Context.Insts.CoreCloneClone.clone
+  step with sha512_state_clone_spec as ⟨st, hst⟩
+  step with blockwise_clone_spec as ⟨bw, hbw⟩
+  subst_vars
+  rfl
+
+theorem maxInput_lt (n : Nat) (h : n ≤ maxInput) : n < 2 ^ 64 := by
+  unfold maxInput at h; simp only [U64.max_eq] at h; omega
+
+/-- SHA-512's `Hash` impl computes FIPS 180-4's SHA-512, given aws-lc's routine. -/
+theorem sha512_hashSpec (h : RunsSha512) :
+    HashSpec high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State sha512Bytes 128 64
+      maxInput (Sha512Absorbed sha512Iv) (fun p c => Hashed sha512Iv c p) where
+  out := ⟨by decide, by decide, by decide, by unfold maxInput; scalar_tac, fun m => by
+    simp [sha512Bytes, bv, sha512, sha512Words_length h sha512Iv rfl]⟩
+  initial := by
+    simp only [high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.initial]
+    step with sha512_initial_spec as ⟨s, hh, hn⟩
+    exact absorbed_initial _ s hh hn
+  update_blocks := fun p s b hs hb hm => by
+    simp only [high.hash.Sha512State.Insts.RindHighHashHashStateSha512Context.update_blocks]
+    step with absorbed_update_blocks_spec h _ p s b hs hb hm as ⟨s', h'⟩
+    exact h'
+  finish_with := fun p s m hs _ => by
+    simp only [high.hash.Sha512State.Insts.RindHighHashHashStateSha512Context.finish_with,
+      high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.ALGORITHM, high.digest.SHA512]
+    step with absorbed_finish_with_spec h _ p s m hs as ⟨r, hr⟩
+    step as ⟨sl, hsl⟩
+    apply WP.spec_mono (digest_new_spec _ sl (by rw [hsl]; simp [outLen]))
+    rintro d ⟨hd1, hd2⟩
+    refine ⟨by rw [hd1]; rfl, ?_⟩
+    rw [hd2, hsl, Array.val_to_slice, hr, sha512Bytes, ofBv_bv, sha512]
+  clone := fun p s hs => by
+    simp only [high.hash.Sha512State.Insts.CoreCloneClone.clone]
+    step with absorbed_clone_spec _ p s hs as ⟨s', h'⟩
+    exact h'
+  resume := fun p s hs => by
+    simp only [high.hash.Sha512State.Insts.RindHighHashHashStateSha512Context.resume]
+    step with absorbed_clone_spec _ p s hs as ⟨s', h'⟩
+    step with absorbed_resume_spec _ p s' h' as ⟨c, hc⟩
+    exact hc
+  update := fun p c b hc hm => by
+    simp only [high.hash.Sha512Context.Insts.RindHighHashHashContext.update]
+    step with context_update_spec h _ c p b hc (maxInput_lt _ hm) as ⟨c', h'⟩
+    exact h'
+  finish := fun p c hc _ => by
+    simp only [high.hash.Sha512Context.Insts.RindHighHashHashContext.finish,
+      high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.ALGORITHM, high.digest.SHA512]
+    step with context_finish_spec h _ c p hc as ⟨r, hr⟩
+    step as ⟨sl, hsl⟩
+    apply WP.spec_mono (digest_new_spec _ sl (by rw [hsl]; simp [outLen]))
+    rintro d ⟨hd1, hd2⟩
+    refine ⟨by rw [hd1]; rfl, ?_⟩
+    rw [hd2, hsl, Array.val_to_slice, hr, sha512Bytes, ofBv_bv, sha512]
+  zeroed_block := by
+    simp only [high.hash.Sha512.Insts.RindHighHashHashSha512ContextSha512State.zeroed_block,
+      high.hash.HashBlock.new, mid.sha2.Sha512Context.BLOCK_SZ]
+    simp
+  hash_default := rfl
+  cclone := fun p c hc => by
+    simp only [high.hash.Sha512Context.Insts.CoreCloneClone.clone]
+    step with sha512_ctx_clone_spec as ⟨c', h'⟩
+    exact h' ▸ hc
+
+/-- SHA-384's `Hash` impl computes FIPS 180-4's SHA-384, given aws-lc's routine. -/
+theorem sha384_hashSpec (h : RunsSha512) :
+    HashSpec high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State sha384Bytes 128 48
+      maxInput (Sha512Absorbed sha384Iv) (fun p c => Hashed sha384Iv c.inner p) where
+  out := ⟨by decide, by decide, by decide, by unfold maxInput; scalar_tac, fun m => by
+    simp [sha384Bytes, bv, sha384, sha512Words_length h sha384Iv rfl]⟩
+  initial := by
+    simp only [high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.initial]
+    step with sha384_initial_spec as ⟨s, hh, hn⟩
+    exact absorbed_initial _ s hh hn
+  update_blocks := fun p s b hs hb hm => by
+    simp only [high.hash.Sha384State.Insts.RindHighHashHashStateSha384Context.update_blocks]
+    step with absorbed_update_blocks_spec h _ p s b hs hb hm as ⟨s', h'⟩
+    exact h'
+  finish_with := fun p s m hs _ => by
+    simp only [high.hash.Sha384State.Insts.RindHighHashHashStateSha384Context.finish_with,
+      high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.ALGORITHM, high.digest.SHA384]
+    step with absorbed_finish_with_spec h _ p s m hs as ⟨r, hr⟩
+    step with sha384_truncate_spec as ⟨t, ht⟩
+    step as ⟨sl, hsl⟩
+    apply WP.spec_mono (digest_new_spec _ sl (by rw [hsl]; simp [outLen]))
+    rintro d ⟨hd1, hd2⟩
+    refine ⟨by rw [hd1]; rfl, ?_⟩
+    rw [hd2, hsl, Array.val_to_slice, ht, hr, sha384Bytes, ofBv_bv, sha384]
+  clone := fun p s hs => by
+    simp only [high.hash.Sha384State.Insts.CoreCloneClone.clone]
+    step with absorbed_clone_spec _ p s hs as ⟨s', h'⟩
+    exact h'
+  resume := fun p s hs => by
+    simp only [high.hash.Sha384State.Insts.RindHighHashHashStateSha384Context.resume,
+      mid.sha2.Sha384Context.resume]
+    step with absorbed_clone_spec _ p s hs as ⟨s', h'⟩
+    step with absorbed_resume_spec _ p s' h' as ⟨c, hc⟩
+    exact hc
+  update := fun p c b hc hm => by
+    simp only [high.hash.Sha384Context.Insts.RindHighHashHashContext.update,
+      mid.sha2.Sha384Context.update]
+    step with context_update_spec h _ c.inner p b hc (maxInput_lt _ hm) as ⟨c', h'⟩
+    exact h'
+  finish := fun p c hc _ => by
+    simp only [high.hash.Sha384Context.Insts.RindHighHashHashContext.finish,
+      mid.sha2.Sha384Context.finish,
+      high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.ALGORITHM, high.digest.SHA384]
+    step with context_finish_spec h _ c.inner p hc as ⟨r, hr⟩
+    step with sha384_truncate_spec as ⟨t, ht⟩
+    step as ⟨sl, hsl⟩
+    apply WP.spec_mono (digest_new_spec _ sl (by rw [hsl]; simp [outLen]))
+    rintro d ⟨hd1, hd2⟩
+    refine ⟨by rw [hd1]; rfl, ?_⟩
+    rw [hd2, hsl, Array.val_to_slice, ht, hr, sha384Bytes, ofBv_bv, sha384]
+  zeroed_block := by
+    simp only [high.hash.Sha384.Insts.RindHighHashHashSha384ContextSha384State.zeroed_block,
+      high.hash.HashBlock.new, mid.sha2.Sha512Context.BLOCK_SZ]
+    simp
+  hash_default := rfl
+  cclone := fun p c hc => by
+    simp only [high.hash.Sha384Context.Insts.CoreCloneClone.clone,
+      mid.sha2.Sha384Context.Insts.CoreCloneClone.clone]
+    step with sha512_ctx_clone_spec as ⟨c', h'⟩
+    exact h' ▸ hc
 
 end rind.x86_64

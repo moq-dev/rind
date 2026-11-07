@@ -144,6 +144,34 @@ rind's checks pass. They add no axiom, which
 checks the transliterations against FIPS 180-4's, RFC 4231's, RFC 5869's, and
 RFC 6070's vectors.
 
+The APIs above them, on x86_64 and aarch64, over SHA-1 and SHA-256 and, where
+they take an HMAC algorithm, SHA-384 and SHA-512, against RFC 2104, RFC 5869,
+and RFC 8018 as `Rind/HashSpec.lean` transliterates them:
+
+- `digest_spec`, `digest_ctx_new_spec`, `digest_ctx_update_spec`,
+  `digest_ctx_finish_spec` (`Rind/X86_64/DigestApi.lean`): `digest::digest`
+  and `digest::Context` over SHA-1 and SHA-256;
+- `key_new_spec`, `sign_spec`, `verify_spec`, `context_with_key_spec`,
+  `context_update_spec'`, `context_sign_spec` (`Rind/X86_64/HmacApi.lean`):
+  `hmac::Key`, `sign`, `verify`, and `Context`;
+- `kdf.salt_extract_spec`, `kdf.okm_fill_spec`, `kdf.hkdf_fill`
+  (`Rind/X86_64/Hkdf.lean`): HKDF's extract and expand;
+- `kdf.derive_spec`, `kdf.verify_spec` (`Rind/X86_64/Pbkdf2.lean`): PBKDF2's
+  `Secret::derive` and `Secret::verify`.
+
+`hmac::Key` and `Context` reach each hash through function pointers, which
+`Rind/X86_64/HmacDispatch.lean` models. HKDF and PBKDF2 call that model, so
+`admin/prove` translates `high::hkdf` and `high::pbkdf2` in a second pass,
+into `Rind/<Arch>/Kdf/{Types,Funs}.lean`, with the first pass's items and the
+HMAC model opaque below it; `Rind/X86_64/HkdfExpand.lean` models
+`Prk::expand_into`, whose slice of borrowed slices Aeneas cannot translate.
+The theorems over an HMAC algorithm assume `RunsHmac`: `ShaBlocks` for SHA-1
+and SHA-256, `RunsSha512` for SHA-384 and SHA-512, so `Rind/<Arch>/Axioms.lean`
+checks their axioms.
+`hmac::verify` and `Secret::verify` compare in constant time through inline
+assembly no Lean proof covers, so their theorems take `CtEqual` as a
+hypothesis: the compare returns whether its inputs are equal.
+
 `PrivateKey` reaches each curve's `Agree` impl through function pointers
 (`Algorithm`'s `generate` and `load`, and `Keyed`'s `Ops`), and `HeaderProtectionKey` each
 cipher's `Mask` impl (`Algorithm`'s `new` and `Masker`'s `mask`), which Aeneas
@@ -266,12 +294,16 @@ dispatch models' quotes, if it builds a digest `Algorithm` outside
   `Rind/HashSpecTest.lean`, their known-answer tests; `Rind/Vale.lean`,
   `Rind/ValeBytes.lean`, and `Rind/Gf128.lean`: Vale's AES and GF(2^128) specs
   and their lemmas.
-- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch}.lean`:
-  the hand models of the agreement, header-protection, digest, signature, and
-  AEAD APIs' dispatch.
+- `Rind/X86_64/{Dispatch,DigestDispatch,DigestAlgorithm,SignatureDispatch,AeadDispatch,HmacDispatch}.lean`:
+  the hand models of the agreement, header-protection, digest, signature,
+  AEAD, and HMAC APIs' dispatch; `Rind/X86_64/HkdfExpand.lean` and
+  `Rind/X86_64/Kdf/{TypesExternal,FunsExternal}.lean`, of what the HKDF and
+  PBKDF2 pass leaves opaque.
 - `Rind/X86_64/{X25519,Sha512,ChaCha20,Ed25519}.lean`: the X25519, SHA-512,
-  ChaCha20, and Ed25519 proofs, and `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
-  SHA-1's, SHA-256's, and HMAC's; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
+  ChaCha20, and Ed25519 proofs, `Rind/X86_64/{Blockwise,Sha,Hmac}.lean`,
+  SHA-1's, SHA-256's, and HMAC's, and
+  `Rind/X86_64/{DigestApi,HmacApi,Hkdf,Pbkdf2}.lean`, the digest, HMAC, HKDF,
+  and PBKDF2 APIs'; `Rind/X86_64/{AesKey,Ghash,PartialBlock,AesGcmGlue,AesGcm}.lean`:
   the AES-GCM proof, on x86_64 alone.
 - `Rind/<Arch>/ShaBlocks.lean`: SHA-1 and SHA-256's block functions on each
   target, SHA-1's padded last blocks, and SHA-256's padded last blocks and

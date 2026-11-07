@@ -1,20 +1,23 @@
-# [M] The hash and KDF glue is proven
+# [S] The hash and KDF glue's constant-time compares are proven
 
 ## Goal
 
-rind's HMAC, HKDF, and PBKDF2 APIs, and the digest API for SHA-1 and SHA-256, are proven with Aeneas → Lean in `proofs/` down to the hash proofs already there, HMAC over SHA-384 and SHA-512 included, and the constant-time compare loops in HOL Light (they are inline asm), so these operations earn ✓ wherever their block functions are proven.
+The constant-time compares behind `hmac::verify` and `pbkdf2::Secret::verify` (`ct_compare_bytes` and `ct_compare_16`, inline asm on each target) are proven in HOL Light and enter under [the epic's composition rule](/quest/m3/verified/README.md), discharging the `CtEqual` hypothesis the Lean API theorems take, so `verify` earns ✓ where its block functions are proven.
 
 ## Plan
 
-Planned with the maintainer on 2026-11-03 from the audit. Each block function enters under [the epic's composition rule](/quest/m3/verified/README.md). HACL*'s HMAC and HKDF specs are the reference.
+Planned with the maintainer on 2026-11-03 from the audit.
 
-`proofs/` already proves SHA-1 and SHA-256's `Hash` impls, and HMAC's `HmacKey` and `Hmac` over any hash meeting `HashSpec`, against `proofs/Rind/HashSpec.lean`, which also transliterates RFC 5869's HKDF and RFC 8018's PBKDF2. Unproven SHA-1 and SHA-256 block functions enter as the hypothesis `ShaBlocks`.
+`proofs/` proves the digest API for SHA-1 and SHA-256, the HMAC API over SHA-1, SHA-256, SHA-384, and SHA-512, HKDF, and PBKDF2 (`Rind/X86_64/{DigestApi,HmacApi,Hkdf,Pbkdf2}.lean`). `hmac::verify` and `Secret::verify` take `CtEqual`: `low::generic::ct_equal::ct_equal` returns whether its inputs are equal. That function is opaque in both translations.
 
-- `hmac::Key`, `hmac::Context`, `hmac::sign`, `hmac::verify`, and `digest::digest` and `digest::Context` reach the hash through function pointers; model that dispatch by hand, as `Rind/X86_64/Dispatch.lean` does the agreement API's, and compose with `HashSpec`.
-- HKDF and PBKDF2 call that hand-modelled HMAC API, but Aeneas emits one `Funs.lean` whose external declarations precede it, so translated code cannot call a model built on translated code. Decided with the maintainer on 2026-11-04: translate the KDFs in a second Aeneas pass, with the first pass's items and the HMAC model opaque below it, rather than drop HMAC's function-pointer dispatch or hand-model the KDFs.
-- PBKDF2's `blocks` takes a closure that captures `&mut`, which Aeneas mistranslates; rewrite it as `Blockwise` was, keeping release codegen.
-- The constant-time compares (`ct_compare_bytes` and `ct_compare_16`, behind `hmac::verify` and `pbkdf2::Secret::verify`).
-- HMAC over SHA-384 and SHA-512: their `Hash` impls meet `HashSpec` from `proofs/Rind/X86_64/Sha512.lean`'s theorems, whose SHA-512-specific padding and buffering lemmas `Blockwise.lean`'s generic ones can replace.
+- Prove `ct_compare_bytes` and `ct_compare_16` in HOL Light on each target: the result is zero exactly when the inputs are equal, and the routine runs in constant time.
+- Restate those proofs as axioms about the Rust wrappers, as `Rind/<Arch>/S2nBignum.lean` does. Then prove `ct_equal` from them in Lean, discharge `CtEqual`, and pin the axioms in `Rind/<Arch>/Axioms.lean`.
+- HKDF's `From<Okm>` impls for `aead::Key`, `aead::quic::HeaderProtectionKey`, and `hmac::Key` (`rind/src/high/hkdf.rs`) are unproven: prove each fills its key from `kdf.hkdf_fill`'s bytes. They need no HOL Light and can land first.
+- `Rind/X86_64/Sha512.lean` keeps its own SHA-512 padding and buffering lemmas (`sha512_pad_spec`, `sha512_split_tail_spec`, `sha512_complete_blocks_spec`). `Blockwise.lean`'s generic ones could replace them in the same PR, or the work can be dropped.
+
+## Required
+
+- [rind's own HOL Light proofs live in proofs/hol-light](/quest/m4/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
 
 ## Related
 

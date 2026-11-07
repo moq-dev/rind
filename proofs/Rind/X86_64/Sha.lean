@@ -18,12 +18,12 @@ theorem sha1_out_loop_spec
     (it : core.iter.adapters.enumerate.Enumerate (core.slice.iter.Iter Std.U32))
     (r : Std.Array U8 20#usize) (V : List U32) (hVl : V.length = 5)
     (hV : it.iter.slice.val = V) (hi : it.iter.i = it.count.val) (hk : it.count.val ≤ 5)
-    (hr : r.val.take (4 * it.count.val) = (V.take it.count.val).flatMap beBytes) :
-    mid.sha1.Sha1State.finish_with_loop it r ⦃ r' => r'.val = V.flatMap beBytes ⦄ := by
+    (hr : r.val.take (4 * it.count.val) = (V.take it.count.val).flatMap beBytes32) :
+    mid.sha1.Sha1State.finish_with_loop it r ⦃ r' => r'.val = V.flatMap beBytes32 ⦄ := by
   unfold mid.sha1.Sha1State.finish_with_loop
   apply loop.spec_decr_nat (fun x => 5 - x.1.count.val)
     (fun x => x.1.iter.slice.val = V ∧ x.1.iter.i = x.1.count.val ∧ x.1.count.val ≤ 5 ∧
-      x.2.val.take (4 * x.1.count.val) = (V.take x.1.count.val).flatMap beBytes)
+      x.2.val.take (4 * x.1.count.val) = (V.take x.1.count.val).flatMap beBytes32)
   · rintro ⟨it, r⟩ ⟨hV, hi, hk, hr⟩
     simp only at hV hi hk hr ⊢
     unfold mid.sha1.Sha1State.finish_with_loop.body
@@ -50,7 +50,7 @@ theorem sha1_out_loop_spec
         rw [show 4 * x.val = i1.val + 4 by rw [x_post, i1_post]; ring, this, i1_post,
           show it.count.val * 4 = 4 * it.count.val by ring, hr, x_post, List.take_add_one,
           List.flatMap_append, List.getElem?_eq_getElem (by omega)]
-        simp [a_post, hw, beBytes]
+        simp [a_post, hw, beBytes32]
     · rename_i hlt
       have hk4 : it.count.val = 5 := by omega
       have hr32 : (r.val).length = 20 := r.property
@@ -305,6 +305,35 @@ structure HashSpec {Self C S : Type} (inst : high.hash.Hash Self C S)
     outLen d.algorithm = L ∧ digestBytes d = H (bv p) ⦄
   zeroed_block : inst.zeroed_block ⦃ hb => hb.len.val = B ∧ hb.buf.val = List.replicate 128 0#u8 ⦄
   hash_default : inst.hash = high.hash.Hash.hash.default inst
+  cclone : ∀ p c, CAbs p c → inst.HashContextInst.corecloneCloneInst.clone c ⦃ c' => CAbs p c' ⦄
+
+theorem blockwise_clone_spec {N : Usize} (bw : low.generic.blockwise.Blockwise N) :
+    low.generic.blockwise.Blockwise.Insts.CoreCloneClone.clone bw ⦃ bw' => bw' = bw ⦄ := by
+  unfold low.generic.blockwise.Blockwise.Insts.CoreCloneClone.clone
+  simp only [core.clone.impls.CloneUsize.clone, lift, bind_ok]
+  step*
+  subst_vars
+  rfl
+
+theorem sha256_ctx_clone_spec (c : high.hash.Sha256Context) :
+    high.hash.Sha256Context.Insts.CoreCloneClone.clone c ⦃ c' => c' = c ⦄ := by
+  simp only [high.hash.Sha256Context.Insts.CoreCloneClone.clone,
+    mid.sha2.Sha256Context.Insts.CoreCloneClone.clone, mid.sha2.Sha256State.Insts.CoreCloneClone.clone,
+    core.clone.impls.CloneU64.clone, lift, bind_ok]
+  step*
+  step with blockwise_clone_spec as ⟨bw, hbw⟩
+  subst_vars
+  rfl
+
+theorem sha1_ctx_clone_spec (c : high.hash.Sha1Context) :
+    high.hash.Sha1Context.Insts.CoreCloneClone.clone c ⦃ c' => c' = c ⦄ := by
+  simp only [high.hash.Sha1Context.Insts.CoreCloneClone.clone,
+    mid.sha1.Sha1Context.Insts.CoreCloneClone.clone, mid.sha1.Sha1State.Insts.CoreCloneClone.clone,
+    core.clone.impls.CloneU64.clone, lift, bind_ok]
+  step*
+  step with blockwise_clone_spec as ⟨bw, hbw⟩
+  subst_vars
+  rfl
 
 theorem sha256_compress_length (H : List (BitVec 32)) (b : List Byte) (h : H.length = 8) :
     (sha256.compress H b).length = 8 := by
@@ -380,6 +409,7 @@ theorem sha256_hashSpec (hb : ShaBlocks) :
       high.hash.HashBlock.new, mid.sha2.Sha256Context.BLOCK_SZ]
     simp
   hash_default := rfl
+  cclone := fun p c hc => WP.spec_mono (sha256_ctx_clone_spec c) fun _ h => h ▸ hc
 
 /-! ## SHA-1, as SHA-256 above -/
 
@@ -573,5 +603,6 @@ theorem sha1_hashSpec (hb : ShaBlocks) :
       high.hash.HashBlock.new, mid.sha1.Sha1Context.BLOCK_SZ]
     simp
   hash_default := rfl
+  cclone := fun p c hc => WP.spec_mono (sha1_ctx_clone_spec c) fun _ h => h ▸ hc
 
 end rind.x86_64

@@ -19,4 +19,3 @@ Each enters as the `ShaBlocks` hypothesis's SHA-1 half does today, which this re
 ## Required
 
 - [rind's own HOL Light proofs live in proofs/hol-light](/quest/m4/verified/hol-light.md) - where the HOL Light proofs live and CI checks them
-- [The hash and KDF glue is proven](/quest/m3/verified/hash-glue.md) - HMAC, HKDF, and PBKDF2 over the hash

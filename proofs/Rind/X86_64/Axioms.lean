@@ -1,5 +1,6 @@
 import Rind.X86_64.X25519
 import Rind.X86_64.Sha512
+import Rind.X86_64.Pbkdf2
 import Rind.X86_64.ChaCha20
 import Rind.X86_64.AesGcm
 import Rind.X86_64.Ed25519
@@ -8,7 +9,8 @@ open rind.x86_64
 /-!
 The axioms each theorem rests on, beyond Lean's own: s2n-bignum's contracts
 in `Rind.X86_64.S2nBignum` for X25519 and Ed25519, aws-lc's in
-`Rind.X86_64.AwsLc` for the SHA-512 family and Ed25519's hashes, Vale's in
+`Rind.X86_64.AwsLc` for the SHA-512 family, for HMAC, HKDF, and PBKDF2, which
+cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, and nothing else. A change here is a
 change to the trust base.
 -/
@@ -49,6 +51,50 @@ change to the trust base.
 /-- info: 'rind.x86_64.sha512_family_context' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
 #guard_msgs in
 #print axioms sha512_family_context
+
+/-- info: 'rind.x86_64.key_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms key_new_spec
+
+/-- info: 'rind.x86_64.sign_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms sign_spec
+
+/-- info: 'rind.x86_64.verify_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms verify_spec
+
+/-- info: 'rind.x86_64.context_with_key_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms context_with_key_spec
+
+/-- info: 'rind.x86_64.context_update_spec'' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms context_update_spec'
+
+/-- info: 'rind.x86_64.context_sign_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms context_sign_spec
+
+/-- info: 'rind.x86_64.kdf.salt_extract_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms kdf.salt_extract_spec
+
+/-- info: 'rind.x86_64.kdf.okm_fill_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms kdf.okm_fill_spec
+
+/-- info: 'rind.x86_64.kdf.hkdf_fill' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms kdf.hkdf_fill
+
+/-- info: 'rind.x86_64.kdf.derive_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms kdf.derive_spec
+
+/-- info: 'rind.x86_64.kdf.verify_spec' depends on axioms: [propext, Classical.choice, Quot.sound, compress_avx_spec] -/
+#guard_msgs in
+#print axioms kdf.verify_spec
 
 /-- info: 'rind.x86_64.chacha20_new' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
