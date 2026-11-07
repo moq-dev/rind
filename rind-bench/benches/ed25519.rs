@@ -85,6 +85,8 @@ fn verify(c: &mut Criterion) {
     let message = b"\x54\x65\x73\x74";
     let signature = b"\x7c\x38\xe0\x26\xf2\x9e\x14\xaa\xbd\x05\x9a\x0f\x2d\xb8\xb0\xcd\x78\x30\x40\x60\x9a\x8b\xe6\x84\xdb\x12\xf8\x2a\x27\x77\x4a\xb0\x7a\x91\x55\x71\x1e\xcf\xaf\x7f\x99\xf2\x77\xba\xd0\xc6\xae\x7e\x39\xd4\xee\xf6\x76\x57\x33\x36\xa5\xc5\x1e\xb6\xf9\x46\xb3\x0d";
 
+    // Each library parses the key once, outside the timed loop, where its API allows.
+    // ring has no parsed key: `UnparsedPublicKey` parses on every verify.
     group.bench_function("ring", |b| {
         let public_key =
             ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public_key);
@@ -118,27 +120,24 @@ fn verify(c: &mut Criterion) {
 
     group.bench_function("rind", |b| {
         use rind::signature::{PublicKey, verify};
+        let public_key = PublicKey::new(&verify::ED25519, public_key).unwrap();
 
         b.iter(|| {
-            PublicKey::new(&verify::ED25519, public_key)
-                .unwrap()
-                .verify(message, signature)
-                .unwrap();
+            public_key.verify(message, signature).unwrap();
         })
     });
 
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     group.bench_function("graviola", |b| {
         use graviola::signing::eddsa::Ed25519VerifyingKey;
+        let public_key = Ed25519VerifyingKey::from_bytes(public_key).unwrap();
 
         b.iter(|| {
-            Ed25519VerifyingKey::from_bytes(public_key)
-                .unwrap()
-                .verify(signature, message)
-                .unwrap();
+            public_key.verify(signature, message).unwrap();
         })
     });
 
+    // libcrux has no parsed key: `verify` takes the key's bytes.
     group.bench_function("libcrux", |b| {
         b.iter(|| {
             libcrux_ed25519::verify(message, public_key, signature).unwrap();
@@ -149,9 +148,9 @@ fn verify(c: &mut Criterion) {
     group.bench_function("openssl", |b| {
         use openssl::pkey::{Id, PKey};
         use openssl::sign::Verifier;
+        let key = PKey::public_key_from_raw_bytes(public_key, Id::ED25519).unwrap();
 
         b.iter(|| {
-            let key = PKey::public_key_from_raw_bytes(public_key, Id::ED25519).unwrap();
             let mut verifier = Verifier::new_without_digest(&key).unwrap();
             assert!(verifier.verify_oneshot(signature, message).unwrap());
         })
