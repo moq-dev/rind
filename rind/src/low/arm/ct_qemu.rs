@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! The constant-time check for the crypto extension, which valgrind hides
-//! from armv7 programs: `admin/ct-qemu` runs each test named `ct_qemu` twice
-//! under qemu-arm, with a different [`seed`] each time, and compares the
-//! addresses of every instruction and memory access in the [`traced`] region.
+//! The constant-time check for what valgrind hides: the crypto extension
+//! from armv7 programs, and SHA3 from aarch64 ones. `admin/ct-qemu` runs
+//! each test named `ct_qemu` twice under qemu-arm or qemu-aarch64, with a
+//! different [`seed`] each time, and compares the addresses of every
+//! instruction and memory access in the [`traced`] region.
 
 /// The seed `admin/ct-qemu` sets for this run, from which the test derives
 /// every secret it passes to the traced code.
@@ -14,7 +15,7 @@ pub(crate) fn seed() -> u64 {
 
 /// Runs `f` between the marks that start and stop the plugin's trace.
 pub(crate) fn traced<T>(f: impl FnOnce() -> T) -> T {
-    // SAFETY: an unallocated hint, which executes as a no-op.
+    // SAFETY: an unallocated hint, which executes as a no-op in ARM and A64.
     unsafe { core::arch::asm!("hint #82", options(nostack, preserves_flags)) };
     let r = core::hint::black_box(f());
     // SAFETY: as above.
@@ -32,7 +33,7 @@ mod tests {
     // fails.
 
     #[test]
-    #[ignore = "admin/ct-qemu runs it under qemu-arm"]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
     fn ct_qemu_planted_branch() {
         let secret = core::hint::black_box(seed());
         traced(|| {
@@ -43,7 +44,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "admin/ct-qemu runs it under qemu-arm"]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
     fn ct_qemu_planted_index() {
         let secret = core::hint::black_box(seed());
         let table = core::hint::black_box([0u8; 64]);

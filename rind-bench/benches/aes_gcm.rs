@@ -414,9 +414,11 @@ fn aes192_gcm(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("aws-lc-rs", size_name), |b| {
             b.iter(|| test_aws_aes_gcm(&aws_key, &nonce, aad, &mut buf));
         });
-        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
-            b.iter(|| test_rind_aes_gcm(&rind_key, &nonce, aad, &mut buf));
-        });
+        for (lib, _dit) in criterion::rind_rows() {
+            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
+                b.iter(|| test_rind_aes_gcm(&rind_key, &nonce, aad, &mut buf));
+            });
+        }
     }
     drop(group);
 
@@ -445,19 +447,21 @@ fn aes192_gcm(c: &mut Criterion) {
                     .unwrap();
             });
         });
-        group.bench_function(BenchmarkId::new("rind", size_name), |b| {
-            b.iter(|| {
-                pt.copy_from_slice(ct);
-                rind_key
-                    .open_in_place_separate_tag(
-                        rind::aead::Nonce::assume_unique_for_key(nonce),
-                        aad,
-                        tag,
-                        pt,
-                    )
-                    .unwrap();
+        for (lib, _dit) in criterion::rind_rows() {
+            group.bench_function(BenchmarkId::new(lib, size_name), |b| {
+                b.iter(|| {
+                    pt.copy_from_slice(ct);
+                    rind_key
+                        .open_in_place_separate_tag(
+                            rind::aead::Nonce::assume_unique_for_key(nonce),
+                            aad,
+                            tag,
+                            pt,
+                        )
+                        .unwrap();
+                });
             });
-        });
+        }
     }
 }
 

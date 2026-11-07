@@ -181,6 +181,7 @@ ARCHES = {
         "comment": "//",
         "cpp": [
             "-DOPENSSL_AARCH64",
+            "-D__ARM_MAX_ARCH__=8",
             "-DAARCH64_VALID_CALL_TARGET=",
             "-DAARCH64_SIGN_LINK_REGISTER=",
             "-DAARCH64_VALIDATE_LINK_REGISTER=",
@@ -500,6 +501,17 @@ IMPORTS_64 = [
         "routines": ["bn_mul_mont"],
         "joins": ["__bn_sqr8x_mont", "__bn_mul4x_mont"],
     },
+    # AES-192-GCM eight blocks at a time, with SHA3's `EOR3`, as s2n-bignum's
+    # stitched kernels take only 128- and 256-bit keys.
+    {
+        "arch": "aarch64",
+        "source": "aesv8-gcm-armv8-unroll8.S",
+        "tag": "gcm8x",
+        "perlasm": "crypto/fipsmodule/modes/asm/aesv8-gcm-armv8-unroll8.pl",
+        "copyright": "Copyright 2020-2022 The OpenSSL Project Authors. All Rights Reserved.",
+        "tables": [],
+        "routines": ["aesv8_gcm_8x_enc_192", "aesv8_gcm_8x_dec_192"],
+    },
     # The rest are for aarch64 CPUs without the crypto extension.
     {
         "arch": "aarch64",
@@ -578,7 +590,7 @@ def vzeroupper(line):
 def preprocess(path, defines):
     # The headers only define what the defines already do, or macros for
     # other architectures.
-    include = re.compile(r'#\s*include (<openssl/|"_internal_s2n_bignum_x86_att\.h")')
+    include = re.compile(r'#\s*include (<openssl/|"openssl/|"_internal_s2n_bignum_x86_att\.h")')
     with open(path) as f:
         text = "".join(line for line in f if not include.match(line))
     # As an assembler source, so qhasm's `#` comment lines pass through.

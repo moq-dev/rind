@@ -1,39 +1,48 @@
 #!/usr/bin/env python3
 
-# Usage: admin/ct-qemu [filter]
+# Usage: admin/ct-qemu [--target aarch64-unknown-linux-gnu] [filter]
 #
-# The constant-time check for armv7's crypto extension, which valgrind hides
-# from the program (see `admin/ctgrind`), as `admin/ct-sde` is for x86_64's
-# extensions. Each rind test named `ct_qemu...` derives its secrets from a
-# seed and marks the calls it checks. This runs each one whose name contains
-# `filter` twice under qemu-arm's `max` CPU, which has the extension, with
-# different seeds, and fails unless `admin/ct-qemu-plugin.c` traces the same
-# instruction and memory addresses in the same order between the marks. The
-# traces stream through pipes and are compared as they arrive, so no run
-# stores one. It cannot see variable-time instructions, which take the same
-# addresses whatever their operands.
+# The constant-time check for what valgrind hides from the program (see
+# `admin/ctgrind`), as `admin/ct-sde` is for x86_64's extensions: armv7's
+# crypto extension, by default, or with `--target aarch64-unknown-linux-gnu`
+# the code aarch64 runs only with SHA3, such as the eight-way AES-GCM
+# kernels. Each rind test named `ct_qemu...` derives its secrets from a seed
+# and marks the calls it checks. This runs each one whose name contains
+# `filter` twice under qemu-arm's or qemu-aarch64's `max` CPU, which has
+# those features, with different seeds, and fails unless
+# `admin/ct-qemu-plugin.c` traces the same instruction and memory addresses
+# in the same order between the marks. The traces stream through pipes and
+# are compared as they arrive, so no run stores one. It cannot see
+# variable-time instructions, which take the same addresses whatever their
+# operands.
 #
 # The `ct_qemu_planted_...` tests leak their seed, and run every time. They
 # must differ, so a harness that traces nothing, or compares nothing, fails.
 #
-# Run it in `nix develop .#ct-qemu`, which builds the plugin. qemu-user maps
-# the program's stack and heap at the same guest addresses each run, so ASLR
-# moves nothing the trace records.
+# Run it in `nix develop .#ct-qemu`, which builds the plugin; the aarch64
+# check runs on an aarch64 host, in `nix develop .#ct-qemu-aarch64`. qemu
+# runs with address randomization off, so ASLR moves nothing the trace
+# records.
 
-import collections, json, os, struct, subprocess, sys, tempfile
+import collections, json, os, platform, struct, subprocess, sys, tempfile
 
 SEEDS = ["0123456789abcdef", "fedcba9876543210"]
-TARGET = "armv7-unknown-linux-gnueabihf"
-# The plugin's records: a kind, a size, padding, and a 32-bit address.
-RECORD = struct.Struct("<cBxxI")
+QEMU = {"armv7-unknown-linux-gnueabihf": "qemu-arm", "aarch64-unknown-linux-gnu": "qemu-aarch64"}
+# The plugin's records: a kind, a size, padding, and a 64-bit address.
+RECORD = struct.Struct("<cBxxQ")
 # Records compared at a time.
 CHUNK = 1 << 16
 
 
-def build():
+def qemu(target):
+    """qemu-user for `target`'s `max` CPU, without address randomization."""
+    return ["setarch", platform.machine(), "-R", QEMU[target], "-cpu", "max"]
+
+
+def build(target):
     out = subprocess.run(
         ["cargo", "test", "-p", "rind", "--lib", "--release", "--no-run"]
-        + ["--target", TARGET, "--message-format=json-render-diagnostics"],
+        + ["--target", target, "--message-format=json-render-diagnostics"],
         stdout=subprocess.PIPE,
         check=True,
         encoding="utf-8",
@@ -46,9 +55,9 @@ def build():
     sys.exit("ct-qemu: no rind test binary")
 
 
-def tests(exe, filter):
+def tests(target, exe, filter):
     out = subprocess.run(
-        ["qemu-arm", "-cpu", "max", exe, "--list", "--ignored", "--format", "terse"],
+        qemu(target) + [exe, "--list", "--ignored", "--format", "terse"],
         stdout=subprocess.PIPE,
         check=True,
         encoding="utf-8",
@@ -65,10 +74,10 @@ def is_planted(name):
 
 def describe(record):
     kind, size, addr = RECORD.unpack_from(record)
-    return "{} {} {:#010x}".format(kind.decode(), size, addr)
+    return "{} {} {:#014x}".format(kind.decode(), size, addr)
 
 
-def compare(exe, name, tmp, plugin):
+def compare(target, exe, name, tmp, plugin):
     """Traces `name` once for each seed, and returns where the traces differ,
     with the records before it, or None, and how many records they agreed
     on."""
@@ -78,7 +87,7 @@ def compare(exe, name, tmp, plugin):
         # A pipe rather than a named one, so that if qemu fails, the trace
         # ends rather than waits for qemu to open it.
         r, w = os.pipe()
-        cmd = ["qemu-arm", "-cpu", "max"]
+        cmd = qemu(target)
         cmd += ["-plugin", "{},out=/dev/fd/{}".format(plugin, w), exe]
         cmd += ["--ignored", "--exact", name, "--test-threads=1", "-q"]
         # The seeds have the same length, so the environment, and so
@@ -128,16 +137,23 @@ def main():
     plugin = os.environ.get("RIND_CT_QEMU_PLUGIN")
     if not plugin:
         sys.exit("ct-qemu: run it in `nix develop .#ct-qemu`")
-    filter = sys.argv[1] if len(sys.argv) > 1 else ""
-    exe = build()
-    names = tests(exe, filter)
+    args = sys.argv[1:]
+    target = "armv7-unknown-linux-gnueabihf"
+    if args[:1] == ["--target"]:
+        target = args[1]
+        args = args[2:]
+    if target not in QEMU or len(args) > 1:
+        sys.exit("usage: admin/ct-qemu [--target {}] [filter]".format("|".join(QEMU)))
+    filter = args[0] if args else ""
+    exe = build(target)
+    names = tests(target, exe, filter)
     if all(is_planted(n) for n in names):
         sys.exit("ct-qemu: no ct_qemu test matches {!r}".format(filter))
 
     failed = False
     for name in names:
         with tempfile.TemporaryDirectory() as tmp:
-            diff, records = compare(exe, name, tmp, plugin)
+            diff, records = compare(target, exe, name, tmp, plugin)
         planted = is_planted(name)
         if records == 0:
             print("FAIL {}: traced nothing".format(name))

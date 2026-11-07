@@ -257,12 +257,14 @@ fn cipher<const ENC: bool>(
     let mut counter = *initial_counter;
     inc32(&mut counter);
 
-    // s2n-bignum's stitched kernels take AES-128 and AES-256 keys.
-    let (AesKey::Hw(hw_key @ (HwKey::Aes128(_) | HwKey::Aes256(_))), GhashTable::Pmull(table)) =
-        (key, ghash.table)
-    else {
+    // s2n-bignum's stitched kernels take AES-128 and AES-256 keys, and
+    // aws-lc's AES-192 one needs SHA3.
+    let (AesKey::Hw(hw_key), GhashTable::Pmull(table)) = (key, ghash.table) else {
         return composed::<ENC>(key, ghash, &counter, cipher_inout);
     };
+    if let (HwKey::Aes192(_), None) = (hw_key, table.eight_way) {
+        return composed::<ENC>(key, ghash, &counter, cipher_inout);
+    }
 
     let (blocks, remainder) = cipher_inout.as_chunks_mut::<16>();
 
@@ -271,14 +273,14 @@ fn cipher<const ENC: bool>(
         let htable = &table.htable;
         let [htable4 @ .., _, _, _, _, _, _] = htable;
         let (inout, len) = (blocks.as_mut_ptr(), blocks.len());
-        // SAFETY: only a `HaveCryptoExt` token builds `AesKey128` and
-        // `AesKey256`, proving the `aes` cpu feature, `eight_way` proves
-        // `sha3`, and `inout` is valid for reads and writes of `len`
-        // blocks. The kernels' proofs assume the input and output do not
-        // overlap, but every path through them loads each input block before
-        // storing its output block and never reads an output back, so in
-        // place they compute the same, as `admin/parse-asm/inplace.py`
-        // checks.
+        // SAFETY: only a `HaveCryptoExt` token builds a `HwKey`, proving the
+        // `aes` cpu feature, `eight_way` proves `sha3`, and `inout` is valid
+        // for reads and writes of `len` blocks. s2n-bignum's kernels' proofs
+        // assume the input and output do not overlap, but every path through
+        // them loads each input block before storing its output block and
+        // never reads an output back, so in place they compute the same, as
+        // `admin/parse-asm/inplace.py` checks. aws-lc runs its AES-192
+        // routines in place too.
         unsafe {
             match (hw_key, ENC, table.eight_way) {
                 (HwKey::Aes128(k), true, None) => {
@@ -305,7 +307,15 @@ fn cipher<const ENC: bool>(
                 (HwKey::Aes256(k), false, Some(_)) => {
                     aes256_gcm_dec_alt(inout, len, &mut tag, &mut counter, k.round_keys(), htable)
                 }
-                (HwKey::Aes192(_), ..) => unreachable!("composed above"),
+                (HwKey::Aes192(k), true, Some(_)) => {
+                    let (key, ivec, xi) = (k.round_keys(), &mut counter, &mut tag);
+                    aesv8_gcm_8x_enc_192(inout, len * 128, inout, xi, ivec, key, htable);
+                }
+                (HwKey::Aes192(k), false, Some(_)) => {
+                    let (key, ivec, xi) = (k.round_keys(), &mut counter, &mut tag);
+                    aesv8_gcm_8x_dec_192(inout, len * 128, inout, xi, ivec, key, htable);
+                }
+                (HwKey::Aes192(_), _, None) => unreachable!("composed above"),
             }
         }
 
@@ -326,6 +336,47 @@ fn cipher<const ENC: bool>(
         }
     }
 }
+
+/// Defines a naked function running aws-lc's stitched AES-192-GCM, imported
+/// by `admin/import-aws-lc`: from the counter block `ivec`, it encrypts or
+/// decrypts the `bits / 8` bytes at `input` into `output`, hashes the
+/// ciphertext into `xi`, the running GHASH in `Ghash::state`'s byte order,
+/// and advances `ivec` past them. `bits` is a whole number of blocks.
+///
+/// The aws-lc assembly is not formally verified: its correctness rests on
+/// its use and testing in OpenSSL and aws-lc, and on rind's tests of it
+/// against vpaes and NEON GHASH, Wycheproof, and aws-lc-rs.
+macro_rules! gcm_8x {
+    ($name:ident) => {
+        #[unsafe(naked)]
+        unsafe extern "C" fn $name(
+            input: *const [u8; 16],
+            bits: usize,
+            output: *mut [u8; 16],
+            xi: &mut [u8; 16],
+            ivec: &mut [u8; 16],
+            round_keys: &[uint8x16_t; 13],
+            htable: &[uint64x2_t; 12],
+        ) -> usize {
+            // A naked function can't enable a target feature, so the
+            // assembler is told of `aes` here. The extension stays on for
+            // the assembly after it, which it only lets assemble more.
+            #[cfg(not(target_vendor = "apple"))]
+            core::arch::naked_asm!(
+                ".arch_extension aes",
+                include_str!(concat!("aws_lc/", stringify!($name), ".linux.s"))
+            );
+            #[cfg(target_vendor = "apple")]
+            core::arch::naked_asm!(
+                ".arch_extension aes",
+                include_str!(concat!("aws_lc/", stringify!($name), ".apple.s"))
+            );
+        }
+    };
+}
+
+gcm_8x!(aesv8_gcm_8x_enc_192);
+gcm_8x!(aesv8_gcm_8x_dec_192);
 
 /// AES-CTR and GHASH in separate passes over each eight blocks, for keys
 /// without the stitched kernels, as aws-lc composes vpaes and NEON GHASH.
@@ -382,7 +433,8 @@ mod tests {
     // kernels and the one-pass short path are checked against vpaes and NEON
     // GHASH here, under a key `admin/ctgrind` keeps secret: each key size,
     // and AAD and message lengths around the block, eight-block, and short
-    // path's boundaries, both ways, with a tag wrong in either half.
+    // path's boundaries, with AAD long enough that the kernels take a single
+    // block, both ways, with a tag wrong in either half.
     #[test]
     fn kernels_match_composed() {
         let Some(token) = HaveCryptoExt::check() else {
@@ -402,7 +454,7 @@ mod tests {
             let pmull = GhashTable::Pmull(PmullTable::new(u128::from_be_bytes(h), token));
             let neon = GhashTable::Neon(NeonTable::new(&h));
 
-            for aad_len in [0, 1, 13, 16, 17, 32, 33, 112] {
+            for aad_len in [0, 1, 13, 16, 17, 32, 33, 112, 400] {
                 for msg_len in [
                     0, 1, 3, 15, 16, 17, 35, 64, 80, 81, 95, 96, 97, 112, 113, 127, 128, 129, 224,
                     225, 240, 255, 256, 480, 481, 496, 1000,
@@ -434,6 +486,54 @@ mod tests {
                         assert!(!ct::into_public(valid), "{what}, byte {byte}");
                     }
                 }
+            }
+        }
+    }
+
+    // Valgrind hides SHA3, so `admin/ctgrind` never reaches the eight-way
+    // kernels; `admin/ct-qemu` traces them here instead, under qemu-aarch64's
+    // `max` CPU: key and GHASH table setup, then each key size both ways with
+    // a secret key, nonce or IV, AAD, and message, at lengths that take the
+    // one-pass short path, and the kernels' eight-block loop with tails of
+    // seven blocks and a partial one, five blocks, and eight.
+    #[test]
+    #[ignore = "admin/ct-qemu runs it under qemu"]
+    fn ct_qemu_aes_gcm() {
+        use crate::low::aarch64::ct_qemu;
+
+        let seed = ct_qemu::seed().to_le_bytes();
+        let bytes = |n| seed.iter().cycle().take(n).copied().collect::<Vec<u8>>();
+        let token = HaveCryptoExt::check().expect("the crypto extension");
+        for key_len in [16, 24, 32] {
+            let key = bytes(key_len);
+            let (key, table) = ct_qemu::traced(|| {
+                let key = AesKey::new(&key);
+                let h = key.encrypt_block(&[0; 16]);
+                (key, PmullTable::new(u128::from_be_bytes(h), token))
+            });
+            assert!(matches!(key, AesKey::Hw(_)), "the crypto extension");
+            assert!(table.eight_way.is_some(), "SHA3");
+            let table = GhashTable::Pmull(table);
+
+            let nonce = bytes(12).try_into().unwrap();
+            let iv = bytes(17);
+            for (aad_len, msg_len) in [
+                (13, 100),
+                (300, 128 * 3 + 16 * 7 + 5),
+                (0, 128 * 2 + 16 * 5),
+                (13, 1024),
+            ] {
+                let aad = bytes(aad_len);
+                let mut msg = bytes(msg_len);
+                let tag = ct_qemu::traced(|| seal(&key, &table, &nonce, &aad, &mut msg));
+                ct_qemu::traced(|| open(&key, &table, &nonce, &aad, &mut msg, &tag));
+
+                // An IV other than 96 bits, which hashes to a secret counter
+                // block.
+                ct_qemu::traced(|| {
+                    let y0 = initial_counter(&table, &iv);
+                    tagged_from::<true>(&key, &table, y0, &aad, &mut msg)
+                });
             }
         }
     }

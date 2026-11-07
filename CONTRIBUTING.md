@@ -47,7 +47,9 @@ constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
 valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
-qemu.
+qemu; on an aarch64 host, `nix develop .#ct-qemu-aarch64 --command
+admin/ct-qemu --target aarch64-unknown-linux-gnu` those of the aarch64 code
+that runs only with SHA3.
 `nix develop .#prove --command admin/prove` translates the Rust under proof to
 Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
 
