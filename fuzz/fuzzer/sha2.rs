@@ -68,6 +68,27 @@ fuzz_target!(|op: Operation| {
             let right = right.finish();
             assert_eq!(left.as_ref(), right.as_ref());
         }
+        Operation::Sha512_256(steps) => {
+            let mut left = digest::Context::new(&digest::SHA512_256);
+            let mut right = rind::digest::Context::new(&rind::digest::SHA512_256);
+
+            for s in steps {
+                match s {
+                    Step::Clone => {
+                        left = left.clone();
+                        right = right.clone();
+                    }
+                    Step::Input(d) => {
+                        left.update(&d);
+                        right.update(&d);
+                    }
+                }
+            }
+
+            let left = left.finish();
+            let right = right.finish();
+            assert_eq!(left.as_ref(), right.as_ref());
+        }
         Operation::HmacSha256 { key, steps } => {
             let mut left = hmac::Context::with_key(&hmac::Key::new(hmac::HMAC_SHA256, &key));
             let mut right = rind::hmac::Context::with_key(&rind::hmac::Key::new(
@@ -151,6 +172,7 @@ enum Operation {
     HmacSha256 { key: Vec<u8>, steps: Vec<Step> },
     HmacSha384 { key: Vec<u8>, steps: Vec<Step> },
     HmacSha512 { key: Vec<u8>, steps: Vec<Step> },
+    Sha512_256(Vec<Step>),
 }
 
 #[derive(Arbitrary, Debug)]

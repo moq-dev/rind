@@ -34,6 +34,19 @@ fuzz_target!(|input: (Operation, edit::Edit)| {
             aad,
             plain,
         ),
+        Operation::Aes192Gcm {
+            key,
+            nonce,
+            aad,
+            plain,
+        } => (
+            &rind::aead::AES_192_GCM,
+            &aws_lc_rs::aead::AES_192_GCM,
+            &key[..],
+            nonce,
+            aad,
+            plain,
+        ),
         Operation::Aes256Gcm {
             key,
             nonce,
@@ -140,6 +153,12 @@ enum Operation {
     },
     Aes256Gcm {
         key: [u8; 32],
+        nonce: [u8; 12],
+        aad: Vec<u8>,
+        plain: Vec<u8>,
+    },
+    Aes192Gcm {
+        key: [u8; 24],
         nonce: [u8; 12],
         aad: Vec<u8>,
         plain: Vec<u8>,

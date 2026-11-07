@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+
+# Usage: admin/testing
+#
+# Checks TESTING.md's primitives table against the code, and fails on each
+# difference:
+# - every item rind exports is named in the table's Exports column, or in the
+#   list of exports that are not primitives, and every name there is exported;
+# - every fuzz target, every differential test in `rind/tests/crosschecks.rs`,
+#   every `ct_sde_...` and `ct_qemu_...` test, and every Wycheproof and CAVP
+#   file the tests load is named in the table;
+# - every function, fuzz target, and vector file the table names exists.
+#
+# A backticked name in the table's other columns is one of:
+# - `fuzz::NAME`, a fuzz target;
+# - `crosschecks::[MOD::]FN`, a test in `rind/tests/crosschecks.rs`;
+# - `a::b::FN`, a function in `rind/src/a/b.rs` (or `a/b/mod.rs`);
+# - `STEM_test`, a Wycheproof file, where `*` matches any run of characters;
+# - `cavp/DIR` or `cavp-sha1`, a CAVP directory.
+
+import fnmatch, pathlib, re, sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SRC = ROOT / "rind/src"
+PAGE = ROOT / "TESTING.md"
+COLUMNS = ["Primitive", "Exports", "Vectors", "Fuzz target", "Differential test", "Constant time"]
+NOT_PRIMITIVES = "Exports that are not primitives:"
+
+errors = []
+
+
+def strip_comments(text):
+    return re.sub(r"//[^\n]*", "", text)
+
+
+def exports(path, prefix):
+    """The public paths of the items `path` exports, following `pub mod`."""
+    text = strip_comments(path.read_text())
+    token = re.compile(
+        r"pub mod (\w+)\s*\{|pub mod (\w+)\s*;|pub use ([^;]+);"
+        r"|pub (?:static|struct|fn|enum|const|trait|type) (\w+)|(\{)|(\})"
+    )
+    found, mods, depth = [], [], 0
+    for m in token.finditer(text):
+        here = prefix + [name for name, _ in mods]
+        inline, child, use, item, opened, closed = m.groups()
+        if inline:
+            depth += 1
+            mods.append((inline, depth))
+        elif child:
+            directory = SRC if path.name == "lib.rs" else path.parent / path.stem
+            found += exports(directory / f"{child}.rs", here + [child])
+        elif use:
+            use = " ".join(use.split())
+            names = use.split("{", 1)[1].rstrip("} ").split(",") if "{" in use else [use]
+            for name in names:
+                name = name.strip().split(" as ")[-1].split("::")[-1]
+                if name and name != "self":
+                    found.append("::".join(here + [name]))
+        elif item:
+            # Only items at a module's own level: not an impl's methods.
+            if depth == len(mods):
+                found.append("::".join(here + [item]))
+        elif opened:
+            depth += 1
+        elif closed:
+            if mods and mods[-1][1] == depth:
+                mods.pop()
+            depth -= 1
+    return found
+
+
+def expand(token):
+    """`a::{B, C}` as `a::B` and `a::C`."""
+    if "{" not in token:
+        return [token]
+    head, rest = token.split("{", 1)
+    return [head + name.strip() for name in rest.rstrip("}").split(",") if name.strip()]
+
+
+def table():
+    """The primitives table's rows, as dicts by column, and the exports the
+    page lists as not primitives."""
+    lines = PAGE.read_text().splitlines()
+    header = "| " + " | ".join(COLUMNS) + " |"
+    if header not in lines:
+        sys.exit(f"admin/testing: TESTING.md has no table headed: {header}")
+    rows = []
+    for line in lines[lines.index(header) + 2 :]:
+        if not line.startswith("|"):
+            break
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != len(COLUMNS):
+            errors.append(f"row has {len(cells)} cells, not {len(COLUMNS)}: {line[:60]}")
+            continue
+        rows.append(dict(zip(COLUMNS, cells)))
+    others = [line for line in lines if line.startswith(NOT_PRIMITIVES)]
+    if len(others) != 1:
+        sys.exit(f"admin/testing: TESTING.md needs one line starting {NOT_PRIMITIVES!r}")
+    return rows, re.findall(r"`([^`]+)`", others[0])
+
+
+def functions(path):
+    return set(re.findall(r"\bfn ([a-z0-9_]+)", path.read_text()))
+
+
+def tests(path):
+    """The names of the `#[test]` functions in `path`."""
+    return set(re.findall(r"#\[test\]\s*(?:#\[[^\]]*\]\s*)*fn ([a-z0-9_]+)", path.read_text()))
+
+
+def source_file(segments):
+    for candidate in [SRC.joinpath(*segments).with_suffix(".rs"), SRC.joinpath(*segments, "mod.rs")]:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+rows, not_primitives = table()
+
+exported = set(exports(SRC / "lib.rs", []))
+named = {name for row in rows for token in re.findall(r"`([^`]+)`", row["Exports"]) for name in expand(token)}
+named |= set(not_primitives)
+for name in sorted(exported - named):
+    errors.append(f"export `{name}` has no row")
+for name in sorted(named - exported):
+    errors.append(f"`{name}` is not exported")
+
+fuzz_targets = set(re.findall(r'^name = "([a-z0-9_]+)"', (ROOT / "fuzz/Cargo.toml").read_text(), re.M))
+fuzz_targets.discard("rind-fuzz")
+crosschecks_path = ROOT / "rind/tests/crosschecks.rs"
+crosschecks = crosschecks_path.read_text()
+
+# What the code loads, read from string literals across the tests.
+code = "\n".join(p.read_text() for d in ["rind/src", "rind/tests"] for p in (ROOT / d).rglob("*.rs"))
+wycheproof = set(re.findall(r'"([a-z0-9_]+_test)\.json"', code))
+cavp = set(re.findall(r"\b(cavp-sha1|cavp/[a-z0-9]+)/", code))
+ct_tests = {
+    name
+    for p in SRC.rglob("*.rs")
+    for name in tests(p)
+    if re.match(r"ct_(sde|qemu)_", name) and "_planted_" not in name
+}
+
+seen = {"fuzz": set(), "crosschecks": set(), "wycheproof": set(), "cavp": set(), "ct": set()}
+for row in rows:
+    for column in COLUMNS[2:]:
+        for token in re.findall(r"`([^`]+)`", row[column]):
+            where = f"{row['Primitive']}, {column}: `{token}`"
+            segments = token.split("::")
+            if segments[0] == "fuzz" and len(segments) == 2:
+                if segments[1] not in fuzz_targets:
+                    errors.append(f"{where} is no fuzz target")
+                seen["fuzz"].add(segments[1])
+            elif segments[0] == "crosschecks" and len(segments) >= 2:
+                for module in segments[1:-1]:
+                    if not re.search(rf"\bmod {module}\b", crosschecks):
+                        errors.append(f"{where}: no `mod {module}` in {crosschecks_path.name}")
+                if segments[-1] not in tests(crosschecks_path):
+                    errors.append(f"{where}: no such test in {crosschecks_path.name}")
+                seen["crosschecks"].add(segments[-1])
+            elif len(segments) >= 2 and all(re.fullmatch(r"[a-z0-9_]+", s) for s in segments):
+                path = source_file(segments[:-1])
+                if path is None or segments[-1] not in functions(path):
+                    errors.append(f"{where}: no such function under rind/src")
+                seen["ct"].add(segments[-1])
+            elif token.endswith("_test"):
+                matches = fnmatch.filter(wycheproof, token)
+                if not matches:
+                    errors.append(f"{where} matches no Wycheproof file the tests load")
+                seen["wycheproof"].update(matches)
+            elif token in cavp:
+                seen["cavp"].add(token)
+            else:
+                errors.append(f"{where} is not a name admin/testing knows")
+
+for kind, names in [
+    ("fuzz target", fuzz_targets - seen["fuzz"]),
+    ("differential test", tests(crosschecks_path) - seen["crosschecks"]),
+    ("constant-time test", ct_tests - seen["ct"]),
+    ("Wycheproof file", wycheproof - seen["wycheproof"]),
+    ("CAVP directory", cavp - seen["cavp"]),
+]:
+    for name in sorted(names):
+        errors.append(f"{kind} `{name}` is in no row")
+
+for error in errors:
+    print(f"admin/testing: TESTING.md: {error}", file=sys.stderr)
+sys.exit(1 if errors else 0)

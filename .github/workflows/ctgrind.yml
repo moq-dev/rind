@@ -37,7 +37,10 @@ jobs:
   # check s2n-bignum's ADX routines, so this job denies it to check what
   # CPUs without ADX run: their `_alt` twins, and aws-lc's Montgomery
   # multiplication for RSA. The `no-adx` row keeps AVX2, as Haswell does, for
-  # aws-lc's RSAZ exponentiation of RSA-2048. The `no-avx` row denies AVX and
+  # aws-lc's RSAZ exponentiation of RSA-2048. The `no-avx2` row denies AVX2
+  # and MOVBE, for what Sandy Bridge runs short of Intel's AVX SHA: the
+  # `no-avx` row's code, but rind's AES-GCM and GHASH intrinsics VEX-encoded.
+  # The `no-avx` row denies AVX and
   # the vendor too, for what CPUs such as Westmere run: aws-lc's SSE4.1
   # ChaCha20-Poly1305 and SSSE3 ChaCha20, SHA-1, and SHA-256, the portable
   # ML-KEM arithmetic, the SSE2 selects, rind's AES-GCM and GHASH intrinsics
@@ -57,6 +60,8 @@ jobs:
         include:
           - cpu: no-adx
             deny: RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX2=1 RIND_TEST_X86_VAES_AES_GCM=0 RIND_TEST_X86_AVX_MOVBE_AES_GCM=1
+          - cpu: no-avx2
+            deny: RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_movbe=1 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AVX=1 RIND_TEST_X86_AVX_MOVBE_AES_GCM=0 RIND_TEST_X86_AES_HARDWARE=1 RIND_TEST_X86_SSE41=1
           - cpu: no-avx
             deny: RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_intel=1 RIND_CPU_DISABLE_sha=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=1 RIND_TEST_X86_SSE41=1
           - cpu: no-aes

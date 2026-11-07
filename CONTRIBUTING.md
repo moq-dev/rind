@@ -2,8 +2,9 @@
 
 [ARCHITECTURE.md](ARCHITECTURE.md) covers the API and the layering,
 [PLATFORMS.md](PLATFORMS.md) the CPU requirements,
-[ALGORITHMS.md](ALGORITHMS.md) whose code runs on each path, and
-[Building and testing](#building-and-testing) the tests.
+[ALGORITHMS.md](ALGORITHMS.md) whose code runs on each path,
+[Building and testing](#building-and-testing) the tests, and
+[TESTING.md](TESTING.md) what checks each primitive on each CPU tier.
 Agents should also read [AGENTS.md](AGENTS.md) and the instructions nested
 under the files they change.
 

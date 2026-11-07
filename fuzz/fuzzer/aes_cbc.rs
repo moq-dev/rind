@@ -5,7 +5,7 @@ use aws_lc_rs::cipher::{
     UnboundCipherKey,
 };
 use libfuzzer_sys::{arbitrary, arbitrary::Arbitrary, fuzz_target};
-use rind::cipher::{AES_128, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey};
+use rind::cipher::{AES_128, AES_192, AES_256, AesCbcDecryptingKey, AesCbcEncryptingKey};
 
 mod edit;
 
@@ -14,6 +14,7 @@ fuzz_target!(|input: (Operation, [u8; 16], Vec<u8>, edit::Edit)| {
     let (ours, theirs, key) = match &op {
         Operation::Aes128 { key } => (&AES_128, &aws_lc_rs::cipher::AES_128, &key[..]),
         Operation::Aes256 { key } => (&AES_256, &aws_lc_rs::cipher::AES_256, &key[..]),
+        Operation::Aes192 { key } => (&AES_192, &aws_lc_rs::cipher::AES_192, &key[..]),
     };
     let theirs = || UnboundCipherKey::new(theirs, key).unwrap();
 
@@ -49,4 +50,5 @@ fuzz_target!(|input: (Operation, [u8; 16], Vec<u8>, edit::Edit)| {
 enum Operation {
     Aes128 { key: [u8; 16] },
     Aes256 { key: [u8; 32] },
+    Aes192 { key: [u8; 24] },
 }
