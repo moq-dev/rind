@@ -60,6 +60,9 @@ declare -A scope=(
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # rind's aarch64 and armv7 backends, which the host's own build skips.
     [cross]='^(rind/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$)'
+    # Variable-time instructions in rind's release builds, which a change to
+    # its code, dependencies, toolchain, or the scan itself can bring.
+    [vartime]='^(rind/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
     [inplace]='^(rind/src/low/|admin/parse-asm/)'
@@ -95,6 +98,7 @@ declare -A tools=(
     [license]='find grep'
     [msrv]='nix cargo jq'
     [cross]='cargo'
+    [vartime]='nix'
     [inplace]='python3'
     [compat]='python3'
     [bench]='python3'
@@ -111,7 +115,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch quest gh hooks shell nix) ;;
+    check) modules=(rs msrv cross vartime deny versions license inplace compat bench fixtures patch quest gh hooks shell nix) ;;
     fix) modules=(rs compat patch nix) ;;
 esac
 
@@ -206,6 +210,7 @@ for module in "${selected[@]}"; do
                 cargo clippy -p rind --lib --locked --target "$target" -- --deny warnings
             done
             ;;
+        check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;
         check:quest) quest check ;;

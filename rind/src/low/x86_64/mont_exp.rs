@@ -109,8 +109,10 @@ fn mont_exp_by(
     // instead.
     if k.is_multiple_of(8) && (adx.is_none() || !matches!(k, 16 | 32)) {
         let mut table = vec![Row([0; 32]); k];
-        for (i, power) in powers.chunks_exact(w).enumerate() {
-            for (row, &word) in table.iter_mut().zip(power) {
+        // Indexed rather than `chunks_exact`, which divides by `w`, and
+        // `admin/ct-vartime` refuses a division here.
+        for i in 0..32 {
+            for (row, &word) in table.iter_mut().zip(&powers[i * w..]) {
                 row.0[i] = word;
             }
         }

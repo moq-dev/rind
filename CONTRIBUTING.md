@@ -47,7 +47,11 @@ constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
 valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
-qemu.
+qemu. None of them can see an instruction whose timing depends on its
+operands, so `admin/ct-vartime`, which `just check` runs when rind changes,
+scans its release builds for x86_64, aarch64, and armv7 for divisions and
+floating-point arithmetic, and fails on one that `admin/ct-vartime.toml` does
+not list as taking only public operands.
 `nix develop .#prove --command admin/prove` translates the Rust under proof to
 Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
 

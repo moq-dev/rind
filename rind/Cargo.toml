@@ -50,6 +50,8 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   "cfg(coverage_nightly)",
   # Lets an optimised build honour `RIND_CPU_DISABLE_*`, for benches and ctgrind.
   "cfg(rind_cpu_disable)",
+  # Plants the variable-time operations `admin/ct-vartime` must find.
+  "cfg(rind_vartime_planted)",
   # curve25519-dalek's backend overrides, which armv7 refuses.
   'cfg(curve25519_dalek_bits, values("32", "64"))',
   'cfg(curve25519_dalek_backend, values("fiat", "serial", "simd", "avx512"))',

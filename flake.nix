@@ -313,6 +313,22 @@
 
               shellHook = pkgs.lib.optionalString (system == "x86_64-linux") sde-certs;
             };
+
+            # `just check` runs `admin/ct-vartime` in it: llvm-objdump, and the
+            # standard library of each target it builds rind's rlib for.
+            ct-vartime = pkgs.mkShell {
+              packages = [
+                (rust-stable.minimal.override {
+                  extensions = [ "llvm-tools" ];
+                  targets = [
+                    "x86_64-unknown-linux-gnu"
+                    "aarch64-unknown-linux-gnu"
+                    "armv7-unknown-linux-gnueabihf"
+                  ];
+                })
+                pkgs.python3
+              ];
+            };
           }
           # Linux only, since valgrind and qemu-user need a Linux host.
           // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {

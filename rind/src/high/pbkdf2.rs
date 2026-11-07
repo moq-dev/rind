@@ -94,10 +94,12 @@ impl Secret {
         }
     }
 
-    // RFC 8018 numbers blocks with a 32-bit counter starting at 1.
+    // RFC 8018 numbers blocks with a 32-bit counter starting at 1. This and
+    // `blocks` multiply rather than divide, which `admin/ct-vartime` refuses
+    // on a secret path even for a length.
     fn check_len(&self, len: usize) -> Result<(), Error> {
-        let blocks = len.div_ceil(self.0.algorithm().tag_len());
-        match blocks == 0 || blocks > u32::MAX as usize {
+        let max = (u32::MAX as usize).checked_mul(self.0.algorithm().tag_len());
+        match len == 0 || max.is_some_and(|max| len > max) {
             true => Err(Error::WrongLength),
             false => Ok(()),
         }
@@ -116,7 +118,10 @@ impl Secret {
         salted.update(salt);
 
         let hash_len = self.0.algorithm().tag_len();
-        for (index, offset) in (1..=u32::MAX).zip((0..len).step_by(hash_len)) {
+        let offsets =
+            core::iter::successors(Some(0), |offset: &usize| offset.checked_add(hash_len))
+                .take_while(|&offset| offset < len);
+        for (index, offset) in (1..=u32::MAX).zip(offsets) {
             let mut ctx = salted.clone();
             ctx.update(&index.to_be_bytes());
             let mut u = ctx.finish();

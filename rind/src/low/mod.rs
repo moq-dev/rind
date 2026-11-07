@@ -7,6 +7,9 @@ mod macros;
 
 pub(crate) mod ct;
 
+#[cfg(rind_vartime_planted)]
+mod vartime_planted;
+
 #[cfg(doc)]
 pub mod inline_assembly_safety;
 

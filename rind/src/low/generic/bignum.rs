@@ -112,7 +112,10 @@ pub(crate) fn bignum_copy_row_from_table(
     let width = width as usize;
     let z = &mut z[..width];
     z.fill(0);
-    for (row, entry) in table.chunks_exact(width).take(height as usize).enumerate() {
+    // Indexed rather than `chunks_exact`, which divides by `width`, and
+    // `admin/ct-vartime` refuses a division here.
+    for row in 0..height as usize {
+        let entry = &table[row * width..][..width];
         let keep = mask(nonzero(row as u64 ^ index) ^ 1);
         for (z, e) in z.iter_mut().zip(entry) {
             *z |= e & keep;

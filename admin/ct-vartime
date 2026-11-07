@@ -1,0 +1,357 @@
+#!/usr/bin/env python3
+
+# Usage: admin/ct-vartime [target...]
+#
+# The constant-time check for instructions whose timing depends on their
+# operands, which ctgrind, `admin/ct-sde`, and `admin/ct-qemu` cannot see.
+# It builds rind's release rlib for each target, x86_64, aarch64, and armv7
+# Linux, or those of them named, and disassembles it with every crate it
+# links, the standard library and compiler-builtins included. Starting from
+# every function named for rind, it follows each relocation, so calls, tail
+# calls, and the function pointers in vtables, through to code the compiler
+# generated. It fails if a function it reaches holds an instruction in
+# VARTIME or calls a routine in HELPERS, unless `admin/ct-vartime.toml`
+# lists that function with why its operands are public, or if an entry there
+# matches nothing.
+#
+# All of rind counts as a secret path, so no entry point needs marking, and
+# a function the list names is checked whole. It stops at the panic routines
+# in PANICS, which run only once a check has failed. It cannot see code that
+# only rind's callers compile, such as a generic function at a type rind
+# never instantiates itself, nor the C library's memcpy and memset.
+#
+# The build sets `--cfg rind_vartime_planted`, which adds the divisions of a
+# secret in `rind/src/low/vartime_planted.rs`. Each must be found, so a scan
+# that finds nothing fails.
+#
+# Run it in `nix develop .#ct-vartime`, which has llvm-objdump and each
+# target's standard library.
+
+import bisect, collections, json, os, re, subprocess, sys, tomllib
+
+TARGETS = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "armv7-unknown-linux-gnueabihf",
+]
+
+# Instructions whose latency may depend on their operands: integer division,
+# and floating-point arithmetic, whose subnormal operands take a slow path.
+# Each is absent from its vendor's list of data-independent-time
+# instructions:
+# - Intel, "Data Operand Independent Timing Instructions", updated
+#   2026-02-23, https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/resources/data-operand-independent-timing-instructions.html
+#   lists no DIV, IDIV, or floating-point arithmetic.
+# - Arm, DDI 0601 2026-09, "DIT, Data Independent Timing",
+#   https://developer.arm.com/documentation/ddi0601/2026-09/AArch64-Registers/DIT--Data-Independent-Timing
+#   lists no UDIV, SDIV, or floating-point instruction but FCSEL. For
+#   AArch32, DDI 0597 2026-09 marks no UDIV, SDIV, or VFP arithmetic
+#   instruction data-independent-time.
+# - BearSSL, "Constant-Time Implementations",
+#   https://www.bearssl.org/constanttime.html: division "will trigger a
+#   faster code path when the divisor and/or the dividend is small", as may
+#   the compiler's routine where there is no divide instruction.
+# BearSSL's https://www.bearssl.org/ctmul.html finds multiplication
+# constant-time on x86_64 and Cortex-A, and Intel's and Arm's lists hold
+# their multiplies, so none is listed. Nor are shifts by a variable count,
+# which both lists hold too; BearSSL notes they are slow on the Pentium 4,
+# which has no barrel shifter, and the scan leaves that core out.
+# x86 floating-point moves, shuffles, and bitwise operations take no slow
+# path and are not listed; aarch64's and armv7's are told apart by name.
+VARTIME = {
+    "x86_64": re.compile(
+        r"i?div"
+        r"|v?(add|sub|mul|div|sqrt|min|max|hadd|hsub|addsub|dp|rcp|rsqrt|round)[sp][sdh]"
+        r"|vfn?m(add|sub|addsub|subadd)\d*[sp][sdh]|v(rcp|rsqrt)(14|28)[sp][sdh]"
+        r"|v(scalef|getexp|getmant|reduce|rndscale|range|fixupimm)[sp][sdh]|v?cvt\w+"
+        r"|fi?(add|sub|subr|mul|div|divr)p?|fsqrt|fprem1?|fscale|f2xm1|fyl2xp?1"
+    ),
+    # Every A64 floating-point mnemonic begins with `f`; of them, only FCSEL
+    # is data-independent-time, and FMOV moves bits.
+    "aarch64": re.compile(r"[us]divr?|[us]cvtf|f(?!(mov|csel)$)\w+"),
+    # An A32 or T32 instruction may carry a condition, as in `udivne`, and
+    # every floating-point one but a move names a type, as in `vadd.f32` or
+    # `vcvt.s32.f32`.
+    "arm": re.compile(
+        r"[us]div(eq|ne|hs|cs|lo|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)?"
+        r"|v(?!mov)\w+(\.\w+)*\.f(16|32|64)(\.\w+)*"
+    ),
+}
+
+# Mnemonics each VARTIME pattern must refuse, then must allow, checked
+# before every scan.
+SAMPLES = {
+    "x86_64": (
+        "div idiv divsd vsqrtpd haddps addsubps vfmadd231pd vfmaddps vrcp14ps cvtsi2sd fdivp",
+        "mulx adcx vpmuludq vpaddd movaps xorps vpclmulqdq aesenc shrx",
+    ),
+    "aarch64": (
+        "udiv sdiv fdiv fsqrt faddp fmul fmla fcvtzs scvtf",
+        "mul umulh fmov fcsel pmull aese eor3 lslv",
+    ),
+    "arm": (
+        "udiv sdivne vdiv.f64 vsqrt.f32 vmul.f32 vfmane.f64 vcvt.s32.f32 vcvt.f32.u32",
+        "umull umaal vmul.i32 vmull.p64 vmov.f32 vadd.i64 vld1.32 aese.8",
+    ),
+}
+
+# The compiler's division routines, which run in variable time whether or
+# not they use a divide instruction. A call to one is the division, so the
+# scan reports the caller and goes no further.
+HELPERS = re.compile(
+    r"__aeabi_u?[il]?div(mod)?|__aeabi_[fd]div|__u?(div|mod|divmod)[sdt]i[34]|__div[sdt]f3"
+)
+
+# Where a failed check panics or aborts, by name, as the standard library
+# names them. Nothing after one handles a secret.
+PANICS = re.compile(r".*(panic|_fail(ed)?$|handle_alloc_error|capacity_overflow|raw_vec::handle_error)")
+
+# The operations `rind/src/low/vartime_planted.rs` plants, and the targets
+# each must be found on. armv7 has no 128-bit division routine: LLVM expands
+# the division inline as a loop, which branches on its operands and so is
+# ctgrind's to find.
+PLANTED = {
+    "rind::low::vartime_planted::planted_division": TARGETS,
+    "rind::low::vartime_planted::planted_wide_division": TARGETS[:2],
+    "rind::low::vartime_planted::planted_float": TARGETS,
+}
+
+# x86 prefixes, which llvm-objdump prints as their own word.
+PREFIXES = {"lock", "rep", "repe", "repz", "repne", "repnz", "notrack", "bnd", "data16"}
+
+MEMBER = re.compile(r"^(.*)\((.+)\):\s+file format")
+SECTION = re.compile(r"^Disassembly of section (.+):$")
+LABEL = re.compile(r"^([0-9a-f]+) <(.+)>:$")
+INSN = re.compile(r"^\s+([0-9a-f]+):\s+(\S+)\s*(\S*)")
+RELOCS = re.compile(r"^RELOCATION RECORDS FOR \[(.+)\]:$")
+RELOC = re.compile(r"^([0-9a-f]+) \S+\s+(\S+?)(?:[+-]0x[0-9a-f]+)?$")
+SYMBOL = re.compile(r"^[0-9a-f]+ (.{7}) (\S+)\t[0-9a-f]+ (?:\.hidden |\.protected |\.internal )?(.+)$")
+# Unwind tables and debug info, which point at every function, call nothing.
+METADATA = re.compile(r"\.(eh_frame|debug|ARM\.ex|gcc_except_table|note|comment|llvm)")
+LLVM_SUFFIX = re.compile(r" ?\(?\.llvm\.\d+\)?$")
+
+
+def objdump():
+    sysroot = run(["rustc", "--print", "sysroot"]).strip()
+    host = re.search(r"^host: (\S+)$", run(["rustc", "-vV"]), re.M)[1]
+    path = os.path.join(sysroot, "lib", "rustlib", host, "bin", "llvm-objdump")
+    if not os.path.exists(path):
+        sys.exit("ct-vartime: no llvm-objdump; run it in `nix develop .#ct-vartime`")
+    return path
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, stdout=subprocess.PIPE, check=True, encoding="utf-8", **kw).stdout
+
+
+def build(targets):
+    """Each target's rlibs: rind's, then every other crate's it links."""
+    cmd = ["cargo", "build", "-p", "rind", "--lib", "--release"]
+    cmd += ["--target-dir", "target/ct-vartime", "--message-format=json-render-diagnostics"]
+    for target in targets:
+        cmd += ["--target", target]
+    flags = os.environ.get("RUSTFLAGS", "")
+    env = dict(os.environ, RUSTFLAGS=(flags + " --cfg rind_vartime_planted").strip())
+    libs = {target: ([], []) for target in targets}
+    for line in run(cmd, env=env).splitlines():
+        js = json.loads(line)
+        if js.get("reason") != "compiler-artifact":
+            continue
+        for path in js["filenames"]:
+            for target in targets:
+                if path.endswith(".rlib") and "/{}/".format(target) in path:
+                    libs[target][js["target"]["name"] != "rind"].append(path)
+    for target in targets:
+        if len(libs[target][0]) != 1:
+            sys.exit("ct-vartime: no rind rlib for {}".format(target))
+        libdir = run(["rustc", "--print", "target-libdir", "--target", target]).strip()
+        libs[target][1].extend(
+            os.path.join(libdir, f) for f in sorted(os.listdir(libdir)) if f.endswith(".rlib")
+        )
+    return libs
+
+
+class Objects:
+    """The sections of every object file in some archives, with their
+    instructions and relocations, keyed by (member, section)."""
+
+    def __init__(self, tool, arch, archives):
+        args = [tool, *archives]
+        # Archives hold metadata members too, which llvm-objdump warns of.
+        quiet = dict(stderr=subprocess.DEVNULL)
+        symbols = run([*args, "-t"], **quiet).splitlines()
+        demangled = run([*args, "-t", "-C"], **quiet).splitlines()
+        if len(symbols) != len(demangled):
+            sys.exit("ct-vartime: llvm-objdump's symbol tables differ")
+        self.names = {}
+        self.local = {}
+        self.defined = {}
+        member = None
+        for line, dline in zip(symbols, demangled):
+            if m := MEMBER.match(line):
+                member = m[1].rsplit("/", 1)[-1] + "(" + m[2] + ")"
+                continue
+            m, dm = SYMBOL.match(line), SYMBOL.match(dline)
+            if not m or not dm:
+                continue
+            flags, section, name = m.groups()
+            self.names[name] = LLVM_SUFFIX.sub("", dm[3])
+            if section == "*UND*":
+                continue
+            self.local[(member, name)] = section
+            if "g" in flags or "w" in flags:
+                self.defined.setdefault(name, (member, section))
+
+        self.relocs = collections.defaultdict(list)
+        section = None
+        for line in run([*args, "-r"], **quiet).splitlines():
+            if m := MEMBER.match(line):
+                member = m[1].rsplit("/", 1)[-1] + "(" + m[2] + ")"
+            elif m := RELOCS.match(line):
+                section = None if METADATA.match(m[1]) else m[1]
+            elif section and (m := RELOC.match(line)) and m[2] != "*ABS*":
+                self.relocs[(member, section)].append((int(m[1], 16), m[2]))
+
+        # Each section's labels, and its instructions as (offset, mnemonic).
+        self.labels = collections.defaultdict(list)
+        self.insns = collections.defaultdict(list)
+        syntax = ["-M", "intel"] if arch == "x86_64" else []
+        section = None
+        for line in run([*args, "-d", "--no-show-raw-insn", *syntax], **quiet).splitlines():
+            if m := MEMBER.match(line):
+                member = m[1].rsplit("/", 1)[-1] + "(" + m[2] + ")"
+            elif m := SECTION.match(line):
+                section = (member, m[1])
+            elif m := LABEL.match(line):
+                self.labels[section].append((int(m[1], 16), m[2]))
+            elif m := INSN.match(line):
+                mnemonic = m[3] if m[2] in PREFIXES and m[3] else m[2]
+                self.insns[section].append((int(m[1], 16), mnemonic))
+
+    def name(self, name):
+        return self.names.get(name, name)
+
+    def function(self, node, offset):
+        """The function holding `offset` in section `node`."""
+        labels = self.labels.get(node)
+        if not labels:
+            return self.section_name(node)
+        i = bisect.bisect_right(labels, offset, key=lambda label: label[0])
+        return self.name(labels[max(i - 1, 0)][1])
+
+    def section_name(self, node):
+        labels = self.labels.get(node)
+        if labels:
+            return self.name(labels[0][1])
+        return node[1]
+
+    def resolve(self, member, target):
+        """The section a relocation in `member` points into, or None for a
+        symbol defined outside these archives."""
+        if (member, target) in self.local:
+            return (member, self.local[(member, target)])
+        if target.startswith("."):
+            return (member, target)
+        return self.defined.get(target)
+
+
+def scan(objects, roots, arch):
+    """Every finding as {function: Counter(what)}, with a path from a root to
+    each, and how many sections were reached."""
+    vartime = VARTIME[arch]
+    parent = {}
+    queue = collections.deque()
+    for node in objects.insns:
+        if node[0] in roots and any("rind::" in objects.name(l) for _, l in objects.labels[node]):
+            parent[node] = None
+            queue.append(node)
+
+    findings = collections.defaultdict(collections.Counter)
+    paths = {}
+    while queue:
+        node = queue.popleft()
+        for offset, mnemonic in objects.insns.get(node, ()):
+            if vartime.fullmatch(mnemonic):
+                function = objects.function(node, offset)
+                findings[function][mnemonic] += 1
+                paths.setdefault(function, node)
+        for offset, target in objects.relocs.get(node, ()):
+            name = objects.name(target)
+            if HELPERS.fullmatch(name):
+                function = objects.function(node, offset)
+                findings[function]["calls " + name] += 1
+                paths.setdefault(function, node)
+                continue
+            to = objects.resolve(node[0], target)
+            if to is None or to in parent or PANICS.match(objects.section_name(to)):
+                continue
+            parent[to] = node
+            queue.append(to)
+
+    def path(node):
+        names = []
+        while node is not None:
+            names.append(objects.section_name(node))
+            node = parent[node]
+        return names[1:]
+
+    return findings, {f: path(n) for f, n in paths.items()}, len(parent)
+
+
+def describe(counts):
+    return ", ".join(
+        "{} x{}".format(what, n) if n > 1 else what for what, n in sorted(counts.items())
+    )
+
+
+def main():
+    sys.stdout.reconfigure(line_buffering=True)
+    os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    targets = sys.argv[1:] or TARGETS
+    if set(targets) - set(TARGETS):
+        sys.exit("ct-vartime: scans only {}".format(", ".join(TARGETS)))
+    with open("admin/ct-vartime.toml", "rb") as f:
+        public = tomllib.load(f)["public"]
+    for entry in public:
+        if not entry.get("why") or set(entry["targets"]) - set(TARGETS):
+            sys.exit("ct-vartime: bad entry for {}".format(entry["function"]))
+
+    for arch, (refused, allowed) in SAMPLES.items():
+        for mnemonic in refused.split():
+            assert VARTIME[arch].fullmatch(mnemonic), (arch, mnemonic)
+        for mnemonic in allowed.split():
+            assert not VARTIME[arch].fullmatch(mnemonic), (arch, mnemonic)
+
+    tool = objdump()
+    libs = build(targets)
+    failed = False
+    for target in targets:
+        arch = target.split("-")[0].replace("armv7", "arm")
+        rind, others = libs[target]
+        objects = Objects(tool, arch, rind + others)
+        roots = {m for m, _ in objects.insns if m.startswith(os.path.basename(rind[0]) + "(")}
+        findings, paths, reached = scan(objects, roots, arch)
+        print("{}: reached {} sections".format(target, reached))
+
+        listed = {e["function"]: e for e in public if target in e["targets"]}
+        for function, where in PLANTED.items():
+            if target in where and function not in findings:
+                print("FAIL {}: found nothing planted".format(function))
+                failed = True
+        for function, counts in sorted(findings.items()):
+            if function in PLANTED:
+                print("ok   planted {}: {}".format(function, describe(counts)))
+            elif function in listed:
+                print("ok   public {}: {}".format(function, describe(counts)))
+            else:
+                print("FAIL {}: {}".format(function, describe(counts)))
+                for caller in paths[function][:12]:
+                    print("       from " + caller)
+                failed = True
+        for function in sorted(set(listed) - set(findings)):
+            print("FAIL {}: listed public, but holds nothing the scan refuses".format(function))
+            failed = True
+    sys.exit(failed)
+
+
+main()

@@ -1,0 +1,13 @@
+# The functions `admin/ct-vartime` may find a variable-time instruction in,
+# because every operand it takes there is public, with why and the targets
+# where it is found. An entry that no longer matches fails the scan.
+
+[[public]]
+function = "rind::low::posint::mul_word_mod"
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+why = "Divides by the top word of a public RSA modulus, for `PosInt::pub_montifier`."
+
+[[public]]
+function = "<curve25519_dalek::scalar::Scalar>::as_radix_2w"
+targets = ["armv7-unknown-linux-gnueabihf"]
+why = "Divides 256 by the window width, which is 4 for the basepoint table rind uses."

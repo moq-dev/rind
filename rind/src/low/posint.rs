@@ -754,6 +754,9 @@ fn trim_leading_zeroes(mut bytes: &[u8]) -> &[u8] {
 ///
 /// This is one step of Knuth's algorithm D (TAOCP 4.3.1). `d`'s top bit must
 /// be set, `u` must be below `d`, and both must be as wide.
+// Out of line, so `admin/ct-vartime`'s list of public divisions names this
+// function rather than its callers.
+#[inline(never)]
 fn mul_word_mod(u: &mut [u64], d: &[u64]) {
     let k = d.len();
     let (Some(&d1), Some(&u2)) = (d.last(), u.last()) else {

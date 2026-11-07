@@ -10,7 +10,7 @@
 # instruction and memory addresses in the same order. The traces stream
 # through pipes and are compared as they arrive, so no run stores one. It
 # cannot see variable-time instructions, which take the same addresses
-# whatever their operands.
+# whatever their operands; `admin/ct-vartime` looks for those.
 #
 # The `ct_sde_planted_...` tests leak their seed, and run every time. They
 # must differ, so a harness that traces nothing, or compares nothing, fails.
