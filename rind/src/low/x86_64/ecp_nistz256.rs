@@ -143,6 +143,86 @@ mod tests {
     use super::super::adx_mux::tests::Rng;
     use super::*;
 
+    // aws-lc's point additions whose `B` or `A` is affine, which rind's
+    // routine takes, but for the same point twice, which it does not double.
+    // The sums are checked against the affine results through fiat-crypto's
+    // field arithmetic, for whichever twin this CPU picks.
+    #[test]
+    fn aws_lc_point_add_affine() {
+        use fiat_crypto::p256_64::{
+            fiat_p256_montgomery_domain_field_element as Fe, fiat_p256_mul, fiat_p256_square,
+        };
+
+        let one = Fe(include!("aws_lc/p256-x86_64-asm.ONE_mont.rs")[..4]
+            .try_into()
+            .unwrap());
+        let mul = |a: &Fe, b: &Fe| {
+            let mut out = Fe([0; 4]);
+            fiat_p256_mul(&mut out, a, b);
+            out
+        };
+        let mut ran = 0;
+        for test in
+            crate::test::file_test::tests("aws-lc/crypto/fipsmodule/ec/p256-nistz_tests.txt")
+        {
+            if test.str("Test") != "PointAdd" {
+                continue;
+            }
+            let fe = |name: &str| {
+                let bytes = test.bytes(name);
+                Fe(core::array::from_fn(|i| {
+                    u64::from_be_bytes(bytes[24 - 8 * i..][..8].try_into().unwrap())
+                }))
+            };
+            let point = |p: &str| {
+                [
+                    fe(&format!("{p}.X")),
+                    fe(&format!("{p}.Y")),
+                    fe(&format!("{p}.Z")),
+                ]
+            };
+            let (result_x, result_y) = (fe("Result.X"), fe("Result.Y"));
+            for (jacobian, affine) in [(point("A"), point("B")), (point("B"), point("A"))] {
+                let affine_xy = match affine[2].0 {
+                    z if z == one.0 => [affine[0].0, affine[1].0].concat(),
+                    [0, 0, 0, 0] => vec![0; 8],
+                    _ => continue,
+                };
+                if jacobian[2].0 == one.0
+                    && jacobian[..2]
+                        .iter()
+                        .map(|f| f.0)
+                        .eq(affine[..2].iter().map(|f| f.0))
+                    && affine_xy != [0; 8]
+                {
+                    continue;
+                }
+                let mut p1: [u64; 12] = [jacobian[0].0, jacobian[1].0, jacobian[2].0]
+                    .concat()
+                    .try_into()
+                    .unwrap();
+                p256_point_add_affine(&mut p1, &affine_xy.try_into().unwrap());
+                let (x, y, z) = (
+                    Fe(p1[..4].try_into().unwrap()),
+                    Fe(p1[4..8].try_into().unwrap()),
+                    Fe(p1[8..].try_into().unwrap()),
+                );
+                if result_x.0 == [0; 4] && result_y.0 == [0; 4] {
+                    assert_eq!(z.0, [0; 4], "{test}");
+                } else {
+                    // An all-zero output would pass the coordinate checks below.
+                    assert_ne!(z.0, [0; 4], "{test}");
+                    let mut z2 = Fe([0; 4]);
+                    fiat_p256_square(&mut z2, &z);
+                    assert_eq!(x.0, mul(&result_x, &z2).0, "{test}");
+                    assert_eq!(y.0, mul(&result_y, &mul(&z2, &z)).0, "{test}");
+                }
+                ran += 1;
+            }
+        }
+        assert!(ran > 0);
+    }
+
     // The other tests run only the twin this CPU picks, so each pair is
     // checked against each other here, where the CPU runs both, and the
     // mixed addition against s2n-bignum's verified one.

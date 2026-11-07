@@ -152,7 +152,7 @@ mod tests {
 
     use super::*;
     use crate::low;
-    use crate::test::{Expected, wycheproof};
+    use crate::test::{Expected, cctv, cctv_records, cctv_value, wycheproof};
 
     // The seed and message vectors need crate access, so these live here
     // rather than in `tests/wycheproof.rs`.
@@ -227,6 +227,271 @@ mod tests {
                 (Expected::Valid, Ok(secret)) => assert_eq!(secret, &test.k, "{}", test.id),
                 (Expected::Invalid, Err(Error::WrongLength)) => {}
                 _ => panic!("{}: expected {:?} got {:?}", test.id, test.result, result),
+            }
+        }
+    }
+
+    // CCTV's keys come from FIPS 203's draft, whose key generation lacked
+    // `k` in `G(d || k)`, so these check encapsulation and decapsulation,
+    // which the final standard kept, from the encoded keys.
+    fn cctv_encaps_decaps(record: &[(String, Vec<u8>)]) {
+        let ek = EncapsulationKey::new(&ML_KEM_768, cctv_value(record, "ek")).unwrap();
+        let m = mlkem768::Message(cctv_value(record, "m").try_into().unwrap());
+        let (secret, ciphertext) = ek.key.encaps_internal(m);
+        assert_eq!(&ciphertext.as_ref()[..], cctv_value(record, "c"));
+        assert_eq!(secret_bytes(&SharedSecret(secret)), cctv_value(record, "K"));
+
+        let dk = cctv_value(record, "dk").try_into().unwrap();
+        let dk = DecapsulationKey(mlkem768::DecapKey::from_bytes(dk).unwrap());
+        assert_eq!(dk.public_key().as_ref(), cctv_value(record, "ek"));
+        let secret = dk.decapsulate(cctv_value(record, "c")).unwrap();
+        assert_eq!(secret_bytes(&secret), cctv_value(record, "K"));
+    }
+
+    // One key's every intermediate value, of which we check the results.
+    #[test]
+    fn cctv_intermediate() {
+        for record in cctv_records("ML-KEM/intermediate/ML-KEM-768.txt") {
+            cctv_encaps_decaps(&record);
+        }
+    }
+
+    // Keys whose matrix needs over 575 bytes of SHAKE-128 to sample.
+    #[test]
+    fn cctv_unlucky_sample() {
+        for record in cctv_records("ML-KEM/unluckysample/ML-KEM-768.txt") {
+            cctv_encaps_decaps(&record);
+        }
+    }
+
+    // A ciphertext that matches the re-encryption up to a zero byte, which a
+    // `strcmp` comparison would accept.
+    #[test]
+    fn cctv_strcmp() {
+        for record in cctv_records("ML-KEM/strcmp/ML-KEM-768.txt") {
+            let dk = cctv_value(&record, "dk").try_into().unwrap();
+            let key = DecapsulationKey(mlkem768::DecapKey::from_bytes(dk).unwrap());
+            let secret = key.decapsulate(cctv_value(&record, "c")).unwrap();
+            assert_eq!(secret_bytes(&secret), cctv_value(&record, "K"));
+        }
+    }
+
+    // Encapsulation keys with one coefficient from q to 4095, for every value
+    // and position.
+    #[test]
+    fn cctv_modulus() {
+        use std::io::{BufRead, BufReader};
+
+        let path = cctv("ML-KEM/modulus/ML-KEM-768.txt.gz");
+        let file = std::fs::File::open(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
+        let mut count = 0;
+        for line in BufReader::new(flate2::read::GzDecoder::new(file)).lines() {
+            let ek = hex::decode(line.unwrap()).unwrap();
+            assert_eq!(
+                EncapsulationKey::new(&ML_KEM_768, &ek).err(),
+                Some(KeyFormatError::MlKemModulus.into())
+            );
+            count += 1;
+        }
+        assert_eq!(count, 780);
+    }
+
+    // CCTV's pq-crystals vectors, as Go's `crypto/mlkem` updated them for
+    // the final FIPS 203 (`TestAccumulated`, golang/go@73de90f): each test
+    // draws its inputs from one SHAKE-128 stream and hashes its outputs into
+    // another. 10 000 tests run always, and the million SLOW_TESTS asks for.
+    #[test]
+    fn cctv_accumulated() {
+        use crate::mid::sha3::{Shake128, Shake128Sponge};
+
+        let tests = if std::env::var_os("SLOW_TESTS").is_some() {
+            1_000_000
+        } else {
+            10_000
+        };
+
+        let mut rng = Shake128::new(&[]);
+        let mut acc = Shake128Sponge::new();
+        let hash = |acc: &Shake128Sponge| {
+            let mut out = [0u8; 32];
+            acc.finish().squeeze(&mut out);
+            hex::encode(out)
+        };
+        for i in 1..=tests {
+            let mut seed = [0u8; 64];
+            let mut m = [0u8; 32];
+            let mut ct = [0u8; 1088];
+            rng.read(&mut seed);
+            rng.read(&mut m);
+            rng.read(&mut ct);
+
+            let key = mlkem768::DecapKey::keygen_internal(&seed);
+            let (secret, ciphertext) = key
+                .encapsulation_key()
+                .encaps_internal(mlkem768::Message(m));
+            let secret = secret_bytes(&SharedSecret(secret));
+            assert_eq!(secret_bytes(&SharedSecret(key.decaps(&ciphertext))), secret);
+            let rejected = secret_bytes(&SharedSecret(key.decaps(&ct.into())));
+
+            acc.absorb(&key.encapsulation_key().as_bytes());
+            acc.absorb(ciphertext.as_ref());
+            acc.absorb(&secret);
+            acc.absorb(&rejected);
+
+            match i {
+                10_000 => assert_eq!(
+                    hash(&acc),
+                    "8a518cc63da366322a8e7a818c7a0d63483cb3528d34a4cf42f35d5ad73f22fc"
+                ),
+                1_000_000 => assert_eq!(
+                    hash(&acc),
+                    "424bf8f0e8ae99b78d788a6e2e8e9cdaf9773fc0c08a6f433507cb559edfd0f0"
+                ),
+                _ => {}
+            }
+        }
+    }
+
+    /// Whether every 12-bit coefficient of `poly_bytes` is below q.
+    fn reduced(poly_bytes: &[u8]) -> bool {
+        poly_bytes.chunks(3).all(|b| {
+            let (lo, hi) = (
+                u16::from(b[0]) | (u16::from(b[1] & 15) << 8),
+                (u16::from(b[1]) >> 4) | (u16::from(b[2]) << 4),
+            );
+            lo < 3329 && hi < 3329
+        })
+    }
+
+    // BoringSSL's key generation, encapsulation, and decapsulation vectors,
+    // NIST's among them, and its EVP keys' raw encodings.
+    #[test]
+    fn boringssl() {
+        use crate::test::file_test::tests;
+
+        for test in tests("boringssl/crypto/mlkem/mlkem768_keygen_tests.txt") {
+            let key = mlkem768::DecapKey::keygen_internal(&test.bytes("seed").try_into().unwrap());
+            assert_eq!(
+                &key.encapsulation_key().as_bytes()[..],
+                test.bytes("public_key"),
+                "{test}"
+            );
+            assert_eq!(
+                &low::ct::into_public(key.as_bytes())[..],
+                test.bytes("private_key"),
+                "{test}"
+            );
+        }
+
+        for test in tests("boringssl/crypto/mlkem/mlkem768_nist_keygen_tests.txt") {
+            let seed = [test.bytes("d"), test.bytes("z")].concat();
+            let key = mlkem768::DecapKey::keygen_internal(&seed.try_into().unwrap());
+            assert_eq!(
+                &key.encapsulation_key().as_bytes()[..],
+                test.bytes("ek"),
+                "{test}"
+            );
+            assert_eq!(
+                &low::ct::into_public(key.as_bytes())[..],
+                test.bytes("dk"),
+                "{test}"
+            );
+        }
+
+        for test in tests("boringssl/crypto/mlkem/mlkem768_encap_tests.txt") {
+            let m = mlkem768::Message(test.bytes("entropy").try_into().unwrap());
+            let key = EncapsulationKey::new(&ML_KEM_768, &test.bytes("public_key"));
+            match test.str("result") {
+                "pass" => {
+                    let (secret, ciphertext) = key.unwrap().key.encaps_internal(m);
+                    assert_eq!(&ciphertext.as_ref()[..], test.bytes("ciphertext"), "{test}");
+                    let secret = secret_bytes(&SharedSecret(secret));
+                    assert_eq!(secret, test.bytes("shared_secret"), "{test}");
+                }
+                _ => assert!(matches!(key, Err(Error::KeyRejected(_))), "{test}"),
+            }
+        }
+
+        // rind imports no decapsulation key, so the vectors of a malformed
+        // one have no counterpart.
+        for test in tests("boringssl/crypto/mlkem/mlkem768_decap_tests.txt") {
+            let dk = test.bytes("private_key");
+            let Some(dk) = <&[u8; 2400]>::try_from(&dk[..])
+                .ok()
+                .filter(|dk| reduced(&dk[..1152]))
+                .and_then(mlkem768::DecapKey::from_bytes)
+            else {
+                assert_eq!(test.str("result"), "fail", "{test}");
+                continue;
+            };
+            let result = DecapsulationKey(dk)
+                .decapsulate(&test.bytes("ciphertext"))
+                .map(|secret| secret_bytes(&secret));
+            match test.str("result") {
+                "pass" => assert_eq!(result, Ok(test.bytes("shared_secret")), "{test}"),
+                _ => assert_eq!(result, Err(Error::WrongLength), "{test}"),
+            }
+        }
+
+        for test in tests("boringssl/crypto/mlkem/mlkem768_nist_decap_tests.txt") {
+            let dk = mlkem768::DecapKey::from_bytes(&test.bytes("dk").try_into().unwrap());
+            let secret = DecapsulationKey(dk.unwrap())
+                .decapsulate(&test.bytes("c"))
+                .unwrap();
+            assert_eq!(secret_bytes(&secret), test.bytes("k"), "{test}");
+        }
+
+        // BoringSSL's EVP tests: rind has the raw encodings, not the SPKI or
+        // PKCS#8 ones, and imports no key, so of the keys it takes the seeds.
+        let mut keys = std::collections::HashMap::new();
+        for test in tests("boringssl/crypto/evp/test/mlkem_tests.txt") {
+            if test.get("Algorithm") != Some("ML-KEM-768") {
+                continue;
+            }
+            if let Some(name) = test.get("Key") {
+                if test.get("Error").is_some() {
+                    continue;
+                }
+                let seed = match test.get("PrivateSeed") {
+                    Some(_) => test.bytes("PrivateSeed"),
+                    // A seed-only PKCS#8 key ends in its 64-byte seed.
+                    None => test.bytes("PKCS8")[22..].to_vec(),
+                };
+                let key = mlkem768::DecapKey::keygen_internal(&seed.try_into().unwrap());
+                let key = DecapsulationKey(key);
+                if test.get("RawPublic").is_some() {
+                    assert_eq!(key.public_key().as_ref(), test.bytes("RawPublic"), "{test}");
+                }
+                keys.insert(name.to_string(), key);
+            } else if let Some(name) = test.get("Decapsulate") {
+                let key = &keys[name.trim_end_matches("/Private")];
+                let result = key
+                    .decapsulate(&test.bytes("Input"))
+                    .map(|secret| secret_bytes(&secret));
+                match test.get("DecapsulateFail") {
+                    Some(_) => assert_eq!(result, Err(Error::WrongLength), "{test}"),
+                    None => assert_eq!(result, Ok(test.bytes("Output")), "{test}"),
+                }
+            } else if let Some(name) = test.get("Encapsulate") {
+                let ek = keys[name].public_key();
+                if test.get("Entropy").is_none() {
+                    let (ciphertext, secret) = ek.encapsulate().unwrap();
+                    let decapsulated = keys[name].decapsulate(ciphertext.as_ref()).unwrap();
+                    assert_eq!(secret_bytes(&decapsulated), secret_bytes(&secret), "{test}");
+                    continue;
+                }
+                let m = mlkem768::Message(test.bytes("Entropy").try_into().unwrap());
+                let (secret, ciphertext) = ek.key.encaps_internal(m);
+                assert_eq!(&ciphertext.as_ref()[..], test.bytes("Ciphertext"), "{test}");
+                let secret = secret_bytes(&SharedSecret(secret));
+                assert_eq!(secret, test.bytes("Secret"), "{test}");
+            } else if let Some(name) = test.get("EncapsulateDecapsulate") {
+                let key = &keys[name.trim_end_matches("/Private")];
+                let (ciphertext, secret) = key.public_key().encapsulate().unwrap();
+                let decapsulated = key.decapsulate(ciphertext.as_ref()).unwrap();
+                assert_eq!(secret_bytes(&decapsulated), secret_bytes(&secret), "{test}");
+            } else {
+                panic!("{test}: unexpected test");
             }
         }
     }

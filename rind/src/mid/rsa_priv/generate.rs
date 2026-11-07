@@ -422,6 +422,33 @@ mod tests {
         .unwrap();
     }
 
+    // aws-lc's Miller-Rabin rounds, each a candidate and one base, among
+    // them bases of 1 and w - 1 and candidates of a few bits.
+    #[test]
+    fn aws_lc_miller_rabin() {
+        for test in
+            crate::test::file_test::tests("aws-lc/crypto/fipsmodule/bn/test/miller_rabin_tests.txt")
+        {
+            let number = |name| {
+                let hex = test.str(name);
+                let hex = if hex.len() % 2 == 1 {
+                    format!("0{hex}")
+                } else {
+                    hex.to_string()
+                };
+                MaxPosInt::from_bytes(&hex::decode(hex).unwrap()).unwrap()
+            };
+            let w = number("W");
+            let mr = MillerRabinParams::new(&w).unwrap();
+            let expected = match test.str("Result") {
+                "PossiblyPrime" => true,
+                "Composite" => false,
+                other => panic!("{test}: unexpected result {other}"),
+            };
+            assert_eq!(mr.check_base(&number("B")), expected, "{test}");
+        }
+    }
+
     #[test]
     fn test_valid_primes() {
         for line in read_hex_lines_from_file(include_str!("../../testdata/valid-primes.txt")) {

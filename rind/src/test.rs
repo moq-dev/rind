@@ -98,3 +98,41 @@ pub(crate) enum Expected {
     Invalid,
     Acceptable,
 }
+
+/// The path of `name` in C2SP's CCTV vectors.
+pub(crate) fn cctv(name: &str) -> String {
+    format!("{}/../thirdparty/cctv/{name}", env!("CARGO_MANIFEST_DIR"))
+}
+
+/// Reads a CCTV file of `name = hex` lines, each blank-line-separated record
+/// as its values in order.
+pub(crate) fn cctv_records(name: &str) -> Vec<Vec<(String, Vec<u8>)>> {
+    let path = cctv(name);
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
+    let records: Vec<_> = text
+        .split("\n\n")
+        .map(|record| {
+            record
+                .lines()
+                .map(|line| {
+                    let (name, value) = line.split_once(" = ").expect("expected `name = value`");
+                    (name.to_string(), hex::decode(value).unwrap_or_default())
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|record| !record.is_empty())
+        .collect();
+    assert!(!records.is_empty(), "{path} has no records");
+    records
+}
+
+/// The first value named `name` in a CCTV record.
+pub(crate) fn cctv_value<'a>(record: &'a [(String, Vec<u8>)], name: &str) -> &'a [u8] {
+    &record
+        .iter()
+        .find(|(n, _)| n == name)
+        .unwrap_or_else(|| panic!("record lacks {name}"))
+        .1
+}
+
+pub(crate) mod file_test;

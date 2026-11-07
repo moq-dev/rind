@@ -60,50 +60,57 @@ jobs:
 
       - name: Artificial CPU feature tests (x86_64)
         if: runner.arch == 'X64'
+        shell: bash
         run: |
+          # Each tier runs the tests, then CCTV's million ML-KEM vectors in a
+          # release build, which honours the tier's denials only with
+          # `--cfg rind_cpu_disable`, alongside the check that they took effect
+          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test rind's AVX2 SHA-1 and OpenSSL's AVX2 SHA-256 for CPUs without
           # the SHA extensions
-          env RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 cargo test
+          tier RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1
           # test Vale's aes-gcm and avx2 ML-KEM without avx512 or vaes, and
           # RSA's CRT one exponentiation at a time on a runner with AVX-512 IFMA
-          env RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX512_RSA=0 cargo test
+          tier RIND_CPU_DISABLE_avx512bw=1 RIND_CPU_DISABLE_avx512f=1 RIND_CPU_DISABLE_vaes=1 RIND_TEST_X86_AVX512_RSA=0
           # test s2n-bignum's _alt routines, and aws-lc's Montgomery
           # multiplication and RSAZ exponentiation, for CPUs with AVX2 but
           # without BMI2 and ADX, such as Haswell; the last variables fail the
           # run that lands on the wrong path
-          env RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 RIND_TEST_X86_AVX2=1 cargo test
+          tier RIND_CPU_DISABLE_adx=1 RIND_TEST_X86_BMI2_ADX=0 RIND_TEST_X86_AVX2=1
           # test aws-lc's SSE4.1 ChaCha20-Poly1305, its SSSE3 ChaCha20, SHA-1,
           # and SHA-256, its scalar SHA-512, the portable ML-KEM arithmetic,
           # and the SSE2 selects for CPUs without AVX2, such as AMD's Bulldozer
           # and Jaguar;
           # x86-cpu's Sandy Bridge run covers aws-lc's AVX SHA routines, which
           # Intel's cores run there
-          env RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_SSE41=1 cargo test
+          tier RIND_CPU_DISABLE_avx2=1 RIND_CPU_DISABLE_sha=1 RIND_CPU_DISABLE_intel=1 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_SSE41=1
           # test rind's AES-GCM and GHASH intrinsics without VEX encoding, and
           # aws-lc's AES-NI CTR, for CPUs with AES-NI but without AVX, such as
           # Westmere and the Goldmont and Tremont Atoms
-          env RIND_CPU_DISABLE_avx=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AES_HARDWARE=1 cargo test
+          tier RIND_CPU_DISABLE_avx=1 RIND_TEST_X86_AVX=0 RIND_TEST_X86_AES_HARDWARE=1
           # test aws-lc's vpaes and SSSE3 GHASH for CPUs without AES-NI or
           # PCLMULQDQ, such as Core 2 and Nehalem, where rind-rustls and
           # rind-dimpl prefer ChaCha20-Poly1305, and without SSE4.1 too, as
           # the first Core 2s lack it, ChaCha20 and Poly1305 in separate passes
-          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 RIND_TEST_X86_AES_HARDWARE=0 RIND_TEST_X86_SSE41=0 cargo test
+          tier RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pclmulqdq=1 RIND_CPU_DISABLE_avx=1 RIND_CPU_DISABLE_sse41=1 RIND_TEST_X86_AES_HARDWARE=0 RIND_TEST_X86_SSE41=0
           # test aws-lc's integer SHA-1 and SHA-256, its SSE2 AES and integer
           # GHASH, and HACL*'s ChaCha20 at every length, for CPUs without
           # SSSE3, such as QEMU's default `qemu64` model; every faster path
           # needs SSSE3 too
-          env RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_SSE41=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0 cargo test
+          tier RIND_CPU_DISABLE_ssse3=1 RIND_TEST_X86_SSSE3=0 RIND_TEST_X86_SSE41=0 RIND_TEST_X86_AVX2=0 RIND_TEST_X86_AES_HARDWARE=0
 
       - name: Artificial CPU feature tests (aarch64)
         if: runner.arch == 'ARM64'
+        shell: bash
         run: |
+          tier() { env "$@" cargo test; env "$@" SLOW_TESTS=1 RUSTFLAGS='--cfg rind_cpu_disable' cargo test --release -p rind --lib -- cctv_accumulated detects_the_expected_cpu; }
           # test the by-4 AES-GCM and Keccak-f kernels for cores without SHA3,
           # failing a run whose OS hides the crypto extension
-          env RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test
+          tier RIND_CPU_DISABLE_sha3=1 RIND_TEST_ARM_CRYPTO_EXT=1
           # test vpaes, NEON GHASH, and scalar SHA-1 and SHA-256 for cores
           # without the crypto extension, such as the Raspberry Pi 4's; the
           # last variable fails the run that lands on the wrong path
-          env RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test
+          tier RIND_CPU_DISABLE_aes=1 RIND_CPU_DISABLE_pmull=1 RIND_CPU_DISABLE_sha2=1 RIND_TEST_ARM_CRYPTO_EXT=0
 
   # musl runs the glibc build's code, so these test the packages consumers
   # link, without the CPU feature passes. The bench and fuzz crates need C++

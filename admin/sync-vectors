@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Copy aws-lc's and BoringSSL's vector files that rind's tests run into
+# thirdparty/vectors, from the revisions pinned here. Both repositories are
+# hundreds of megabytes, so rind keeps copies of the files rather than
+# submodules. Bump a revision and rerun to update them.
+set -euo pipefail
+
+AWS_LC=2f9a0e95cc2c29235d9b98db8cf86e22b271b35a
+BORINGSSL=0131ae9d78e42fcc2c1811315e62410ad96d8230
+
+# aws-lc's copy of each file BoringSSL also has holds every BoringSSL vector
+# for rind's algorithms, so BoringSSL contributes only its own files.
+aws_lc_files=(
+    LICENSE
+    crypto/cipher_extra/test/aes_128_gcm_tests.txt
+    crypto/cipher_extra/test/aes_192_gcm_tests.txt
+    crypto/cipher_extra/test/aes_256_gcm_tests.txt
+    crypto/cipher_extra/test/chacha20_poly1305_tests.txt
+    crypto/cipher_extra/test/cipher_tests.txt
+    crypto/cipher_extra/test/xchacha20_poly1305_tests.txt
+    crypto/ecdh_extra/ecdh_tests.txt
+    crypto/evp_extra/evp_tests.txt
+    crypto/fipsmodule/aes/aes_tests.txt
+    crypto/fipsmodule/bn/test/miller_rabin_tests.txt
+    crypto/fipsmodule/curve25519/ed25519_tests.txt
+    crypto/fipsmodule/ec/ec_scalar_base_mult_tests.txt
+    crypto/fipsmodule/ec/p256-nistz_tests.txt
+    crypto/fipsmodule/ecdsa/ecdsa_sign_tests.txt
+    crypto/fipsmodule/ecdsa/ecdsa_verify_tests.txt
+    crypto/fipsmodule/modes/gcm_tests.txt
+    crypto/hmac_extra/hmac_tests.txt
+    crypto/poly1305/poly1305_tests.txt
+)
+boringssl_files=(
+    LICENSE
+    crypto/evp/test/ec_tests.txt
+    crypto/evp/test/ed25519_tests.txt
+    crypto/evp/test/mlkem_tests.txt
+    crypto/evp/test/rsa_tests.txt
+    crypto/evp/test/x25519_tests.txt
+    crypto/mlkem/mlkem768_decap_tests.txt
+    crypto/mlkem/mlkem768_encap_tests.txt
+    crypto/mlkem/mlkem768_keygen_tests.txt
+    crypto/mlkem/mlkem768_nist_decap_tests.txt
+    crypto/mlkem/mlkem768_nist_keygen_tests.txt
+)
+
+cd "$(dirname "${BASH_SOURCE[0]}")/../thirdparty/vectors"
+
+fetch() {
+    local repo=$1 rev=$2 dir=$3
+    shift 3
+    rm -rf "$dir"
+    for file in "$@"; do
+        mkdir -p "$dir/$(dirname "$file")"
+        curl --fail --silent --show-error --location --output "$dir/$file" \
+            "https://raw.githubusercontent.com/$repo/$rev/$file"
+    done
+}
+
+fetch aws/aws-lc "$AWS_LC" aws-lc "${aws_lc_files[@]}"
+fetch google/boringssl "$BORINGSSL" boringssl "${boringssl_files[@]}"

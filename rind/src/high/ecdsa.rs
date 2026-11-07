@@ -199,8 +199,9 @@ impl<C: Curve> SigningKey<C> {
     /// ECDSA signing of `digest`, a hash of the message, returning a
     /// fixed-length signature, as [`Self::sign()`] does for a message.
     ///
-    /// `digest` may be any length: one longer than the scalar is truncated to
-    /// its leftmost bits. The nonce comes from HMAC_DRBG over `H`, which
+    /// A `digest` longer than the scalar is truncated to its leftmost bytes,
+    /// as FIPS 186-5 truncates it to bits for every digest rind makes, which
+    /// are at most 64 bytes; see [`hash_to_scalar()`]. The nonce comes from HMAC_DRBG over `H`, which
     /// need not be the digest's hash: RFC 6979 uses the message's for its
     /// test vectors, but any PRF serves.
     pub(crate) fn sign_digest<'a, H: Hash>(
@@ -454,9 +455,12 @@ impl<C: Curve> VerifyingKey<C> {
     }
 }
 
+/// FIPS 186-5's `e`: `hash`'s leftmost bits, as many as the order has,
+/// reduced.
+///
+/// This truncates to bytes, so it is wrong only for a hash longer than P-521's
+/// 66-byte scalar, whose order has 521 bits. No `Digest` is that long.
 fn hash_to_scalar<C: Curve>(hash: &[u8]) -> Result<C::Scalar, Error> {
-    // TODO: drop this into C::Scalar for cases where a right shift
-    // is required.
     let hash = if hash.len() > C::Scalar::LEN_BYTES {
         &hash[..C::Scalar::LEN_BYTES]
     } else {
@@ -964,6 +968,100 @@ mod tests {
             "013e99020abf5cee7525d16b69b229652ab6bdf2affcaef38773b4b7d08725f10cdb93482fdcc54edcee91eca4166b2a7c6265ef0ce2bd7051b7cef945babd47ee6d01fbd0013c674aa79cb39849527916ce301c66ea7ce8b80682786ad60f98f7e78a19ca69eff5c57400e3b3a0ad66ce0978214d13baf4e9ac60752f7b155e2de4dce3"
         );
         v.verify::<hash::Sha512>(b"test", &signature).unwrap();
+    }
+
+    /// `value` as `len` big-endian bytes, or `None` if it is larger.
+    fn fixed(value: &[u8], len: usize) -> Option<Vec<u8>> {
+        let start = value.iter().position(|b| *b != 0).unwrap_or(value.len());
+        let value = &value[start..];
+        (value.len() <= len).then(|| [vec![0; len - value.len()], value.to_vec()].concat())
+    }
+
+    // aws-lc's verification vectors give digests of every length, some
+    // longer than the scalar. P-224 and secp256k1 rind doesn't offer, nor
+    // digests over 64 bytes, which `hash_to_scalar` would truncate to bytes.
+    #[test]
+    fn aws_lc_verify() {
+        fn check<C: Curve>(test: &file_test::Test) {
+            if test.bytes("Digest").len() > 64 {
+                return;
+            }
+            let len = C::Scalar::LEN_BYTES;
+            let key = [vec![4], test.bytes("X"), test.bytes("Y")].concat();
+            let result = C::PublicKey::from_x962_uncompressed(&key).and_then(|public_key| {
+                match (fixed(&test.bytes("R"), len), fixed(&test.bytes("S"), len)) {
+                    (Some(r), Some(s)) => VerifyingKey::<C> { public_key }
+                        .verify_digest(&test.bytes("Digest"), &[r, s].concat()),
+                    _ => Err(Error::BadSignature),
+                }
+            });
+            match test.get("Invalid") {
+                None => assert_eq!(result, Ok(()), "{test}"),
+                Some(_) => assert!(result.is_err(), "{test}"),
+            }
+        }
+
+        for test in file_test::tests("aws-lc/crypto/fipsmodule/ecdsa/ecdsa_verify_tests.txt") {
+            match test.str("Curve") {
+                "P-256" => check::<curve::P256>(&test),
+                "P-384" => check::<curve::P384>(&test),
+                "P-521" => check::<curve::P521>(&test),
+                "P-224" | "secp256k1" | "secp160r1" => {}
+                other => panic!("{test}: unexpected curve {other}"),
+            }
+        }
+    }
+
+    // aws-lc's signing vectors fix the nonce, which rind otherwise derives.
+    // P-224, secp256k1, and digests over 64 bytes rind doesn't offer.
+    #[test]
+    fn aws_lc_sign() {
+        fn check<C: Curve>(test: &file_test::Test) {
+            if test.bytes("Digest").len() > 64 {
+                return;
+            }
+            let len = C::Scalar::LEN_BYTES;
+            let private = fixed(&test.bytes("Private"), len).unwrap();
+            let private_key = C::PrivateKey::from_bytes(&private).unwrap();
+            let mut public_key = [0u8; 133];
+            let public_key = private_key
+                .public_key_encode_uncompressed(&mut public_key)
+                .unwrap();
+            let expected = [vec![4], test.bytes("X"), test.bytes("Y")].concat();
+            assert_eq!(public_key, expected, "{test}");
+
+            let key = SigningKey::<C>::new(private_key);
+            let e = hash_to_scalar::<C>(&test.bytes("Digest")).unwrap();
+            // Nonces are drawn as RFC 6979's bits2int reads them: P-521's
+            // from the leftmost 521 bits of 66 bytes.
+            let k = fixed(&test.bytes("K"), len).unwrap();
+            let excess = if len == 66 { 7 } else { 0 };
+            let k: Vec<u8> = (0..len)
+                .map(|i| {
+                    let pair = u16::from_be_bytes([k[i], k.get(i + 1).copied().unwrap_or(0)]);
+                    (pair << excess).to_be_bytes()[0]
+                })
+                .collect();
+            let (r, s) = key
+                .sign_with_nonces(&e, &mut SliceRandomSource(&k))
+                .unwrap();
+            let mut sig = [0u8; MAX_SCALAR_LEN * 2];
+            r.write_bytes(&mut sig[..len]);
+            s.write_bytes(&mut sig[len..len * 2]);
+            let r = fixed(&test.bytes("R"), len).unwrap();
+            let s = fixed(&test.bytes("S"), len).unwrap();
+            assert_eq!(&sig[..len * 2], [r, s].concat(), "{test}");
+        }
+
+        for test in file_test::tests("aws-lc/crypto/fipsmodule/ecdsa/ecdsa_sign_tests.txt") {
+            match test.str("Curve") {
+                "P-256" => check::<curve::P256>(&test),
+                "P-384" => check::<curve::P384>(&test),
+                "P-521" => check::<curve::P521>(&test),
+                "P-224" | "secp256k1" => {}
+                other => panic!("{test}: unexpected curve {other}"),
+            }
+        }
     }
 
     #[test]

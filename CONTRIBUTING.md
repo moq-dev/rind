@@ -16,10 +16,14 @@ cargo build --release
 
 Run tests:
 ```shell
-git submodule update --init thirdparty/cavp
-git submodule update --init thirdparty/wycheproof
+git submodule update --init thirdparty/cavp thirdparty/cctv thirdparty/wycheproof
 cargo test
 ```
+
+`thirdparty/vectors` holds aws-lc's and BoringSSL's vector files, which
+`admin/sync-vectors` copies from the revisions it pins. `SLOW_TESTS=1` adds
+the large sets, such as CCTV's million ML-KEM vectors, which the nightly
+`build` workflow runs on every CPU tier.
 
 Run performance benchmarks:
 ```shell

@@ -888,6 +888,7 @@ fn test_rsa_pkcs1_legacy_verify() {
     // but its signing files hold valid signatures for both.
     for file in &[
         "rsa_pkcs1_1024_sig_gen_test.json",
+        "rsa_pkcs1_1536_sig_gen_test.json",
         "rsa_pkcs1_2048_sig_gen_test.json",
     ] {
         let data_file = File::open(vectors(file)).expect("failed to open data file");

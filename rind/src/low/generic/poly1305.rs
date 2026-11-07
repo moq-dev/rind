@@ -198,6 +198,22 @@ fn full_reduce(h: &mut [u64; 3]) {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::test::file_test;
+
+    // aws-lc's vectors, of every length and carry. The fused assembly that
+    // x86_64 and aarch64 run with ChaCha20 meets them through the AEAD files.
+    #[test]
+    fn aws_lc() {
+        for test in file_test::tests("aws-lc/crypto/poly1305/poly1305_tests.txt") {
+            let mut p = Poly1305::new(&test.bytes("Key").try_into().unwrap());
+            let input = test.bytes("Input");
+            // Split, so the buffering of partial blocks runs too.
+            let (head, tail) = input.split_at(input.len() / 3);
+            p.add_bytes(head);
+            p.add_bytes(tail);
+            assert_eq!(p.finish(), &test.bytes("MAC")[..], "{test}");
+        }
+    }
 
     #[test]
     fn test_vectors() {

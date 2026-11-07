@@ -323,7 +323,7 @@ pub(crate) struct Sponge<const R: usize, const PAD: u8> {
 }
 
 impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
-    const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self { s: [0; _], used: 0 }
     }
 
@@ -335,7 +335,7 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
         SqueezingSponge::new(s.padded_state())
     }
 
-    fn absorb(&mut self, bytes: &[u8]) {
+    pub(crate) fn absorb(&mut self, bytes: &[u8]) {
         let room = R - self.used;
         if bytes.len() < room {
             add_bytes(&mut self.s, self.used, bytes);
@@ -357,6 +357,12 @@ impl<const R: usize, const PAD: u8> Sponge<R, PAD> {
         }
         add_bytes(&mut self.s, 0, rest);
         self.used = rest.len();
+    }
+
+    /// Pads the input absorbed so far, to squeeze the output.
+    #[cfg(test)]
+    pub(crate) fn finish(&self) -> SqueezingSponge<R> {
+        SqueezingSponge::new(self.padded_state())
     }
 
     /// The state with the final block's padding added, owing its Keccak-f.

@@ -40,6 +40,8 @@ aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "
 aws-lc-sys = { version = "0.47", default-features = false }
 # Checks armv7's NIST curve arithmetic against s2n-bignum's on the other arches.
 fiat-crypto = { version = "0.3", default-features = false }
+# CCTV gzips its ML-KEM modulus vectors.
+flate2 = { version = "1.1.11", default-features = false, features = ["rust_backend"] }
 hex = { version = "0.4", features = ["serde"] }
 proptest = "1.5.0"
 serde = { version = "1", features = ["derive"] }
