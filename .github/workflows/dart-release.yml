@@ -1,0 +1,60 @@
+name: Dart release
+
+# Publishes rind-dart's Dart package to pub.dev when its version's tag is
+# pushed, through pub.dev's automated publishing: the run's OIDC token proves
+# its origin, so no credential is stored. pub.dev accepts only this
+# repository, a `rind-dart-v{{version}}` tag, and the `pub.dev` environment,
+# which only those tags can deploy to.
+on:
+  push:
+    tags:
+      - "rind-dart-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'moq-dev' }}
+    environment: pub.dev
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+
+      # Given id-token, it also fetches the token pub.dev accepts.
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+
+      - name: Check the tag names the package's version
+        run: |
+          version=$(yq .version rind-dart/pubspec.yaml)
+          if [[ "$GITHUB_REF_NAME" != "rind-dart-v$version" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not name pubspec.yaml's version $version"
+            exit 1
+          fi
+
+      # The crate as pub.dev receives it builds against rind from crates.io,
+      # so this also checks the rind it requires is published.
+      - name: Stage the package
+        run: sh/dart-package.sh "$RUNNER_TEMP/rind-dart"
+
+      - name: Test the staged package
+        working-directory: ${{ runner.temp }}/rind-dart
+        run: |
+          dart pub get
+          dart test
+
+      - name: Publish
+        working-directory: ${{ runner.temp }}/rind-dart
+        run: dart pub publish --force

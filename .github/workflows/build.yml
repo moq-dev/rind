@@ -163,6 +163,50 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
+  # rind-dart's Dart package on each host Dart and Flutter build on. Its tests
+  # run natively, and its build hook cross-builds the mobile targets, whose
+  # libraries the hook's test checks are for the right architecture.
+  dart:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+            cross: android-arm64,android-arm,android-x64
+          - os: ubuntu-24.04-arm
+          - os: macos-latest
+            targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+            cross: ios-arm64-iphoneos,ios-arm64-iphonesimulator,ios-x64-iphonesimulator
+          - os: macos-15-intel
+          - os: windows-latest
+          - os: windows-11-arm
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rind-dart
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.targets }}
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+
+      - run: dart pub get
+
+      # The Android builds link with the runner's NDK, at ANDROID_NDK_HOME.
+      - name: Run tests
+        env:
+          RIND_DART_CROSS_TARGETS: ${{ matrix.cross }}
+        run: dart test
+
   # The simulator runs the iOS tests natively on the Apple silicon runner;
   # devices' code is only built, since GitHub has no iOS device to run it.
   ios:

@@ -102,6 +102,7 @@ Each crate's README shows its setup.
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
+| [rind-dart][] | Dart and Flutter, through FFI: the `rind` package, unpublished until its first pub.dev release |
 | [rind-instant-acme][] | ACME through [instant-acme](https://github.com/djc/instant-acme), unpublished until instant-acme releases the interface it targets |
 
 ### Platforms
@@ -196,6 +197,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-jsonwebtoken]: https://github.com/moq-dev/rind/tree/main/rind-jsonwebtoken
 [rind-object-store]: https://github.com/moq-dev/rind/tree/main/rind-object-store
 [rind-rcgen]: https://github.com/moq-dev/rind/tree/main/rind-rcgen
+[rind-dart]: https://github.com/moq-dev/rind/tree/main/rind-dart
 [rind-instant-acme]: https://github.com/moq-dev/rind/tree/main/rind-instant-acme
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
 [contributing]: https://github.com/moq-dev/rind/blob/main/CONTRIBUTING.md

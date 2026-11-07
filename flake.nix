@@ -295,6 +295,16 @@
               ];
             };
 
+            # The `dart` module of `just check` runs rind-dart's Dart package
+            # in it. Its own shell, since the SDK would add over 200 MB to
+            # the closure every CI job downloads.
+            dart = pkgs.mkShell {
+              packages = [
+                rust-toolchain
+                pkgs.dart
+              ];
+            };
+
             # `coverage.yml` runs `admin/coverage` in it. On x86_64 Linux it
             # adds `sde`, for the pass that covers the AVX-512 paths.
             coverage = pkgs.mkShell {
