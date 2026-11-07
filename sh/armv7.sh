@@ -40,3 +40,5 @@ export CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true
 # RIND_TEST_ARM_* fails the run that lands on the wrong path.
 QEMU_CPU=max RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test "${packages[@]}" --locked --release --target "$target"
 QEMU_CPU=cortex-a15 RIND_CPU_DISABLE_neon=1 RIND_TEST_ARM_NEON=0 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test "${packages[@]}" --locked --release --target "$target"
+QEMU_CPU=max RIND_TEST_ARM_NEON=1 RIND_TEST_ARM_CRYPTO_EXT=1 cargo test -p rind --features wipe --test zeroing --locked --release --target "$target"
+QEMU_CPU=cortex-a15 RIND_CPU_DISABLE_neon=1 RIND_TEST_ARM_NEON=0 RIND_TEST_ARM_CRYPTO_EXT=0 cargo test -p rind --features wipe --test zeroing --locked --release --target "$target"

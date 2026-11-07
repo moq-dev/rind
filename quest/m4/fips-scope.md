@@ -15,6 +15,5 @@ the validation itself is planned from its report. Note which consumers want
 it (Bun's FIPS request, [oven-sh/bun#4869](https://github.com/oven-sh/bun/issues/4869),
 and Deno's and Node's FIPS builds are the precedent) and whether a FIPS build
 can stay a separate crate so rind's default build pays nothing.
-Zeroization starts from the opt-in `wipe` feature
-([wipe feature](/quest/m2/speed/wipe-feature.md)); say what FIPS adds to it,
-such as wiping copies inside a call.
+Zeroization starts from rind's opt-in `wipe` feature; say what FIPS adds to
+it, such as wiping copies inside a call.

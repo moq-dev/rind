@@ -209,7 +209,7 @@ impl From<hkdf::Okm<'_, &'static Algorithm>> for UnboundKey {
     }
 }
 
-/// A key that seals or opens with any nonce the caller gives it; wiped on drop.
+/// A key that seals or opens with any nonce the caller gives it; wiped on drop under rind's `wipe` feature.
 ///
 /// A clone shares the expanded key.
 #[derive(Clone)]

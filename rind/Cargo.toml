@@ -11,6 +11,8 @@ rust-version.workspace = true
 
 [features]
 default = []
+# Wipes keys, keyed state, and private-key heap scratch on drop.
+wipe = []
 __ctgrind = ["dep:crabgrind"]
 
 [dependencies]

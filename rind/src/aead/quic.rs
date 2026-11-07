@@ -61,7 +61,7 @@ pub static CHACHA20: Algorithm = Algorithm {
     },
 };
 
-/// A header-protection key, expanded once for its algorithm and wiped on drop.
+/// A header-protection key, expanded once for its algorithm and wiped on drop under the `wipe` feature.
 pub struct HeaderProtectionKey(Key);
 
 impl HeaderProtectionKey {

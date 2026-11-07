@@ -55,7 +55,7 @@ impl fmt::Debug for Salt {
     }
 }
 
-/// A pseudorandom key, from which [`Prk::expand`] derives any number of keys; wiped on drop.
+/// A pseudorandom key, from which [`Prk::expand`] derives any number of keys; wiped on drop under the `wipe` feature.
 //
 // Held as an HMAC key so each expand block skips the two key compressions.
 pub struct Prk(hmac::Key);

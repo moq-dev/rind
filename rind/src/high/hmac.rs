@@ -167,7 +167,7 @@ pub static HMAC_SHA512: Algorithm = Algorithm {
     key: Keying::<Sha512>::with_key,
 };
 
-/// An HMAC key, keyed once and reused for every message; wiped on drop.
+/// An HMAC key, keyed once and reused for every message; wiped on drop under the `wipe` feature.
 #[derive(Clone)]
 pub struct Key(Keyed);
 
@@ -218,7 +218,7 @@ impl fmt::Debug for Key {
     }
 }
 
-/// An in-progress tag computation, for a message given in pieces; wiped on drop.
+/// An in-progress tag computation, for a message given in pieces; wiped on drop under the `wipe` feature.
 ///
 /// A clone forks the computation, so messages sharing a prefix process it once.
 #[derive(Clone)]

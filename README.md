@@ -104,6 +104,20 @@ Each crate's README shows its setup.
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
 | [rind-instant-acme][] | ACME through [instant-acme](https://github.com/djc/instant-acme), unpublished until instant-acme releases the interface it targets |
 
+### Wiping keys
+
+rind wipes keys, keyed state, and heap scratch derived from a private key
+on drop only under its `wipe` feature, as RustCrypto does with `zeroize`;
+aws-lc-rs always wipes, and ring never does. A memory disclosure such as
+Heartbleed leaks every live key anyway, so the default build skips the
+cost. The adapters don't forward the feature: enable it on `rind` itself,
+and Cargo turns it on beneath every adapter too.
+
+```toml
+[dependencies]
+rind = { version = "0.2", features = ["wipe"] }
+```
+
 ### Platforms
 
 rind runs on x86_64, aarch64, and 32-bit arm, and fails to compile for any

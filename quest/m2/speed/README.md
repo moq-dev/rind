@@ -58,4 +58,3 @@ dual RSAZ only when the runner has IFMA.
 
 - [AES-192-GCM on aarch64 is level with aws-lc-rs for large messages](/quest/m2/speed/aes192-gcm-aarch64.md) - s2n-bignum's stitched kernels skip 192-bit keys
 - [The Ed25519 verify benchmark times every library the same way](/quest/m2/speed/ed25519-verify-bench.md) - rind's row parses the key inside the loop
-- [Wiping keys on drop is opt-in](/quest/m2/speed/wipe-feature.md) - a `wipe` feature; the default build skips it

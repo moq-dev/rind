@@ -27,7 +27,7 @@ pub static ML_KEM_768: Algorithm = Algorithm {
     id: AlgorithmId::MlKem768,
 };
 
-/// A decapsulation key, which decapsulates any number of ciphertexts, wiped on drop.
+/// A decapsulation key, which decapsulates any number of ciphertexts, wiped on drop under the `wipe` feature.
 pub struct DecapsulationKey(mlkem768::DecapKey);
 
 impl DecapsulationKey {
@@ -130,7 +130,7 @@ impl AsRef<[u8]> for Ciphertext {
     }
 }
 
-/// The secret both parties share, wiped on drop.
+/// The secret both parties share, wiped on drop under the `wipe` feature.
 pub struct SharedSecret(mlkem768::SharedSecret);
 
 impl AsRef<[u8]> for SharedSecret {

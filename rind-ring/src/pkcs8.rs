@@ -1,6 +1,6 @@
 //! PKCS#8 private key documents.
 
-/// A PKCS#8 private key document, wiped on drop.
+/// A PKCS#8 private key document, wiped on drop under rind's `wipe` feature.
 pub struct Document(rind::encoding::Pkcs8);
 
 impl Document {

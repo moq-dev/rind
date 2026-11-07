@@ -181,6 +181,11 @@ for module in "${selected[@]}"; do
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             cargo nextest run "${packages[@]}" --locked --no-tests=warn
+            # Only the zeroing tests see the opt-in wipe, which the default
+            # build turns into no-ops.
+            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
+                cargo nextest run -p rind --features wipe --test zeroing --locked
+            fi
             # Doc tests need a library. No packages at all means the workspace.
             mapfile -t libs < <(sh/select.sh "$changed" "$all" --lib)
             if ((${#libs[@]} > 0 || ${#packages[@]} == 0)); then

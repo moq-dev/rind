@@ -1,5 +1,5 @@
-//! Verification that every value owning a secret (a key, keyed state, or a
-//! shared secret) is zeroed on drop.
+//! Verification that, under the `wipe` feature, every value owning a secret
+//! (a key, keyed state, or a shared secret) is zeroed on drop.
 //!
 //! Some of this is subject to whims of the compiler, and
 //! hand-written drop impls, so we test it here.
@@ -41,7 +41,7 @@
 //!     been zeroised upon drop, even if the value was a `Key::Key128`
 //!     that only initialized half of that space.
 
-#![cfg(any(target_os = "linux", target_os = "macos"))]
+#![cfg(all(feature = "wipe", any(target_os = "linux", target_os = "macos")))]
 
 use core::mem::size_of;
 use core::ops::Deref;

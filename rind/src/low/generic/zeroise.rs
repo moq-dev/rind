@@ -5,14 +5,22 @@ use core::mem::{size_of, size_of_val};
 
 use crate::low::zero_bytes;
 
-/// Writes zeroes over the whole of the `v` slice.
+// Without the `wipe` feature these do nothing, so the `Drop` impls that call
+// them compile away; `cfg!` rather than `#[cfg]` keeps `zero_bytes` compiled,
+// and its test running, in every build.
+
+/// Writes zeroes over the whole of the `v` slice, under the `wipe` feature.
 pub(crate) fn zeroise<T: Zeroable>(v: &mut [T]) {
-    zero_bytes(v.as_mut_ptr().cast(), size_of_val(v));
+    if cfg!(feature = "wipe") {
+        zero_bytes(v.as_mut_ptr().cast(), size_of_val(v));
+    }
 }
 
-/// Writes zeroes over the whole of the `v` value.
+/// Writes zeroes over the whole of the `v` value, under the `wipe` feature.
 pub(crate) fn zeroise_value<T: Zeroable>(v: &mut T) {
-    zero_bytes((v as *mut T).cast(), size_of::<T>());
+    if cfg!(feature = "wipe") {
+        zero_bytes((v as *mut T).cast(), size_of::<T>());
+    }
 }
 
 /// Marker trait for types who have valid all-bits-zero values.

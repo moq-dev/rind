@@ -16,6 +16,7 @@ patches it in for every crate in its tree on ring 0.17.
 | A `_FOR_LEGACY_USE_ONLY` suffix | a `legacy` submodule, such as `digest::legacy::SHA1` |
 | An allocated `Document`, `Vec`, or `Box` output | an owned value of fixed capacity, such as `encoding::Pkcs8` |
 | `error::Unspecified`, `error::KeyRejected` | `rind::Error`, by kind of call (see [error](#error)) |
+| aws-lc-rs wipes keys and keyed state on drop; ring doesn't | rind wipes them only under its `wipe` feature: enable `rind/wipe` to keep aws-lc-rs's behavior |
 
 ## digest
 
@@ -136,7 +137,7 @@ protocols with their own integrity protection need. ring has none.
 |---|---|
 | `EphemeralPrivateKey::generate(alg, rng)`, `PrivateKey::generate(alg)` | `PrivateKey::generate(&alg)?` |
 | `compute_public_key()?` | `public_key()`, which cannot fail |
-| `agree_ephemeral(key, &UnparsedPublicKey::new(alg, peer), err, kdf)` | `key.agree(peer)?`, returning a `SharedSecret` wiped on drop |
+| `agree_ephemeral(key, &UnparsedPublicKey::new(alg, peer), err, kdf)` | `key.agree(peer)?`, returning a `SharedSecret` wiped on drop under `wipe` |
 | `agree(&key, peer, err, kdf)` | `key.agree(peer)?`, which borrows the key, so it agrees again |
 | `UnparsedPublicKey::new(alg, point)`, `ParsedPublicKey` of a point | `PublicKey::new(&alg, point)?`, which decompresses a compressed point, then `key.agree(peer.as_ref())`; `agree` alone takes an uncompressed point |
 | `ParsedPublicKey` of a `SubjectPublicKeyInfo` | `PublicKey::from_spki(&alg, der)?`, which also takes WebCrypto's `id-ecDH` |
@@ -145,7 +146,7 @@ protocols with their own integrity protection need. ring has none.
 | `X25519`, `ECDH_P256`, `ECDH_P384`, `ECDH_P521` | the same |
 | `PrivateKey::from_private_key(alg, bytes)` | `PrivateKey::from_scalar(&alg, bytes)` |
 | `PrivateKey::from_private_key_der(alg, der)` | `from_pkcs8(&alg, der)` or `from_sec1(&alg, der)`, whichever the caller holds |
-| `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, a `Scalar` wiped on drop |
+| `as_be_bytes()` to `EcPrivateKeyBin` or `Curve25519SeedBin` | `to_scalar()`, a `Scalar` wiped on drop under `wipe` |
 | `AsDer<Pkcs8V1Der>::as_der()` | `to_pkcs8()`, which X25519 keys also have |
 | `PublicKey::as_der()` | `PublicKey::to_spki()`, with an uncompressed point |
 | `AsDer<EcPrivateKeyRfc5915Der>::as_der()`, `PublicKey::as_be_bytes()` | none; an ECDSA key pair's `to_sec1()` |
@@ -209,12 +210,12 @@ ring has no `kem`.
 | `RsaKeyPair::from_components`, `KeyPairComponents` | none: load the key as PKCS#1 or PKCS#8 |
 | `Ed25519KeyPair::from_pkcs8_maybe_unchecked` | `from_pkcs8`, which takes v1 and v2 |
 | `Ed25519KeyPair::from_seed_unchecked` | `from_seed`, or `from_seed_and_public_key`, which checks the public key |
-| `to_pkcs8()`, `to_pkcs8v1()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_pkcs8v1()` (Ed25519), `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop |
-| `EcdsaKeyPair::private_key().as_der()` | `to_sec1()`, an `encoding::Sec1` wiped on drop |
+| `to_pkcs8()`, `to_pkcs8v1()`, `public_key().as_der()`, each an allocated `Document` | `to_pkcs8()`, `to_pkcs8v1()` (Ed25519), `to_spki()`, each of fixed capacity; `Pkcs8` is wiped on drop under `wipe` |
+| `EcdsaKeyPair::private_key().as_der()` | `to_sec1()`, an `encoding::Sec1` wiped on drop under `wipe` |
 | `EcdsaKeyPair::sign(rng, m)`, `RsaKeyPair::sign(alg, rng, m, &mut sig)`, `Ed25519KeyPair::try_sign` | `sign(m)`, `sign(alg, m)`, which take no random source and return a `Signature` |
 | `rsa::KeySize`, `RsaKeyPair::generate(size)` | the same; `KeySize` adds `Rsa6144` |
-| `EcdsaKeyPair::private_key().as_be_bytes()` (not in ring) | `to_scalar()`, an `EcdsaScalar` wiped on drop |
-| `Ed25519KeyPair::seed()?.as_be_bytes()` (not in ring) | `to_seed()`, an `Ed25519Seed` wiped on drop |
+| `EcdsaKeyPair::private_key().as_be_bytes()` (not in ring) | `to_scalar()`, an `EcdsaScalar` wiped on drop under `wipe` |
+| `Ed25519KeyPair::seed()?.as_be_bytes()` (not in ring) | `to_seed()`, an `Ed25519Seed` wiped on drop under `wipe` |
 | `public_modulus_len()`, `algorithm()`, `generate_fips` | none |
 | `ED25519_PUBLIC_KEY_LEN` | none: always 32 |
 | `rsa::PublicKey::from_der` | `PublicKey::new(&verify::RSA_PKCS1_SHA256, der)`, for one algorithm and PKCS#1 or `SubjectPublicKeyInfo` DER |
