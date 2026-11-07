@@ -1,0 +1,26 @@
+[package]
+name = "rind-str0m"
+version = "0.25.0"
+edition = "2024"
+repository = "https://github.com/moq-dev/rind"
+license = "Apache-2.0 OR ISC OR MIT-0"
+description = "str0m CryptoProvider backed by rind"
+categories = ["network-programming", "cryptography"]
+rust-version.workspace = true
+readme = "README.md"
+
+[dependencies]
+dimpl = { version = "0.9", default-features = false }
+rcgen = { version = "0.14", default-features = false }
+rind = { version = "0.2.1", path = "../rind" }
+rind-dimpl = { version = "0.9.0", path = "../rind-dimpl" }
+rind-rcgen = { version = "0.14.0", path = "../rind-rcgen" }
+# Its default features compile aws-lc-rs.
+str0m = { version = "0.25", default-features = false }
+time = { version = "0.3", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
+# features, as `admin/ctgrind` does; otherwise they build as no-ops.
+crabgrind = { version = "0.4", default-features = false }
+str0m-aws-lc-rs = "0.7"

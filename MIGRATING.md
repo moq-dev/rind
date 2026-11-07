@@ -410,11 +410,12 @@ those algorithms only with its `aws_lc_rs` feature.
 | none | `check()`, at startup, returns `MissingFeature` naming the CPU feature |
 | `KeyIdMethod::Sha256`, the default `key_identifier_method` | `key_identifier(&key)`, set on each certificate's parameters |
 
-### rind-dimpl, rind-object-store, rind-jsonwebtoken, and rind-instant-acme
+### rind-dimpl, rind-str0m, rind-object-store, rind-jsonwebtoken, and rind-instant-acme
 
 | aws-lc-rs backend | rind |
 |---|---|
 | dimpl's `crypto::aws_lc_rs::default_provider()` | `rind_dimpl::default_provider()?` |
+| str0m's default `aws-lc-rs` feature, or `str0m_aws_lc_rs::default_provider()` | `default-features = false`, with `set_crypto_provider(Arc::new(rind_str0m::default_provider()?))` |
 | object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider()?)` |
 | jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::default_provider()?` |
 | instant-acme's built-in provider | `Account::builder(http, rind_instant_acme::default_provider()?)` |
@@ -492,7 +493,7 @@ install ring's if nothing is installed first.
 | s2n-quic 1 | s2n-quic-crypto always links aws-lc-rs | Unsupported |
 | quiche 0.30 | BoringSSL | Unsupported: C |
 | dimpl 0.9 | default aws-lc-rs | **rind-dimpl** |
-| str0m | default aws-lc-rs; its provider interface is unreleased | Adapter: rind-str0m covered it and was removed for lack of a consumer |
+| str0m 0.25 | default aws-lc-rs | **rind-str0m** |
 | webrtc 0.21 (rtc 0.21) | default `crypto-ring`, or `crypto-aws-lc-rs` | **Patch**: the default `crypto-ring` |
 | webrtc-dtls 0.12, stun 0.17, turn 0.17 | ring, unconditionally | **Patch** |
 | libp2p-tls 0.7, libp2p-quic 0.14, libp2p-noise 0.47 | aws-lc-rs and ring, unconditionally | Unsupported: needs a provider hook upstream |

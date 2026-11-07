@@ -99,6 +99,7 @@ Each crate's README shows its setup.
 |---|---|
 | [rind-ring][] | ring 0.17's API, name for name: rename the dependency, with no code changes |
 | [rind-dimpl][] | DTLS 1.2 and 1.3 through [dimpl](https://github.com/algesten/dimpl) |
+| [rind-str0m][] | WebRTC through [str0m](https://github.com/algesten/str0m) |
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
@@ -193,6 +194,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-rustls]: https://github.com/moq-dev/rind/tree/main/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
 [rind-dimpl]: https://github.com/moq-dev/rind/tree/main/rind-dimpl
+[rind-str0m]: https://github.com/moq-dev/rind/tree/main/rind-str0m
 [rind-jsonwebtoken]: https://github.com/moq-dev/rind/tree/main/rind-jsonwebtoken
 [rind-object-store]: https://github.com/moq-dev/rind/tree/main/rind-object-store
 [rind-rcgen]: https://github.com/moq-dev/rind/tree/main/rind-rcgen

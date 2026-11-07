@@ -10,6 +10,7 @@ members = [
   "rind-rcgen",
   "rind-ring",
   "rind-rustls",
+  "rind-str0m",
   "rind-jsonwebtoken",
   "fuzz"
 ]
