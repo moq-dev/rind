@@ -88,10 +88,10 @@ pair's Q is its scalar times G, whose order follows from G's, but a parsed
 public key's is any point on the curve, so `p256_ecdsa_public_key_new` takes
 `P256Order`: every finite point on the curve has order n, as HOL Light's
 `P256_GROUP_ELEMENT_ORDER` proves from the group's size, which Mathlib cannot
-count yet. Key generation and signing need only G's order. The message's SHA-256 is the digest rind's
-`Sha256` impl computes (`Sha256E`), which `sha256_hash` proves is FIPS
-180-4's in a module these cannot import, as `Rind/HashSpec.lean` and
-`Rind/Sha2.lean` share names. Signing draws nonces until r and s are both
+count yet. Key generation and signing need only G's order. The message's
+SHA-256 is FIPS 180-4's (`sha256E`), through the SHA-256 proof below, so
+signing and verification take its `ShaBlocks` and messages of at most
+`maxInput` bytes. Signing draws nonces until r and s are both
 nonzero, with no bound, so `p256_ecdsa_sign` says what a returned signature
 is, not that one returns. The nonces come from RFC 6979's HMAC-DRBG, hedged
 with 16 bytes from the system source; its update takes a slice of borrowed

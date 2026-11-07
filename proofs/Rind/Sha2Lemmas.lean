@@ -40,8 +40,8 @@ def padAfter (k : Nat) (m : List U8) : List U8 :=
 
 /-- Padding a message after whole blocks pads its rest. -/
 theorem pad_append (p m : List U8) (hp : p.length % 128 = 0) :
-    pad (p ++ m) = p ++ padAfter p.length m := by
-  simp only [pad, padAfter, List.length_append, List.append_assoc,
+    sha512Pad (p ++ m) = p ++ padAfter p.length m := by
+  simp only [sha512Pad, padAfter, List.length_append, List.append_assoc,
     show (p.length + m.length) % 128 = m.length % 128 by omega]
 
 end rind.spec

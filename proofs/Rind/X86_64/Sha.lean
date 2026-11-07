@@ -196,12 +196,6 @@ theorem blockwise_new_spec (N : Usize) :
   unfold low.generic.blockwise.Blockwise.new
   simp
 
-theorem buffered_spec {N : Usize} (bw : low.generic.blockwise.Blockwise N) (h : bw.used.val ≤ N.val) :
-    low.generic.blockwise.Blockwise.buffered bw ⦃ s => s.val = bw.buffer.val.take bw.used.val ⦄ := by
-  unfold low.generic.blockwise.Blockwise.buffered
-  step*
-  simp_all [List.slice]
-
 theorem sha256_resume_spec (P : List U8) (s : mid.sha2.Sha256State) (hs : Sha256Absorbed P s) :
     mid.sha2.Sha256Context.resume s ⦃ c => Sha256Ctx P c ⦄ := by
   unfold mid.sha2.Sha256Context.resume

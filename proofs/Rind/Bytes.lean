@@ -124,12 +124,16 @@ theorem take_setSlice! {α : Type _} (r s : List α) (i : Nat) (hs : i + s.lengt
 
 /-! Big-endian, as little-endian reversed. -/
 
+/-- Bytes read as a big-endian bit vector are the number they encode. -/
+theorem toNat_fromBEBytes (a : List U8) : (BitVec.fromBEBytes (a.map (·.bv))).toNat = beNat a := by
+  rw [BitVec.fromBEBytes, BitVec.toNat_cast, toNat_fromLEBytes]
+  simp [beNat, leNat, List.map_map, List.map_reverse, Function.comp_def]
+
 /-- `u64::from_be_bytes` reads its bytes as a big-endian number. -/
 theorem val_of_fromBEBytes (a : List U8) (i : U64) {h}
     (hi : i.bv = (BitVec.fromBEBytes (a.map U8.bv)).cast h) : i.val = beNat a := by
   show i.bv.toNat = _
-  rw [hi, BitVec.toNat_cast, BitVec.fromBEBytes, BitVec.toNat_cast, toNat_fromLEBytes]
-  simp [beNat, leNat, List.map_map, List.map_reverse, Function.comp_def]
+  rw [hi, BitVec.toNat_cast, ← toNat_fromBEBytes]
 
 /-- `u64::to_be_bytes` writes the number its word holds. -/
 theorem beNat_toBEBytes (x : U64) :

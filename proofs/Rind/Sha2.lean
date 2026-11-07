@@ -55,7 +55,7 @@ termination_by bytes.length
 0x80, then the fewest zeros that end it 128 bits short of a whole block, then
 its length in bits as 128 big-endian bits. Cryptol's `pad`, for a message of
 fewer than 2^125 bytes, whose length in bits fits. -/
-def pad (m : List U8) : List U8 :=
+def sha512Pad (m : List U8) : List U8 :=
   m ++ 0x80#u8 :: List.replicate ((239 - m.length % 128) % 128) 0#u8 ++
     (BitVec.ofNat 128 (8 * m.length)).toBEBytes.map (@UScalar.mk UScalarTy.U8)
 
@@ -77,7 +77,7 @@ def sha512_256Iv : List U64 :=
 /-- The SHA-512 family's chaining value after a message, from initial value
 `iv`, written out big-endian: Cryptol's `join (SHA_2_Common' ...)`. -/
 def sha512Words (iv : List U64) (m : List U8) : List U8 :=
-  (compress iv (pad m)).flatMap beBytes
+  (compress iv (sha512Pad m)).flatMap beBytes
 
 /-- SHA-512, Cryptol's `SHA512::sha` on a message of bytes. -/
 def sha512 (m : List U8) : List U8 := sha512Words sha512Iv m

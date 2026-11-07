@@ -383,6 +383,12 @@ theorem update_spec {S : Type} {N : Usize}
     rw [s_post2, s1_post, setSlice!_eq _ _ _ (by scalar_tac),
       List.take_left' (by simp; scalar_tac), ← hqp, List.append_assoc]
 
+theorem buffered_spec {N : Usize} (bw : low.generic.blockwise.Blockwise N) (h : bw.used.val ≤ N.val) :
+    low.generic.blockwise.Blockwise.buffered bw ⦃ s => s.val = bw.buffer.val.take bw.used.val ⦄ := by
+  unfold low.generic.blockwise.Blockwise.buffered
+  step*
+  simp_all [List.slice]
+
 /-! ## Hash values over whole blocks -/
 
 /-- Translated bytes as the spec reads them. -/

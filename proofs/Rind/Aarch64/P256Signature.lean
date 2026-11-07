@@ -1,5 +1,6 @@
 import Rind.Aarch64.P256Ecdsa
 import Rind.Aarch64.Ed25519
+import Rind.Aarch64.Hmac
 open Aeneas Aeneas.Std Result rind.spec
 
 /-!
@@ -316,14 +317,30 @@ def ecdsaVerdict (Q : P256Point) (e : Nat) (sig : List U8) (r : core.result.Resu
   r = if sig.length = 64 ∧ ecdsaP256Verifies Q e (beNat (sig.take 32)) (beNat (sig.drop 32)) then .Ok ()
     else .Err .BadSignature
 
-/-- `e` is the integer ECDSA signs for `msg`: the SHA-256 digest rind's impl
-computes, whose first 32 bytes are read big-endian, mod n. `sha256_hash`
-proves that digest FIPS 180-4's, in a module P-256's cannot import, as their
-specs share names. -/
-def Sha256E (msg : Slice U8) (e : Nat) : Prop :=
-  ∃ d dg, Sha256Sig.HashInst.hash msg = ok d ∧
-    high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg ∧ 32 ≤ dg.length ∧
-    e = beNat (dg.val.take 32) % n256
+/-- The integer ECDSA signs for `msg`: FIPS 180-4's SHA-256 of it, read
+big-endian, mod n. -/
+def sha256E (msg : List U8) : Nat :=
+  (BitVec.fromBEBytes (sha256.hash (bv msg))).toNat % n256
+
+/-- The digest the ECDSA layer hashes `msg` to, given the block functions'
+contracts, encodes `sha256E`'s integer. -/
+theorem ecdsa_sha256_spec (hsha : ShaBlocks) (msg : Slice U8) (hm : msg.length ≤ maxInput) :
+    ∃ d dg, Sha256Sig.HashInst.hash msg = ok d ∧
+      high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg ∧ 32 ≤ dg.length ∧
+      beNat (dg.val.take 32) % n256 = sha256E msg.val := by
+  obtain ⟨d, hd, hL, hdb⟩ : ∃ d, Sha256Hash.hash msg = ok d ∧ outLen d.algorithm = 32 ∧
+      digestBytes d = sha256.hash (bv msg.val) := by
+    have h1 := (sha256_hashSpec hsha).hash_spec msg hm
+    generalize Sha256Hash.hash msg = r at h1 ⊢
+    cases r <;> simp_all
+  obtain ⟨dg, hdg, hdl, hdv⟩ : ∃ dg, high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = ok dg ∧
+      dg.length = outLen d.algorithm ∧ bv dg.val = digestBytes d := by
+    have h1 := digest_as_ref_spec d
+    generalize high.digest.Digest.Insts.CoreConvertAsRefSliceU8.as_ref d = r at h1 ⊢
+    cases r <;> simp_all
+  refine ⟨d, dg, hd, hdg, by omega, ?_⟩
+  rw [List.take_of_length_le (by simp only [Slice.length] at hdl; omega), sha256E, ← hdb, ← hdv,
+    bv, toNat_fromBEBytes]
 
 namespace P256
 
@@ -395,17 +412,18 @@ nonce in [1, n), neither zero. Signing is refused only if the nonce's random
 input cannot be drawn. The nonces, RFC 6979's hedged with that input, are
 outside the functional spec. -/
 theorem p256_ecdsa_sign (h : Runs) (hdrbg : Drbg) (hfill : Fills)
-    (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d) (msg : Slice U8) (e : Nat)
-    (he : Sha256E msg e) :
+    (hsha : ShaBlocks) (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d)
+    (msg : Slice U8) (hm : msg.length ≤ maxInput) :
     high.signature.EcdsaKeyPair.sign kp msg ⦃ r =>
       (∀ sig, r = .Ok sig → high.signature.Signature.Insts.CoreConvertAsRefSliceU8.as_ref sig ⦃ b =>
         b.length = 64 ∧ ∃ k, 0 < k ∧ k < n256 ∧
-          ecdsaP256Sign d k e = some (beNat (b.val.take 32), beNat (b.val.drop 32)) ∧
+          ecdsaP256Sign d k (sha256E msg.val) = some (beNat (b.val.take 32), beNat (b.val.drop 32)) ∧
           beNat (b.val.take 32) ≠ 0 ∧ beNat (b.val.drop 32) ≠ 0 ⦄) ∧
       ∀ err, r = .Err err → err = .RngFailed ⦄div := by
   obtain ⟨signing, hkey, hs⟩ := hkp
   obtain ⟨hsd, -, hd⟩ := hs
-  obtain ⟨dd, dg, hhash, hdg', hdg, rfl⟩ := he
+  obtain ⟨dd, dg, hhash, hdg', hdg, he⟩ := ecdsa_sha256_spec hsha msg hm
+  rw [← he]
   unfold high.signature.EcdsaKeyPair.sign high.signature.Buffer.write high.signature.Buffer.new
   rw [hkey]
   simp only [lift, bind_ok, Array.to_slice_mut]
@@ -499,15 +517,16 @@ theorem p256_ecdsa_key_pair_public_key (h : Runs) (hheld : Held) (hc : Cached)
 /-- Verification with a key pair's public key: ECDSA's verification of
 `msg`'s SHA-256 under its scalar times the generator. -/
 theorem p256_ecdsa_key_pair_verify (h : Runs) (hheld : Held) (hc : Cached)
-    (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d) (msg sig : Slice U8) (e : Nat)
-    (he : Sha256E msg e) :
+    (hsha : ShaBlocks) (kp : high.signature.EcdsaKeyPair) (d : Nat) (hkp : EcdsaKeyPairOf kp d)
+    (msg sig : Slice U8) (hm : msg.length ≤ maxInput) :
     (do
       let pk ← high.signature.EcdsaKeyPair.impl.public_key kp
       high.signature.PublicKey.verify pk msg sig) ⦃ r =>
-      ecdsaVerdict (p256Pow p256G d) e sig.val r ⦄ := by
+      ecdsaVerdict (p256Pow p256G d) (sha256E msg.val) sig.val r ⦄ := by
   obtain ⟨signing, hkey, hs⟩ := id hkp
   obtain ⟨-, hd0, hd⟩ := hs
-  obtain ⟨dd, dg, hhash, hdg', hdg, rfl⟩ := he
+  obtain ⟨dd, dg, hhash, hdg', hdg, he⟩ := ecdsa_sha256_spec hsha msg hm
+  rw [← he]
   apply WP.spec_bind (key_pair_public_key_spec h hheld hc kp d hkp)
   rintro pk ⟨⟨vk, hvk, hpkk⟩, -, -⟩
   unfold high.signature.PublicKey.verify
@@ -521,11 +540,11 @@ theorem p256_ecdsa_key_pair_verify (h : Runs) (hheld : Held) (hc : Cached)
 X9.62 uncompressed point on the curve, and otherwise its verification is
 ECDSA's of a message's SHA-256 under that point. -/
 theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc : Cached)
-    (bytes : Slice U8) :
+    (hsha : ShaBlocks) (bytes : Slice U8) :
     high.signature.PublicKey.new high.signature.verify.ECDSA_P256_SHA256_FIXED bytes ⦃ r =>
-      x962Outcome bytes.val (fun pk => ∀ (msg sig : Slice U8) (e : Nat), Sha256E msg e →
+      x962Outcome bytes.val (fun pk => ∀ (msg sig : Slice U8), msg.length ≤ maxInput →
         high.signature.PublicKey.verify pk msg sig ⦃ v =>
-          ecdsaVerdict (some (x962Coords bytes.val)) e sig.val v ⦄) r ⦄ := by
+          ecdsaVerdict (some (x962Coords bytes.val)) (sha256E msg.val) sig.val v ⦄) r ⦄ := by
   unfold high.signature.PublicKey.new high.signature.verify.ECDSA_P256_SHA256_FIXED
     high.signature.parse_ecdsa_p256_sha256_fixed
   simp only
@@ -540,8 +559,9 @@ theorem p256_ecdsa_public_key_new (ho : P256Order) (h : Runs) (hheld : Held) (hc
       step with copy_from_ok 1088#usize bytes (by simp [hl]) as ⟨b, enc, hb'⟩
       subst hb'
       simp only [WP.spec_ok]
-      refine ⟨_, rfl, fun msg sig e he => ?_⟩
-      obtain ⟨dd, dg, hhash, hdg', hdg, rfl⟩ := he
+      refine ⟨_, rfl, fun msg sig hm => ?_⟩
+      obtain ⟨dd, dg, hhash, hdg', hdg, he⟩ := ecdsa_sha256_spec hsha msg hm
+      rw [← he]
       exact WP.spec_mono (ecdsa_verify_spec h hc Sha256Sig vk _ hvk (ho _ hvk.1 hvk.2.1) msg sig dg dd hhash
         hdg' hdg)
         fun r hr => verdict_of_outcome hr
