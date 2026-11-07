@@ -11,6 +11,7 @@ members = [
   "rind-ring",
   "rind-rustls",
   "rind-jsonwebtoken",
+  "rind-python",
   "fuzz"
 ]
 

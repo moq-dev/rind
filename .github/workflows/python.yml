@@ -1,0 +1,143 @@
+name: python
+
+# Builds pyrind's wheels for every platform rind supports that PyPI takes,
+# and its sdist, and tests each wheel its runner can load. Nightly, on
+# demand, and from the release workflow, which publishes what this uploads.
+# Read-only: publishing is release.yml's.
+
+on:
+  schedule:
+    - cron: "30 18 * * *"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit or tag to build.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # The dev shell's, which the tests and `just check` use.
+  MATURIN_VERSION: "1.15.0"
+
+jobs:
+  wheel:
+    name: wheel (${{ matrix.target }}${{ matrix.manylinux && format(', {0}', matrix.manylinux) || '' }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Rust's own glibc floor, 2.17, is manylinux2014's.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2014"
+            test: true
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2014"
+            test: true
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            manylinux: "2014"
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            test: true
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            test: true
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            test: true
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            test: true
+            # pyca/cryptography's last Windows on Arm wheel, 46.0.3, lacks
+            # ML-KEM, so the comparisons against it run on the other runners.
+            tests: "test_[rw]*.py"
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      # The oldest CPython the stable ABI wheel targets, which both builds
+      # it on Windows and tests it.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Build
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux || 'auto' }}
+          args: --release --locked --out dist --manifest-path rind-python/Cargo.toml
+
+      - if: matrix.test
+        uses: ./.github/actions/vectors
+
+      - name: Test
+        if: matrix.test
+        shell: bash
+        env:
+          TESTS: ${{ matrix.tests || 'test*.py' }}
+        run: |
+          python -m pip install --only-binary :all: cryptography mypy
+          python -m pip install --no-index --find-links dist pyrind
+          python -m unittest discover --start-directory rind-python/tests --pattern "$TESTS"
+          python -m mypy.stubtest pyrind
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pyrind-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  # PyPy and free-threaded CPython cannot load the stable ABI wheels, so they
+  # build this.
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Build
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          command: sdist
+          args: --out dist --manifest-path rind-python/Cargo.toml
+
+      - name: Build a wheel from it
+        run: |
+          python -m pip install --no-binary pyrind dist/pyrind-*.tar.gz
+          python -c "from pyrind import digest; print(digest.digest(digest.SHA256, b'').hex())"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pyrind-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error

@@ -103,6 +103,7 @@ Each crate's README shows its setup.
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
 | [rind-rcgen][] | certificates through [rcgen](https://github.com/rustls/rcgen) |
 | [rind-instant-acme][] | ACME through [instant-acme](https://github.com/djc/instant-acme), unpublished until instant-acme releases the interface it targets |
+| [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
 
 ### Platforms
 
@@ -197,6 +198,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [rind-object-store]: https://github.com/moq-dev/rind/tree/main/rind-object-store
 [rind-rcgen]: https://github.com/moq-dev/rind/tree/main/rind-rcgen
 [rind-instant-acme]: https://github.com/moq-dev/rind/tree/main/rind-instant-acme
+[rind-python]: https://github.com/moq-dev/rind/tree/main/rind-python
 [quests]: https://github.com/moq-dev/rind/blob/main/quest/README.md
 [contributing]: https://github.com/moq-dev/rind/blob/main/CONTRIBUTING.md
 [migrating]: https://github.com/moq-dev/rind/blob/main/MIGRATING.md

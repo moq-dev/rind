@@ -1,0 +1,28 @@
+[package]
+name = "rind-python"
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/moq-dev/rind"
+license = "(Apache-2.0 OR ISC OR MIT-0) AND (Apache-2.0 OR ISC OR MIT) AND Apache-2.0 AND ISC AND BSD-3-Clause"
+description = "pyrind, rind's API for Python"
+rust-version.workspace = true
+readme = "README.md"
+# Released to PyPI as `pyrind` by .github/workflows/release.yml, never to
+# crates.io.
+publish = false
+
+[lib]
+name = "_rind"
+crate-type = ["cdylib"]
+# The tests are Python's, under tests/, run against the built extension
+# (sh/python.sh). A Rust test binary would link libpython, which the hosts
+# that run `cargo test` need not have.
+test = false
+doctest = false
+
+[dependencies]
+rind = { version = "0.2.1", path = "../rind" }
+# The stable ABI from 3.11, the oldest CPython still supported and the first
+# whose stable ABI has the buffer protocol, so one wheel per platform covers
+# every CPython since.
+pyo3 = { version = "0.30", features = ["abi3-py311"] }

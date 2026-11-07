@@ -21,6 +21,7 @@ on:
       - fuzz
       - prove
       - Pullfrog
+      - python
       - quality lints
       - Queue
       - regenerate

@@ -4,3 +4,9 @@ git_release_enable = false
 # Publish only when the commit is a merged release PR, so an ordinary merge to
 # `main` never publishes.
 release_always = false
+
+# pyrind, which .github/workflows/release.yml publishes to PyPI from the tag
+# this creates. It never goes to crates.io, so its versions come from tags.
+[[package]]
+name = "rind-python"
+git_only = true

@@ -55,7 +55,7 @@ declare -A scope=(
     [deny]='(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
     # An adapter's manifest holds both its version and its upstream requirement.
     [versions]='^(rind-[^/]+/Cargo\.toml$|sh/adapter-versions\.sh$)'
-    [license]='^(rind/src/|admin/scan-license$)'
+    [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # rind's aarch64 and armv7 backends, which the host's own build skips.
@@ -72,6 +72,9 @@ declare -A scope=(
     [fixtures]='^(rind/|rind-rustls/|Cargo\.toml$|admin/build-cost-fixtures/(rind|rustls)/)'
     # The fixture builds this checkout's rind-ring under the rind-patch shim.
     [patch]='^(patch/|rind-ring/|(rind/)?Cargo\.toml$|sh/patch\.sh$)'
+    # pyrind's Python tests and type stubs, against its built wheel. rind's
+    # own changes reach them in the nightly wheels workflow instead.
+    [py]='^(rind-python/|sh/python\.sh$)'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -100,6 +103,7 @@ declare -A tools=(
     [bench]='python3'
     [fixtures]='cargo'
     [patch]='cargo jq git'
+    [py]='cargo jq maturin python3'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [hooks]='shellcheck'
@@ -111,7 +115,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch quest gh hooks shell nix) ;;
+    check) modules=(rs msrv cross deny versions license inplace compat bench fixtures patch py quest gh hooks shell nix) ;;
     fix) modules=(rs compat patch nix) ;;
 esac
 
@@ -225,6 +229,7 @@ for module in "${selected[@]}"; do
             cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind-lean --target-dir target
             ;;
         check:patch) sh/patch.sh ;;
+        check:py) sh/python.sh test ;;
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)
             actionlint

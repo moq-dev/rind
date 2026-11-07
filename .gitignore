@@ -19,3 +19,4 @@ proofs/Rind/Aarch64/HashAxioms.lean
 proofs/Rind/Aarch64/SignatureDispatch.lean
 proofs/Rind/Aarch64/Ed25519.lean
 patch/*/Cargo.lock
+__pycache__/
