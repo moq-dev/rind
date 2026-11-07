@@ -3027,6 +3027,7 @@ dependencies = [
  "libcrux-hacl-rs",
  "libcrux-macros",
  "libcrux-poly1305",
+ "libcrux-sha2",
  "libcrux-traits",
  "proptest",
  "serde",

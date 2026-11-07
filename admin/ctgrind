@@ -6,6 +6,9 @@ set -e
 # Run it in `nix develop .#ctgrind`, which has the libclang and valgrind
 # headers crabgrind builds with.
 #
+# Set `RUSTFLAGS='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'`
+# on x86_64 to check the portable backend, as `just portable` tests it.
+#
 # Pass `--target armv7-unknown-linux-gnueabihf` on a host that executes
 # 32-bit ARM natively, such as an arm64 one, with an armhf valgrind.
 # Valgrind passes `AT_HWCAP2` only to ppc64 programs (3.22 through 3.28), so

@@ -475,7 +475,7 @@ mod tests {
     // hides, for each key size, with a secret key, block, and message, for
     // `admin/ct-qemu`. The message's 5 blocks take the CTR routine's 3-block
     // loop and 2-block tail, then its partial block a 1-block call.
-    #[cfg(target_arch = "arm")]
+    #[cfg(rind_backend = "arm")]
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu-arm"]
     fn ct_qemu_aes() {

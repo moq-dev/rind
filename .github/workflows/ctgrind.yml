@@ -85,6 +85,24 @@ jobs:
           RIND_CPU_DISABLE_adx: 1
           RIND_TEST_X86_BMI2_ADX: 0
 
+  # The portable backend, forced on x86_64 as `just portable` forces it, with
+  # dalek's serial backend, which the architectures that need it run.
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+
+      - uses: ./.github/actions/nix
+
+      - name: ctgrind tests
+        run: nix develop .#ctgrind --command admin/ctgrind --release
+        env:
+          RUSTFLAGS: --cfg rind_portable --cfg curve25519_dalek_backend="serial"
+
   # Valgrind runs no AVX-512, VAES, VPCLMULQDQ, or SHA instruction, so
   # `admin/ct-sde` compares Intel SDE traces of those paths for two secrets
   # instead. One job per test, since RSA-4096's traces alone take about an

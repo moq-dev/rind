@@ -66,4 +66,12 @@ The public modules wrap three private layers:
 `low::generic` contains pure-rust polyfills for items we don't have assembler-
 or intrinsic-based implementations for a certain platform.
 
+`rind/build.rs` picks one backend per target and sets `rind_backend` to it:
+`x86_64`, `aarch64`, or `arm` on little-endian targets of those
+architectures, and `portable` everywhere else, or wherever `--cfg
+rind_portable` forces it. Code outside `low` gates on `rind_backend`, never
+`target_arch`. `low::portable` is pure Rust and needs no CPU features; the
+`arm` backend wraps its types with the crypto extension's, NEON's, and
+aws-lc's assembly.
+
 [migrating]: MIGRATING.md

@@ -1,11 +1,11 @@
 // Copyright (c) 2019, Google Inc.
 // SPDX-License-Identifier: ISC
 
-//! GHASH in integer code alone, for x86_64 CPUs without SSSE3 and for armv7
-//! AES-GCM from any IV without the crypto extension: aws-lc's
-//! `crypto/fipsmodule/modes/gcm_nohw.c` at commit
+//! GHASH in integer code alone, for x86_64 CPUs without SSSE3 and for
+//! AES-GCM from any IV on armv7 without the crypto extension and on the
+//! portable backend: aws-lc's `crypto/fipsmodule/modes/gcm_nohw.c` at commit
 //! 91c93a8eb860e51482a871a8772cb9b1b310baea, in Rust, in its 64-bit
-//! configuration on x86_64 and its 32-bit one on armv7.
+//! configuration on 64-bit targets and its 32-bit one on 32-bit targets.
 //!
 //! It multiplies carry-less with ordinary integer multiplies of operands
 //! masked to every fourth bit, so carries never reach the bits it keeps
@@ -72,14 +72,14 @@ impl Drop for NohwTable {
 
 impl low::generic::zeroise::Zeroable for NohwTable {}
 
-#[cfg(target_arch = "arm")]
+#[cfg(target_pointer_width = "32")]
 use gcm_mul64_split as gcm_mul64_nohw;
-#[cfg(not(target_arch = "arm"))]
+#[cfg(not(target_pointer_width = "32"))]
 use gcm_mul64_wide as gcm_mul64_nohw;
 
 /// The carry-less product of `a` and `b`, as its low and high words, by
 /// 64-bit multiplies.
-#[cfg(any(not(target_arch = "arm"), test))]
+#[cfg(any(not(target_pointer_width = "32"), test))]
 fn gcm_mul64_wide(a: u64, b: u64) -> (u64, u64) {
     // One term every four bits means the largest term is 64/4 = 16, which
     // barely overflows into the next term. Using one term every five bits
@@ -126,7 +126,7 @@ fn gcm_mul64_wide(a: u64, b: u64) -> (u64, u64) {
 }
 
 /// The carry-less product of `a` and `b`, by 32-bit multiplies.
-#[cfg(any(target_arch = "arm", test))]
+#[cfg(any(target_pointer_width = "32", test))]
 fn gcm_mul32_nohw(a: u32, b: u32) -> u64 {
     // One term every four bits means the largest term is 32/4 = 8, which
     // does not overflow into the next term.
@@ -154,7 +154,7 @@ fn gcm_mul32_nohw(a: u32, b: u32) -> u64 {
 
 /// The carry-less product of `a` and `b`, as its low and high words, by
 /// Karatsuba over 32-bit halves.
-#[cfg(any(target_arch = "arm", test))]
+#[cfg(any(target_pointer_width = "32", test))]
 fn gcm_mul64_split(a: u64, b: u64) -> (u64, u64) {
     let (a0, a1) = (a as u32, (a >> 32) as u32);
     let (b0, b1) = (b as u32, (b >> 32) as u32);
@@ -218,9 +218,9 @@ fn gcm_polyval_nohw(xi: &mut [u64; 2], h: &NohwTable) {
 mod tests {
     use super::*;
     use crate::low::generic::ghash as model;
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     use crate::low::x86_64::cpu::HaveSsse3;
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     use crate::low::x86_64::ghash_ssse3_x86_64::Ssse3Table;
 
     // Both configurations' products agree, under operands of pseudo-random
@@ -267,7 +267,7 @@ mod tests {
                 _ => bytes(16, seed + 100).try_into().unwrap(),
             };
             let nohw = NohwTable::new(&key);
-            #[cfg(target_arch = "x86_64")]
+            #[cfg(rind_backend = "x86_64")]
             let ssse3 = HaveSsse3::check().map(|token| Ssse3Table::new(&key, token));
 
             let mut xi = start;
@@ -281,7 +281,7 @@ mod tests {
                 let mut got = start;
                 nohw.ghash(&mut got, &input);
 
-                #[cfg(target_arch = "x86_64")]
+                #[cfg(rind_backend = "x86_64")]
                 if let Some(ssse3) = &ssse3 {
                     let mut want = start;
                     ssse3.ghash(&mut want, &input);

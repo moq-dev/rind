@@ -53,10 +53,12 @@
               "rust-src"
               "rust-analyzer"
             ];
-            # The gate lints rind's other backends without their C toolchains.
+            # The gate lints rind's other backends without their C toolchains,
+            # the portable one forced on x86_64.
             targets = [
               "aarch64-unknown-linux-gnu"
               "armv7-unknown-linux-gnueabihf"
+              "x86_64-unknown-linux-gnu"
             ];
           };
 

@@ -9,7 +9,7 @@ fn check_passes() {
 // `RIND_CPU_DISABLE_*` only takes effect with debug assertions or
 // `--cfg rind_cpu_disable`, and x86_64 and the portable armv7 backend require
 // no CPU features.
-#[cfg(all(any(debug_assertions, rind_cpu_disable), target_arch = "aarch64"))]
+#[cfg(all(any(debug_assertions, rind_cpu_disable), rind_backend = "aarch64"))]
 #[test]
 fn missing_feature_is_named() {
     const REQUIRED: &[&str] = &["neon"];
@@ -75,7 +75,7 @@ fn missing_feature_is_named() {
 // halves of ymm0-15 dirty, so every operation that may run one must return
 // with them clean. XINUSE[2] reports that state where `xgetbv` reads XINUSE;
 // a CPU or emulator on which `vzeroupper` does not clear it is not checked.
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 #[test]
 fn upper_vector_state_left_clean() {
     use core::arch::asm;

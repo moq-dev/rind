@@ -163,6 +163,23 @@ jobs:
       - name: Build, lint, and test
         run: just armv7
 
+  # The portable backend, which every architecture without rind assembly
+  # runs, forced on x86_64 so it runs without emulation. The recipe lints and
+  # tests it with the checks a debug build has.
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/vectors
+      - uses: ./.github/actions/just
+      - uses: ./.github/actions/nix
+
+      - name: Build, lint, and test
+        run: just portable
+
   # The simulator runs the iOS tests natively on the Apple silicon runner;
   # devices' code is only built, since GitHub has no iOS device to run it.
   ios:

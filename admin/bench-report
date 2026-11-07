@@ -792,6 +792,7 @@ TIERS = [
     (("aarch64-unknown-linux-gnu", False, ""), "aarch64"),
     (("aarch64-unknown-linux-gnu", True, ""), "no crypto"),
     (("armv7-unknown-linux-gnueabihf", False, ""), "armv7"),
+    (("x86_64-unknown-linux-gnu", True, "generic"), "portable"),
 ]
 
 # The libraries the nightly bench times rind against.

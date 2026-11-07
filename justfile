@@ -36,6 +36,10 @@ fix $BASE="":
 armv7:
     nix develop .#armv7 --command sh/armv7.sh
 
+# Lint and test the portable backend, forced on this x86_64 Linux host.
+portable:
+    nix develop --command sh/portable.sh
+
 # Check dependencies against advisories, licenses, and sources in deny.toml.
 audit:
     cargo deny check

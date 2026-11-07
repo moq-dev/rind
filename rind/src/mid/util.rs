@@ -5,7 +5,7 @@
 // done better that way.
 
 // 32-bit ARM swaps out the curves that use some of these.
-#![cfg_attr(target_arch = "arm", allow(dead_code))]
+#![cfg_attr(any(rind_backend = "arm", rind_backend = "portable"), allow(dead_code))]
 
 macro_rules! little_endian {
     ([u64; $N:literal], $fn_array_to:ident, $fn_slice_to:ident, $fn_to_bytes:ident) => {

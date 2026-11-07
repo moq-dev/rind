@@ -58,7 +58,8 @@ declare -A scope=(
     [license]='^(rind/src/|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
-    # rind's aarch64 and armv7 backends, which the host's own build skips.
+    # rind's aarch64, armv7, and portable backends, which the host's own
+    # build skips.
     [cross]='^(rind/(src/|Cargo\.toml$)|Cargo\.(toml|lock)$)'
     # s2n-bignum's proofs assume separate input and output, so the kernels
     # rind runs in place are walked, after planting faults in each.
@@ -158,6 +159,10 @@ if ((${#missing[@]} > 0)); then
     exit 1
 fi
 
+# The portable backend, forced on a target; an explicit target keeps its
+# builds apart from the host's, and its build scripts unflagged.
+portable='--cfg rind_portable --cfg curve25519_dalek_backend="serial"'
+
 # Tracked files matching a pathspec, NUL-separated.
 files() {
     git ls-files -z -- "$@"
@@ -205,6 +210,11 @@ for module in "${selected[@]}"; do
             for target in aarch64-unknown-linux-gnu armv7-unknown-linux-gnueabihf; do
                 cargo clippy -p rind --lib --locked --target "$target" -- --deny warnings
             done
+            CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="$portable" \
+                cargo clippy -p rind --lib --locked --target x86_64-unknown-linux-gnu -- --deny warnings
+            # And on a 32-bit target, whose Poly1305 and GHASH differ.
+            CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="$portable" \
+                cargo clippy -p rind --lib --locked --target armv7-unknown-linux-gnueabihf -- --deny warnings
             ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;

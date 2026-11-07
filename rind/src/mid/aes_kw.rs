@@ -511,7 +511,7 @@ mod tests {
 
     // armv7's AES-KW on the crypto extension, which valgrind hides, for each
     // key size, with a secret KEK and key, for `admin/ct-qemu`.
-    #[cfg(target_arch = "arm")]
+    #[cfg(rind_backend = "arm")]
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu-arm"]
     fn ct_qemu_aes_kw() {

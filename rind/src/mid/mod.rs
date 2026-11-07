@@ -4,12 +4,13 @@
 #![deny(unsafe_code)]
 
 cfg_if::cfg_if! {
-    if #[cfg(target_arch = "arm")] {
+    if #[cfg(any(rind_backend = "arm", rind_backend = "portable"))] {
         // libcrux exposes whole operations rather than the field and bignum
-        // arithmetic these build on, so 32-bit ARM swaps them at this layer.
-        #[path = "arm/aes_gcm.rs"]
+        // arithmetic these build on, so the portable backend, which armv7
+        // builds on, swaps them at this layer.
+        #[path = "portable/aes_gcm.rs"]
         pub(super) mod aes_gcm;
-        #[path = "arm/ed25519.rs"]
+        #[path = "portable/ed25519.rs"]
         pub(super) mod ed25519;
     } else {
         pub(super) mod aes_gcm;

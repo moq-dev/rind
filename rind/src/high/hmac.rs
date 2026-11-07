@@ -566,7 +566,7 @@ mod tests {
     // first, and the messages end in a block that pads within itself, fills
     // it exactly, pads into another, or follows a whole one, both in one call
     // and through a context's buffer.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     #[test]
     #[ignore = "admin/ct-sde runs it under Intel SDE"]
     fn ct_sde_hmac() {
@@ -596,7 +596,7 @@ mod tests {
 
     // HMAC-SHA1 and HMAC-SHA256 on the crypto extension, which valgrind hides
     // from armv7, as `ct_sde_hmac`, for `admin/ct-qemu`.
-    #[cfg(target_arch = "arm")]
+    #[cfg(rind_backend = "arm")]
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu-arm"]
     fn ct_qemu_hmac() {

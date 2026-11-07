@@ -15,7 +15,7 @@ pub(crate) fn seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8
 /// Decrypts `inout` in place, returning the tag over `aad` and the
 /// ciphertext, which the caller checks.
 // aarch64 tests compare only `seal` with the one-pass routine.
-#[cfg(any(target_arch = "arm", target_arch = "x86_64"))]
+#[cfg(not(rind_backend = "aarch64"))]
 pub(crate) fn open(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], inout: &mut [u8]) -> [u8; 16] {
     cipher(key, nonce, aad, inout, false)
 }

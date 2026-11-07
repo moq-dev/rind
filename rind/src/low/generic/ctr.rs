@@ -12,7 +12,7 @@
 /// A short final chunk also takes the pipelined eight-block path: the unused
 /// blocks cost less than encrypting it one serial block at a time. Counters
 /// past the last used block may wrap; they are discarded.
-#[cfg(target_arch = "aarch64")]
+#[cfg(rind_backend = "aarch64")]
 pub(crate) fn by8(counter: u32, inout: &mut [u8], mut apply_8: impl FnMut(u32, &mut [u8; 128])) {
     let (chunks, tail) = inout.as_chunks_mut::<128>();
     let mut counter = counter;

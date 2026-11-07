@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
 //! X25519: the shared secret on BoringSSL's `x25519-asm-arm` NEON ladder
-//! where the CPU has NEON, and everything else on curve25519-dalek. Both
-//! clamp the scalar and mask the point's top bit as RFC7748 requires.
+//! where the CPU has NEON, and everything else on the portable backend's
+//! curve25519-dalek, whose precomputed Edwards table beats the NEON ladder
+//! for the public key. Both clamp the scalar and mask the point's top bit as
+//! RFC7748 requires.
 //!
 //! The assembly is BoringSSL's, imported by `admin/import-boringssl`, which
 //! took it from SUPERCOP's `neon2`. It is not formally verified: its
 //! correctness rests on its use and testing in BoringSSL and ring, and on
 //! rind's tests of it against dalek, Wycheproof, and aws-lc-rs.
 
-use curve25519_dalek::montgomery::MontgomeryPoint;
-
 use super::cpu::HaveNeon;
+use crate::low::portable::curve25519::{self as portable, from_bytes, to_bytes};
 
 // curve25519-dalek chooses its backend from cfgs that a build's RUSTFLAGS set
 // for every crate, rind included, so refuse those that would replace the
@@ -39,19 +40,10 @@ core::arch::global_asm!(
 
 /// res := X25519(scalar, point), in little-endian words.
 pub(crate) fn curve25519_x25519(res: &mut [u64; 4], scalar: &[u64; 4], point: &[u64; 4]) {
-    let (scalar, point) = (to_bytes(scalar), to_bytes(point));
-    let out = match HaveNeon::check() {
-        Some(neon) => ladder_neon(neon, &scalar, &point),
-        None => MontgomeryPoint(point).mul_clamped(scalar).0,
-    };
-    *res = from_bytes(&out);
-}
-
-/// res := X25519(scalar, 9), in little-endian words.
-///
-/// dalek's precomputed Edwards table beats the NEON ladder here.
-pub(crate) fn curve25519_x25519base(res: &mut [u64; 4], scalar: &[u64; 4]) {
-    *res = from_bytes(&MontgomeryPoint::mul_base_clamped(to_bytes(scalar)).0);
+    match HaveNeon::check() {
+        Some(neon) => *res = from_bytes(&ladder_neon(neon, &to_bytes(scalar), &to_bytes(point))),
+        None => portable::curve25519_x25519(res, scalar, point),
+    }
 }
 
 fn ladder_neon(_: HaveNeon, scalar: &[u8; 32], point: &[u8; 32]) -> [u8; 32] {
@@ -62,25 +54,11 @@ fn ladder_neon(_: HaveNeon, scalar: &[u8; 32], point: &[u8; 32]) -> [u8; 32] {
     out
 }
 
-fn to_bytes(words: &[u64; 4]) -> [u8; 32] {
-    let mut r = [0u8; 32];
-    for (chunk, word) in r.as_chunks_mut::<8>().0.iter_mut().zip(words) {
-        *chunk = word.to_le_bytes();
-    }
-    r
-}
-
-fn from_bytes(bytes: &[u8; 32]) -> [u64; 4] {
-    let mut r = [0u64; 4];
-    for (word, chunk) in r.iter_mut().zip(bytes.as_chunks::<8>().0) {
-        *word = u64::from_le_bytes(*chunk);
-    }
-    r
-}
-
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use curve25519_dalek::montgomery::MontgomeryPoint;
+
     use super::*;
     use crate::low;
 

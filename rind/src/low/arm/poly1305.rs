@@ -4,11 +4,9 @@
 //! verified streaming `Hacl_MAC_Poly1305`, as libcrux-poly1305 ships it,
 //! otherwise.
 
-use libcrux_hacl_rs::streaming_types::error_code;
-use libcrux_poly1305::hacl::mac_poly1305::{self, state_t};
-
 use super::cpu::HaveNeon;
 use super::poly1305_arm::Poly1305Neon;
+use crate::low::portable::poly1305::Hacl;
 
 pub(crate) enum Poly1305 {
     Neon(Poly1305Neon),
@@ -35,36 +33,6 @@ impl Poly1305 {
             Self::Neon(p) => p.finish(),
             Self::Portable(p) => p.finish(),
         }
-    }
-}
-
-pub(crate) struct Hacl([state_t; 1]);
-
-impl Hacl {
-    fn new(key: &[u8; 32]) -> Self {
-        let mut state = [state_t {
-            block_state: [0; 25],
-            buf: [0; 16],
-            total_len: 0,
-            p_key: [0; 32],
-        }];
-        mac_poly1305::reset(&mut state, key);
-        Self(state)
-    }
-
-    fn add_bytes(&mut self, bytes: &[u8]) {
-        // `usize` is 32 bits here. HACL refuses more than `u32::MAX` bytes in
-        // total, which the AEADs cannot reach: their AAD and message are
-        // disjoint slices in the same address space as this state, plus at
-        // most 46 bytes of padding and lengths.
-        let result = mac_poly1305::update(&mut self.0, bytes, bytes.len() as u32);
-        assert!(result == error_code::Success, "Poly1305 input fits 32 bits");
-    }
-
-    fn finish(self) -> [u8; 16] {
-        let mut tag = [0u8; 16];
-        mac_poly1305::digest(&self.0, &mut tag);
-        tag
     }
 }
 

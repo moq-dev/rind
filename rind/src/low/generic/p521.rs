@@ -309,7 +309,7 @@ pub(crate) fn bignum_modinv(z: &mut [u64], a: &[u64], b: &[u64], _t: &mut [u64])
 
 /// z := 2^1152 mod m, for m = n_521
 // Checks the constant against s2n-bignum, which armv7 lacks.
-#[cfg(all(test, not(target_arch = "arm")))]
+#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     assert_eq!(m, N);
     z.copy_from_slice(&MM);
@@ -643,7 +643,7 @@ const C: [u64; 5] = [
 ///
 /// Inputs that are secret in `mid::p521` are marked secret, so under
 /// `admin/ctgrind` these also check each routine is constant time in them.
-#[cfg(all(test, not(target_arch = "arm")))]
+#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use proptest::prelude::*;

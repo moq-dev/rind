@@ -8,17 +8,17 @@ use libcrux_traits::aead::arrayref::Aead;
 
 use super::aes::{check_gcm_iv, check_gcm_lengths};
 use crate::Error;
-use crate::low::{
-    self, AesHwKey, AesKey, Entry, GhashTable, HaveCryptoExt, NohwTable, ct_equal, zeroise,
-    zeroise_value,
-};
+use crate::low::{self, AesKey, Entry, NohwTable, ct_equal, zeroise, zeroise_value};
+#[cfg(rind_backend = "arm")]
+use crate::low::{AesHwKey, GhashTable, HaveCryptoExt};
 
 /// An AES-GCM key.
 // A process only ever builds one variant, so boxing would buy nothing.
-#[expect(clippy::large_enum_variant)]
+#[cfg_attr(rind_backend = "arm", expect(clippy::large_enum_variant))]
 pub(crate) enum AesGcm {
     Portable(Portable),
-    /// The crypto extension's, which the key picks when the CPU has it.
+    /// armv7's crypto extension's, which the key picks when the CPU has it.
+    #[cfg(rind_backend = "arm")]
     Hw(Hw),
 }
 
@@ -32,16 +32,18 @@ impl AesGcm {
         let copy_key = &mut copy[..key.len()];
         copy_key.copy_from_slice(key);
         low::ct::secret_slice(copy_key);
-        match HaveCryptoExt::check() {
-            Some(token) => Self::Hw(Hw::new(copy_key, token)),
-            None => Self::Portable(Portable::new(copy_key)),
+        #[cfg(rind_backend = "arm")]
+        if let Some(token) = HaveCryptoExt::check() {
+            return Self::Hw(Hw::new(copy_key, token));
         }
+        Self::Portable(Portable::new(copy_key))
     }
 
     /// The AES key's length in bytes, 16, 24, or 32.
     pub(crate) fn key_len(&self) -> usize {
         match self {
             Self::Portable(key) => key.key_len,
+            #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.key.key_len(),
         }
     }
@@ -69,6 +71,7 @@ impl AesGcm {
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
         match self {
             Self::Portable(key) => key.encrypt(nonce, aad, cipher_inout, tag_out)?,
+            #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.encrypt(nonce, aad, cipher_inout, tag_out),
         }
         low::ct::public_slice(cipher_inout);
@@ -101,6 +104,7 @@ impl AesGcm {
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
         let result = match self {
             Self::Portable(key) => key.decrypt(nonce, aad, cipher_inout, tag),
+            #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.decrypt(nonce, aad, cipher_inout, tag),
         };
 
@@ -132,6 +136,7 @@ impl AesGcm {
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
         let tag = match self {
             Self::Portable(key) => key.composed().tagged::<true>(iv, aad, cipher_inout),
+            #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.tagged::<true>(iv, aad, cipher_inout),
         };
         tag_out.copy_from_slice(&tag[..tag_out.len()]);
@@ -158,6 +163,7 @@ impl AesGcm {
         check_gcm_lengths(aad.len(), cipher_inout.len())?;
         let want = match self {
             Self::Portable(key) => key.composed().tagged::<false>(iv, aad, cipher_inout),
+            #[cfg(rind_backend = "arm")]
             Self::Hw(key) => key.tagged::<false>(iv, aad, cipher_inout),
         };
         let valid = ct_equal(&want[..tag.len()], tag);
@@ -265,18 +271,20 @@ impl Drop for Portable {
     }
 }
 
+/// Bytes of counter mode between GHASH passes, so GHASH reads them back from
+/// cache: aws-lc's `GHASH_CHUNK`.
+const CHUNK: usize = 3 * 1024;
+
 /// aws-lc's AES and GHASH for the crypto extension, composed as aws-lc's
 /// `CRYPTO_gcm128_encrypt_ctr32` does on 32-bit ARM.
+#[cfg(rind_backend = "arm")]
 pub(crate) struct Hw {
     key: AesHwKey,
     table: GhashTable,
 }
 
+#[cfg(rind_backend = "arm")]
 impl Hw {
-    /// Bytes of counter mode between GHASH passes, so GHASH reads them back
-    /// from cache: aws-lc's `GHASH_CHUNK`.
-    const CHUNK: usize = 3 * 1024;
-
     fn new(key: &[u8], token: HaveCryptoExt) -> Self {
         let key = AesHwKey::new(key, token);
         let h = key.encrypt_block(&[0; 16]);
@@ -340,7 +348,7 @@ trait Parts {
         let mut xi = [0u8; 16];
         ghash(table, &mut xi, aad);
         let mut counter = add32(&y0, 1);
-        for chunk in inout.chunks_mut(Hw::CHUNK) {
+        for chunk in inout.chunks_mut(CHUNK) {
             if !ENC {
                 ghash(table, &mut xi, chunk);
             }
@@ -382,6 +390,7 @@ trait Ghash {
     fn ghash(&self, xi: &mut [u8; 16], input: &[[u8; 16]]);
 }
 
+#[cfg(rind_backend = "arm")]
 impl Ghash for GhashTable {
     fn ghash(&self, xi: &mut [u8; 16], input: &[[u8; 16]]) {
         self.ghash(xi, input);
@@ -394,6 +403,7 @@ impl Ghash for NohwTable {
     }
 }
 
+#[cfg(rind_backend = "arm")]
 impl Parts for Hw {
     type Table = GhashTable;
 
@@ -503,6 +513,7 @@ mod tests {
     // extension's is checked against libcrux's here: each key size, AAD and
     // message lengths around the block and chunk boundaries, and a tampered
     // tag.
+    #[cfg(rind_backend = "arm")]
     #[test]
     fn hw_matches_portable() {
         let Some(token) = HaveCryptoExt::check() else {
@@ -561,6 +572,7 @@ mod tests {
         for key_len in [16, 24, 32] {
             let raw = bytes(key_len, 1);
             let composed = Portable::new(&raw).composed();
+            #[cfg(rind_backend = "arm")]
             let hw = HaveCryptoExt::check().map(|token| Hw::new(&raw, token));
             let encrypt = |b: &[u8; 16]| composed.encrypt_block(b);
             let aad = bytes(17, 2);
@@ -584,6 +596,7 @@ mod tests {
                 for (iv, y0) in runs {
                     let want = gcm_model(encrypt, &y0, &aad, &plain);
                     check(&composed, &iv, &aad, &plain, &want, &what);
+                    #[cfg(rind_backend = "arm")]
                     if let Some(hw) = &hw {
                         check(hw, &iv, &aad, &plain, &want, &what);
                     }
@@ -605,6 +618,7 @@ mod tests {
         next = composed.ctr(&next, &mut got[..48]);
         composed.ctr(&next, &mut got[48..]);
         assert_eq!(got, want);
+        #[cfg(rind_backend = "arm")]
         if let Some(token) = HaveCryptoExt::check() {
             let hw = Hw::new(&[7; 16], token);
             let mut got = plain.clone();
@@ -634,6 +648,7 @@ mod tests {
     // `admin/ct-qemu`. The message spans a GHASH chunk, then 5 blocks, which
     // take the CTR routine's 3-block loop and 2-block tail, and a partial
     // block; the AAD is an even run of blocks and a partial one.
+    #[cfg(rind_backend = "arm")]
     #[test]
     #[ignore = "admin/ct-qemu runs it under qemu-arm"]
     fn ct_qemu_aes_gcm() {
@@ -648,7 +663,7 @@ mod tests {
 
             let nonce = bytes(12).try_into().unwrap();
             let aad = bytes(300);
-            let mut msg = bytes(Hw::CHUNK + 5 * 16 + 8);
+            let mut msg = bytes(CHUNK + 5 * 16 + 8);
             let mut tag = [0u8; 16];
             ct_qemu::traced(|| gcm.encrypt(&nonce, &aad, &mut msg, &mut tag)).unwrap();
             ct_qemu::traced(|| gcm.decrypt(&nonce, &aad, &mut msg, &tag)).unwrap();

@@ -35,10 +35,12 @@ pub fn check() -> Result<(), MissingFeature> {
 /// Where it doesn't, ChaCha20-Poly1305 is faster than AES-GCM, so a protocol
 /// that negotiates between them should prefer it.
 pub fn has_aes_hardware() -> bool {
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(any(rind_backend = "arm", rind_backend = "aarch64"))]
     return super::HaveCryptoExt::check().is_some();
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     return super::x86_64::cpu::HaveAesHardware::check().is_some();
+    #[cfg(rind_backend = "portable")]
+    return false;
 }
 
 /// Holds data-independent timing (DIT) on for this thread until dropped.

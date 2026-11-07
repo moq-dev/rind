@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-//! The s2n-bignum routines `low::PosInt` uses beyond Montgomery
-//! multiplication, with their contracts, in portable Rust for armv7.
+//! The s2n-bignum routines `low::PosInt` uses, with their contracts, in
+//! portable Rust for armv7 and the portable backend, and the portable
+//! backend's Montgomery multiplication, which armv7 runs aws-lc's assembly
+//! for.
 //!
 //! Each runs in time that depends only on its lengths, and its modulus's
 //! width in `bignum_montifier`, never on its values: loops run a count fixed
@@ -230,7 +232,7 @@ pub(crate) fn bignum_montifier(z: &mut [u64], m: &[u64], _t: &mut [u64]) {
     let mut square = [0; MAX_LIMBS];
     let square = &mut square[..n];
     for bit in (0..e.ilog2()).rev() {
-        mont_mul(square, r, r, m, n0);
+        mont_mul_limbs(square, r, r, m, n0);
         r.copy_from_slice(square);
         if e >> bit & 1 == 1 {
             mod_double(r, m);
@@ -320,13 +322,40 @@ pub(crate) fn bignum_optsub(z: &mut [u64], x: &[u64], y: &[u64], p: u64) {
     sub_masked(z, y, mask(nonzero(p)));
 }
 
+/// `z = x * y / 2^(64k) mod m`, for `x` and `y` below the odd `m`, where `k`
+/// is the length of each and `n0` is `-m^-1 mod 2^64`.
+///
+/// HACL*'s verified `Hacl_Bignum` has this, but its Rust allocates scratch
+/// for each call and frees it unwiped, though RSA's private operations put
+/// their secrets there.
+#[cfg(any(
+    rind_backend = "portable",
+    all(test, any(rind_backend = "x86_64", rind_backend = "aarch64"))
+))]
+pub(crate) fn mont_mul(z: &mut [u64], x: &[u64], y: &[u64], m: &[u64], n0: u64) {
+    let k = m.len();
+    assert!(k >= 1 && z.len() == k && x.len() == k && y.len() == k);
+    let n = k * 2;
+    let (x, y, m) = (halves(x), halves(y), halves(m));
+    let mut r = [0; MAX_LIMBS];
+    // The low half of `-m^-1 mod 2^64` is `-m^-1 mod 2^32`.
+    mont_mul_limbs(&mut r[..n], &x[..n], &y[..n], &m[..n], n0 as u32);
+    join(&r[..n], z);
+}
+
+/// `z = x^2 / 2^(64k) mod m`, as [`mont_mul`] takes them.
+#[cfg(rind_backend = "portable")]
+pub(crate) fn mont_sqr(z: &mut [u64], x: &[u64], m: &[u64], n0: u64) {
+    mont_mul(z, x, x, m, n0);
+}
+
 /// `z := x * y / 2^32n mod m`, for `x` and `y` below the odd `m`, each `n`
 /// limbs, where `n0` is `-m^-1 mod 2^32`.
 ///
 /// Koç, Acar, and Kaliski's CIOS method: each step adds `x[i] * y`, then
 /// clears the lowest limb by adding a multiple of `m` and shifts down a
 /// limb, keeping the running sum below 2m.
-fn mont_mul(z: &mut [u32], x: &[u32], y: &[u32], m: &[u32], n0: u32) {
+fn mont_mul_limbs(z: &mut [u32], x: &[u32], y: &[u32], m: &[u32], n0: u32) {
     let n = m.len();
     let mut t = [0; MAX_LIMBS + 2];
     let t = &mut t[..n + 2];
@@ -505,7 +534,7 @@ fn mask(bit: u64) -> u64 {
 ///
 /// The values are marked secret, so under `admin/ctgrind` these also check
 /// each routine is constant time in them.
-#[cfg(all(test, not(target_arch = "arm")))]
+#[cfg(all(test, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use proptest::prelude::*;
@@ -647,6 +676,13 @@ mod tests {
             bignum_negmodinv(&mut ours, &sm[..1]);
             low::bignum_negmodinv(&mut theirs, &m[..1]);
             prop_assert_eq!(into_public(ours), theirs);
+
+            let mut n0 = [0];
+            low::bignum_negmodinv(&mut n0, &m[..1]);
+            let (mut ours, mut theirs) = (vec![0; k], vec![0; k]);
+            mont_mul(&mut ours, &sx, &sy, &sm, into_secret(n0[0]));
+            low::mont_mul(&mut theirs, &x, &y, &m, n0[0]);
+            prop_assert_eq!(public(&ours), theirs);
         }
 
         #[test]
@@ -709,6 +745,10 @@ mod tests {
         assert_eq!(ours, theirs);
         bignum_montifier(&mut ours, &m, &mut []);
         low::bignum_montifier(&mut theirs, &m, &mut [0; MAX_WORDS]);
+        assert_eq!(ours, theirs);
+        // -m^-1 is one for an m of all ones.
+        mont_mul(&mut ours, &x, &x, &m, 1);
+        low::mont_mul(&mut theirs, &x, &x, &m, 1);
         assert_eq!(ours, theirs);
         bignum_modinv(&mut ours, &x, &m, &mut []);
         low::bignum_modinv(&mut theirs, &x, &m, &mut [0; MAX_WORDS * 3]);

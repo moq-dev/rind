@@ -50,14 +50,14 @@ impl Zeroable for u64 {}
 impl Zeroable for u128 {}
 impl Zeroable for usize {}
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 impl Zeroable for core::arch::x86_64::__m128i {}
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 impl Zeroable for core::arch::x86_64::__m256i {}
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 impl Zeroable for core::arch::x86_64::__m512i {}
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(rind_backend = "aarch64")]
 impl Zeroable for core::arch::aarch64::uint8x16_t {}
-#[cfg(target_arch = "aarch64")]
+#[cfg(rind_backend = "aarch64")]
 impl Zeroable for core::arch::aarch64::uint64x2_t {}

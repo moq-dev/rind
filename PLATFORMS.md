@@ -1,7 +1,7 @@
 # Platforms
 
-`aarch64`, `x86_64`, and 32-bit `arm` architectures only. CI tests Linux
-(glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, iOS in the
+rind has assembly for `aarch64`, `x86_64`, and 32-bit `arm`, and a portable
+Rust backend for every other architecture. CI tests Linux (glibc and musl), macOS, and Windows on `x86_64` and `aarch64`, iOS in the
 simulator on `aarch64`, and Android on `aarch64`, `armv7`, and `x86_64`, the
 first two under qemu. iOS devices' code is only built.
 
@@ -55,6 +55,14 @@ first two under qemu. iOS devices' code is only built.
   CPU has it, and with NEON, X25519's shared secret runs [BoringSSL]'s
   assembly. SHA-3's and ML-KEM's Keccak-f runs [OpenSSL]'s assembly, on NEON
   where the CPU has it.
+
+- Every other architecture, and big-endian `aarch64` and `arm`, whose
+  assembly assumes little-endian, runs the portable backend: what 32-bit
+  `arm` runs without NEON and the crypto extension, with portable Rust in
+  place of the assembly `arm` always runs (see [ALGORITHMS.md](ALGORITHMS.md)).
+  It needs no CPU features, `rind::cpu::has_aes_hardware()` is false, and
+  rind-rustls and rind-dimpl prefer ChaCha20-Poly1305. CI tests it only on
+  `x86_64`, where `--cfg rind_portable` forces it.
 
 Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
 at startup to get an error naming the missing feature instead.

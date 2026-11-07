@@ -452,7 +452,7 @@ impl AffineMontPoint {
         JacobianMontPoint::public_batch_as_affine(&multiples)
     }
 
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     fn public_precomp_w5(&self) -> JacobianMontPointTableW5 {
         let mut r = [JacobianMontPoint::zero(); 16];
 
@@ -576,7 +576,7 @@ impl JacobianMontPoint {
     }
 
     /// `scalar * point`, by s2n-bignum's `p384_montjscalarmul`.
-    #[cfg(not(target_arch = "arm"))]
+    #[cfg(not(any(rind_backend = "arm", rind_backend = "portable")))]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         let mut r = Self::zero();
         low::p384_montjscalarmul(&mut r.xyz, &scalar.0, &Self::from_affine(point).xyz);
@@ -593,7 +593,7 @@ impl JacobianMontPoint {
     /// when the windows so far are worth 32m + d = n + 2d.  Below n, that
     /// needs the last window, a negative d, and n = -d mod 32, which the
     /// assertion below rules out.
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         const { assert!(CURVE_ORDER[0] % 32 > 16) };
         let precomp = point.public_precomp_w5();
@@ -759,7 +759,7 @@ impl JacobianMontPoint {
         }
     }
 
-    #[cfg(any(target_arch = "arm", test))]
+    #[cfg(any(any(rind_backend = "arm", rind_backend = "portable"), test))]
     fn add_inplace(&mut self, p: &Self) {
         let mut r = Self::infinity();
         low::p384_montjadd(&mut r.xyz, &self.xyz, &p.xyz);
@@ -800,7 +800,7 @@ impl JacobianMontPoint {
 
     /// Returns `table[index - 1]`, negated if `sign` is set, or infinity
     /// for a zero `index`, in constant time.
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     fn lookup_w5(table: &JacobianMontPointTableW5, index: u8, sign: u8) -> Self {
         let mut r = Self::infinity();
         low::bignum_jac_point_select_p384(&mut r.xyz, table, index);
@@ -808,7 +808,7 @@ impl JacobianMontPoint {
         r
     }
 
-    #[cfg(target_arch = "arm")]
+    #[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
     fn maybe_negate_y(&mut self, sign: u8) {
         let y = self.y();
         let neg_y = y.negate_mod_p();
@@ -1138,7 +1138,7 @@ impl Iterator for BoothRecodeW5 {
 }
 
 /// 16 jacobian points
-#[cfg(target_arch = "arm")]
+#[cfg(any(rind_backend = "arm", rind_backend = "portable"))]
 type JacobianMontPointTableW5 = [u64; 288];
 
 /// 20 tables of 16 affine points

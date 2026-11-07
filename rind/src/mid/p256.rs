@@ -429,7 +429,7 @@ impl AffineMontPoint {
     }
 
     /// `scalar * self`, by s2n-bignum's `p256_montjscalarmul`.
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(rind_backend = "aarch64"))]
     fn multiply(&self, scalar: &Scalar) -> Self {
         JacobianMontPoint::multiply(scalar, self).as_affine()
     }
@@ -440,7 +440,7 @@ impl AffineMontPoint {
     /// output, inversion included, for any scalar and a point on the curve,
     /// which `self` is. It takes and returns plain coordinates, the result
     /// proven only mod p, which `as_mont` reduces.
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(rind_backend = "aarch64")]
     fn multiply(&self, scalar: &Scalar) -> Self {
         let point = Self::from_xy(self.x().demont(), self.y().demont());
         let mut xy = [0; 8];
@@ -451,7 +451,7 @@ impl AffineMontPoint {
     }
 
     /// `scalar * G`, by aws-lc's routines over the generator table.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn base_multiply(scalar: &Scalar) -> Self {
         JacobianMontPoint::base_multiply(scalar).as_affine()
     }
@@ -462,7 +462,7 @@ impl AffineMontPoint {
     /// Its proof, which covers the aarch64 routine, assumes the table holds
     /// exactly the multiples of G that `admin/p256-precomp` writes, and
     /// returns plain affine coordinates.
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(rind_backend = "x86_64"))]
     fn base_multiply(scalar: &Scalar) -> Self {
         let mut xy = [0; 8];
         low::p256_scalarmulbase(&mut xy, &scalar.0, &precomp::CURVE_GENERATOR_PRECOMP);
@@ -480,7 +480,7 @@ impl AffineMontPoint {
 
     /// Becomes `row`'s point `digit - 1`, or zeros for a zero `digit`, with
     /// `y` negated if `negate` is 1, in constant time.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn select_w7(&mut self, row: &low::P256GeneratorRow, digit: u8, negate: u8) {
         low::p256_select_w7(&mut self.xy, row, digit);
         let y = self.y();
@@ -531,7 +531,7 @@ impl JacobianMontPoint {
     }
 
     /// `scalar * point`, by s2n-bignum's `p256_montjscalarmul`.
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(rind_backend = "aarch64"))]
     fn multiply(scalar: &Scalar, point: &AffineMontPoint) -> Self {
         let mut r = Self::zero();
         low::p256_montjscalarmul(&mut r.xyz, &scalar.0, &Self::from_affine(point).xyz);
@@ -545,7 +545,7 @@ impl JacobianMontPoint {
     /// No addition doubles, which `p256_point_add_affine` cannot: the
     /// accumulator sums lower windows, so it is a smaller integer than the
     /// table point, in magnitude, and below n.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn base_multiply(scalar: &Scalar) -> Self {
         let mut windows = precomp::CURVE_GENERATOR_PRECOMP
             .iter()
@@ -629,7 +629,7 @@ impl JacobianMontPoint {
     }
 
     // aarch64's `p256_scalarmul` makes its result affine itself.
-    #[cfg(any(test, not(target_arch = "aarch64")))]
+    #[cfg(any(test, not(rind_backend = "aarch64")))]
     fn as_affine(&self) -> AffineMontPoint {
         // inversion calculated outside montgomery domain
         // (benchmarked vs addition chain in montgomery)
@@ -982,7 +982,7 @@ impl Scalar {
     }
 
     /// Iterator of `256 / W + 1` W-bit elements, LSB first, sign bit is separate
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(rind_backend = "x86_64")]
     fn booth_recoded<const W: usize>(&self) -> BoothRecode<W> {
         BoothRecode::new(self)
     }
@@ -1024,14 +1024,14 @@ impl Iterator for Bits<'_> {
     }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 struct BoothRecode<const W: usize> {
     // little endian
     bytes: [u8; 33],
     index: usize,
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 impl<const W: usize> BoothRecode<W> {
     fn new(scalar: &Scalar) -> Self {
         let mut bytes = [0u8; 33];
@@ -1057,7 +1057,7 @@ impl<const W: usize> BoothRecode<W> {
     }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 impl<const W: usize> Iterator for BoothRecode<W> {
     type Item = (u8, u8);
 
@@ -1086,19 +1086,19 @@ impl<const W: usize> Iterator for BoothRecode<W> {
 }
 
 /// The generator table's window, aws-lc's.
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 const BASE_WINDOW: usize = 7;
 
 /// 37 rows of the 64 multiples `i * 2^(7 * j) * G`, one row per 7-bit window.
 ///
 /// 37 := 256 / 7 + 1, as Booth recoding carries into a window above the top bit.
-#[cfg(target_arch = "x86_64")]
+#[cfg(rind_backend = "x86_64")]
 type AffineMontPointTable = [low::P256GeneratorRow; 37];
 
 /// 43 rows of the 32 multiples `i * 2^(6 * j) * G`, one row per 6-bit window.
 ///
 /// 43 := 256 / 6 + 1, as Booth recoding carries into a window above the top bit.
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(rind_backend = "x86_64"))]
 type AffineMontPointTable = [[u64; 256]; 43];
 
 const CURVE_A_MONT: FieldElement = FieldElement([
