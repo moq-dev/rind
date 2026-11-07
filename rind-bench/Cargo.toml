@@ -42,6 +42,7 @@ proptest = "1.5.0"
 ring = "0.17"
 rind-jsonwebtoken = { path = "../rind-jsonwebtoken" }
 rind-rustls = { path = "../rind-rustls" }
+rind-snow = { path = "../rind-snow" }
 rsa = { version = "=0.10.0-rc.19", features = ["sha2"] }
 rustls = { version = "0.23.36", default-features = false, features = ["aws-lc-rs", "ring", "std"] }
 serde = { version = "1", features = ["derive"] }
@@ -49,6 +50,7 @@ serde_json = "1"
 sha1 = "0.11"
 sha2 = "0.11"
 sha3 = "0.12"
+snow = { version = "0.10", features = ["ring-resolver"] }
 x25519-dalek = { version = "3", features = ["getrandom"] }
 
 # Graviola supports only these.
@@ -156,4 +158,8 @@ harness = false
 
 [[bench]]
 name = "rustls"
+harness = false
+
+[[bench]]
+name = "snow"
 harness = false

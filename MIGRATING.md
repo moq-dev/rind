@@ -410,14 +410,15 @@ those algorithms only with its `aws_lc_rs` feature.
 | none | `check()`, at startup, returns `MissingFeature` naming the CPU feature |
 | `KeyIdMethod::Sha256`, the default `key_identifier_method` | `key_identifier(&key)`, set on each certificate's parameters |
 
-### rind-dimpl, rind-object-store, rind-jsonwebtoken, and rind-instant-acme
+### rind-dimpl, rind-object-store, rind-jsonwebtoken, rind-instant-acme, and rind-snow
 
-| aws-lc-rs backend | rind |
+| Built-in backend | rind |
 |---|---|
 | dimpl's `crypto::aws_lc_rs::default_provider()` | `rind_dimpl::default_provider()?` |
 | object_store's `aws`, `azure`, and `gcp` features | the `*-base` features, with `with_crypto_provider(rind_object_store::default_provider()?)` |
 | jsonwebtoken's `crypto::aws_lc::DEFAULT_PROVIDER` | `rind_jsonwebtoken::default_provider()?` |
 | instant-acme's built-in provider | `Account::builder(http, rind_instant_acme::default_provider()?)` |
+| snow's `Builder::new(params)` or `RingResolver` | `Builder::with_resolver(params, rind_snow::resolver()?)`, with snow's default resolver behind a `FallbackResolver` for BLAKE2 |
 
 ## Crates with their own crypto backend
 
@@ -496,7 +497,7 @@ install ring's if nothing is installed first.
 | webrtc 0.21 (rtc 0.21) | default `crypto-ring`, or `crypto-aws-lc-rs` | **Patch**: the default `crypto-ring` |
 | webrtc-dtls 0.12, stun 0.17, turn 0.17 | ring, unconditionally | **Patch** |
 | libp2p-tls 0.7, libp2p-quic 0.14, libp2p-noise 0.47 | aws-lc-rs and ring, unconditionally | Unsupported: needs a provider hook upstream |
-| snow 0.10 | opt-in `ring-resolver` | **Pure Rust** by default. Adapter through `CryptoResolver`, once rind loads static X25519 keys |
+| snow 0.10 | opt-in `ring-resolver` | **rind-snow**: X25519, ChaCha20-Poly1305, AES-256-GCM, SHA-256, and SHA-512. **Pure Rust** by default |
 | boringtun 0.7 | ring's ChaCha20-Poly1305 and constant-time comparison | **Patch** |
 
 ### DNS

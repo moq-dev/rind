@@ -1,0 +1,24 @@
+[package]
+name = "rind-snow"
+version = "0.10.0"
+edition = "2024"
+repository = "https://github.com/moq-dev/rind"
+license = "Apache-2.0 OR ISC OR MIT-0"
+description = "snow CryptoResolver backed by rind"
+categories = ["network-programming", "cryptography"]
+rust-version.workspace = true
+readme = "README.md"
+
+[dependencies]
+rind = { version = "0.2.1", path = "../rind" }
+snow = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+# Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
+# features, as `admin/ctgrind` does; otherwise they build as no-ops.
+crabgrind = { version = "0.4", default-features = false }
+hex = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The default resolver, RustCrypto's, is the interop and differential peer.
+snow = "0.10"
