@@ -1,0 +1,12 @@
+[package]
+name = "rind-timing"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+rind = { path = "../rind" }
+# Builds RSA keys that share a public key, for rsa_keys.rs.
+num-bigint = "0.4"
+num-integer = "0.1"

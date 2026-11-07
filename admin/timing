@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# Statistical timing tests of rind's secret operations, on this machine.
+#
+# Usage:
+#   admin/timing dudect [--seconds S] [--list] [FILTER...]
+#   admin/timing marvin [--repeat N] [BITS...]
+#
+# `dudect` times every operation that handles a secret on two classes of
+# secret (see rind-timing/src/cases.rs), after a planted leak it must find,
+# and fails on a |t| over dudect's 10.
+#
+# `marvin` runs the Marvin toolkit's RSA-OAEP probes against rind's
+# decryption, for 2048-, 3072-, and 4096-bit keys unless BITS names others:
+# the toolkit writes N of each probe in random order (default 100000),
+# rind-timing times each decryption, and tlsfuzzer's analysis fails on a
+# difference at its default alpha of 1e-5. Each key size's analysis,
+# report.txt among it, lands in .tmp/timing/marvin/rsaBITS/probes. rind has no
+# PKCS#1 v1.5 decryption, the toolkit's main target.
+#
+# Run it in `nix develop .#timing` on a quiet machine, holding a shared one
+# with `quest gate --host`: other work adds noise, and a CPU throttled by
+# power or heat runs faster on some data than on other. On Linux the tests
+# run pinned to CPU 1 (RIND_TIMING_CPU picks another), off the CPU most
+# interrupts land on.
+set -euo pipefail
+
+usage="usage: admin/timing dudect [--seconds S] [--list] [FILTER...]
+       admin/timing marvin [--repeat N] [BITS...]"
+
+if [[ -z "${TLSFUZZER:-}" || -z "${MARVIN_TOOLKIT:-}" ]]; then
+    echo "error: run inside 'nix develop .#timing'" >&2
+    exit 1
+fi
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cargo build --release --locked -p rind-timing
+bin=$PWD/target/release/rind-timing
+
+pin=()
+if [[ "$(uname)" == Linux ]]; then
+    pin=(taskset -c "${RIND_TIMING_CPU:-1}")
+fi
+
+marvin() {
+    local repeat=100000
+    if [[ "${1:-}" == --repeat ]]; then
+        repeat=${2:?$usage}
+        shift 2
+    fi
+    local sizes=("$@")
+    if ((${#sizes[@]} == 0)); then
+        sizes=(2048 3072 4096)
+    fi
+
+    local status=0 bits dir mhz
+    for bits in "${sizes[@]}"; do
+        dir=.tmp/timing/marvin/rsa$bits
+        rm -rf "$dir"
+        mkdir -p "$dir"
+        # Any key serves; the toolkit's step1.sh makes its own with OpenSSL.
+        openssl genpkey -algorithm RSA -pkeyopt "rsa_keygen_bits:$bits" -out "$dir/key.pem"
+        openssl pkcs8 -topk8 -nocrypt -in "$dir/key.pem" -outform DER -out "$dir/key.der"
+        openssl req -new -x509 -key "$dir/key.pem" -subj /CN=marvin -days 1 -out "$dir/cert.pem"
+
+        # The OAEP probes of the toolkit's step2-oaep-alt.sh. step2.py needs
+        # `-k`, or it fails on an unset variable.
+        PYTHONPATH=$TLSFUZZER python3 "$MARVIN_TOOLKIT/step2.py" \
+            -c "$dir/cert.pem" -k "$dir/key.pem" -o "$dir/probes" --repeat "$repeat" \
+            no_structure valid=0 \
+            too_short_payload="0 1" too_short_payload="0 3" too_short_payload="0 7" \
+            too_short_payload="0 15" \
+            no_padding=48 signature_padding=8 \
+            valid_repeated_byte_payload="$((bits / 8 - 11)) 0x00"
+
+        mhz=$("${pin[@]}" "$bin" marvin "$dir/key.der" "$dir/probes/ciphers.bin" "$dir/probes/raw_times.bin")
+        PYTHONPATH=$TLSFUZZER python3 "$TLSFUZZER/tlsfuzzer/extract.py" \
+            -l "$dir/probes/log.csv" --raw-times "$dir/probes/raw_times.bin" \
+            --binary 8 --endian little --clock-frequency "$mhz" -o "$dir/probes"
+        if ! PYTHONPATH=$TLSFUZZER python3 "$TLSFUZZER/tlsfuzzer/analysis.py" \
+            -o "$dir/probes" --summary-only --status-newline; then
+            echo "marvin: rsa$bits: a timing difference between probes; see $dir/probes/report.txt" >&2
+            status=1
+        fi
+    done
+    return $status
+}
+
+case "${1:-}" in
+    dudect)
+        shift
+        exec "${pin[@]}" "$bin" dudect "$@"
+        ;;
+    marvin)
+        shift
+        marvin "$@"
+        ;;
+    *)
+        echo "$usage" >&2
+        exit 2
+        ;;
+esac

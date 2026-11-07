@@ -21,7 +21,7 @@ ignore = [
 
 [licenses]
 version = 2
-# rind-bench, rind-cpuid, and rind-fuzz are publish = false tools.
+# rind-bench, rind-cpuid, rind-timing, and rind-fuzz are publish = false tools.
 private = { ignore = true }
 confidence-threshold = 0.9
 allow = [

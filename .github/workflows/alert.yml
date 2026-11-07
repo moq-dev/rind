@@ -25,6 +25,7 @@ on:
       - Queue
       - regenerate
       - Release
+      - timing
       - x86-cpu
     types:
       - completed

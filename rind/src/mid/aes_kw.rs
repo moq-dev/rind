@@ -178,8 +178,10 @@ impl AesKek {
             unwrap_blocks(&aes, a.try_into().unwrap(), key)
         };
 
-        // Valid if the claimed length ends in the last block and every byte
-        // after it is zero, checked without branching on either.
+        // Valid if the AIV's constant matches, the claimed length ends in the
+        // last block, and every byte after it is zero, checked without
+        // branching on any. Each folds into the one word revealed, since the
+        // compiler splits `a & b` of two bools into a branch on each.
         let claimed = u64::from(u32::from_be_bytes(*aiv.last_chunk().unwrap()));
         let mut bad = black_box((key.len() as u64).wrapping_sub(claimed) >> 3);
         for (i, byte) in key.iter().enumerate().skip(key.len() - 8) {
@@ -187,9 +189,9 @@ impl AesKek {
             let past = ((i as u64).wrapping_sub(claimed) >> 63).wrapping_sub(1);
             bad |= black_box(past & u64::from(*byte));
         }
-        let valid = ct_equal(&aiv[..4], &AIV) & (black_box(bad) == 0);
+        bad |= black_box(u64::from(!ct_equal(&aiv[..4], &AIV)));
 
-        if low::ct::into_public(valid) {
+        if low::ct::into_public(black_box(bad)) == 0 {
             low::ct::public_slice(key);
             Ok(&mut key[..low::ct::into_public(claimed) as usize])
         } else {

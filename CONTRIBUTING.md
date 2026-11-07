@@ -48,6 +48,11 @@ admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
 valgrind cannot run, under Intel SDE, and `nix develop .#ct-qemu --command
 admin/ct-qemu` those of the armv7 crypto extension code valgrind hides, under
 qemu.
+`nix develop .#timing --command admin/timing dudect` times every secret
+operation on two classes of secret, as dudect does, and `admin/timing marvin`
+runs the Marvin toolkit against RSA-OAEP decryption. They need quiet
+hardware: the weekly `timing` workflow runs them on GitHub's runners, and a
+shared host is held with `quest gate --host`.
 `nix develop .#prove --command admin/prove` translates the Rust under proof to
 Lean with Aeneas and checks the proofs in [`proofs/`](proofs/README.md).
 
