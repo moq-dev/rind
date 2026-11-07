@@ -27,12 +27,13 @@ don't ask again (✅ is the chosen option):
   faster ([BENCHMARKS.md](/BENCHMARKS.md)'s `nixos2`, an i7-8700: RSA-2048
   verify about 4.7x, P-256 sign and ECDH about 5x, ChaCha20-Poly1305 per
   packet about 3x, AES-GCM about 2x): Deno,
-  Servo, Lemmy, tailscale-rs, snow's users, and Apache Iggy ✅. Deno is in
+  Lemmy, tailscale-rs, snow's users, and Apache Iggy ✅. Deno is in
   for the marketing win though the maintainer considers it deprecated, and
   nothing is added to rind only for it. Considered and left out: RustFS
   (already links aws-lc-rs), YARA-X, age, Turso, rustic (needs a raw
-  Poly1305 API), Kanidm (forbids AI-written code), Arti (security bar), and
-  Bitwarden and Matrix (need wasm).
+  Poly1305 API), Kanidm and Servo (forbid AI-written contributions; Servo
+  dropped on 2026-11-07 in [#475](https://github.com/moq-dev/rind/pull/475)),
+  Arti (security bar), and Bitwarden and Matrix (need wasm).
 - No rind-graviola ✅: build it only if big crates use graviola directly.
   None does; every notable graviola user (llrt, rusty-s3, wtx, oxish) picks it
   with an optional feature, and `[patch]` cannot swap in a crate of another
@@ -69,7 +70,6 @@ don't ask again (✅ is the chosen option):
 - [tailscale-rs's tunnel runs on rind](/quest/m2/adoption/tailscale-rs.md) - WireGuard's per-packet ChaCha20-Poly1305 on rind
 - [llrt offers rind](/quest/m2/adoption/llrt.md) - `crypto-rind` and `tls-rind` features in AWS's Lambda runtime
 - [Deno's WebCrypto and node:crypto run on rind](/quest/m2/adoption/deno.md) - Deno's RustCrypto paths moved to rind
-- [Servo's WebCrypto runs on rind](/quest/m2/adoption/servo.md) - Servo's RustCrypto WebCrypto moved to rind
 - [pyca-compatible pyrind](/quest/m2/adoption/pyrind-cryptography.md) - pyca's `hazmat` names on pyrind
 - [Talk to pyca about rind](/quest/m2/adoption/pyca.md) - a discussion with pyca/cryptography's maintainers
 - [rind for Dart and Flutter](/quest/m2/adoption/rind-dart.md) - the `rind` package on pub.dev
