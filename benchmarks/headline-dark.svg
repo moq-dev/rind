@@ -5,10 +5,10 @@
 <line x1="12.0" y1="52.0" x2="731.4" y2="52.0" stroke="#383835"/>
 <text x="12.0" y="88.0" font-size="12" text-anchor="start" font-weight="normal" fill="#f0efec">full handshake, X25519MLKEM768</text>
 <text x="244.0" y="71.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">rind</text>
-<rect x="313.4" y="62.0" width="198.1" height="12.0" rx="2" fill="#3987e5"><title>full handshake, X25519MLKEM768, rind: nixos 260.78 µs, 1.00× rind's; desktop 174.97 µs, 1.00× rind's; nixos2 302.43 µs, 1.00× rind's; kixtop 177.98 µs, 1.00× rind's; ovh-iad 625.81 µs, 1.00× rind's; ovh-sea 580.07 µs, 1.00× rind's</title></rect>
+<rect x="313.4" y="62.0" width="198.1" height="12.0" rx="2" fill="#3987e5"><title>full handshake, X25519MLKEM768, rind: nixos 260.78 µs, 1.00× rind's; desktop 172.30 µs, 1.00× rind's; nixos2 302.43 µs, 1.00× rind's; kixtop 174.03 µs, 1.00× rind's; ovh-iad 625.81 µs, 1.00× rind's; ovh-sea 580.07 µs, 1.00× rind's</title></rect>
 <text x="517.5" y="72.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
 <text x="244.0" y="87.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">aws-lc-rs</text>
-<rect x="313.4" y="78.0" width="253.6" height="12.0" rx="2" fill="#6b6a64"><title>full handshake, X25519MLKEM768, aws-lc-rs: nixos 331.87 µs, 1.27× rind's; desktop 235.60 µs, 1.35× rind's; nixos2 458.06 µs, 1.51× rind's; kixtop 214.67 µs, 1.21× rind's; ovh-iad 731.87 µs, 1.17× rind's; ovh-sea 697.59 µs, 1.20× rind's</title></rect>
+<rect x="313.4" y="78.0" width="254.4" height="12.0" rx="2" fill="#6b6a64"><title>full handshake, X25519MLKEM768, aws-lc-rs: nixos 331.87 µs, 1.27× rind's; desktop 233.73 µs, 1.36× rind's; nixos2 458.06 µs, 1.51× rind's; kixtop 212.26 µs, 1.22× rind's; ovh-iad 731.87 µs, 1.17× rind's; ovh-sea 697.59 µs, 1.20× rind's</title></rect>
 <line x1="545.0" y1="84.0" x2="613.4" y2="84.0" stroke="#f0efec"/>
 <line x1="545.0" y1="81.0" x2="545.0" y2="87.0" stroke="#f0efec"/>
 <line x1="613.4" y1="81.0" x2="613.4" y2="87.0" stroke="#f0efec"/>
@@ -18,84 +18,84 @@
 <line x1="12.0" y1="116.0" x2="731.4" y2="116.0" stroke="#383835"/>
 <text x="12.0" y="152.0" font-size="12" text-anchor="start" font-weight="normal" fill="#f0efec">AES-128-GCM seal, 1350 B</text>
 <text x="244.0" y="135.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">rind</text>
-<rect x="313.4" y="126.0" width="169.6" height="12.0" rx="2" fill="#3987e5"><title>AES-128-GCM seal, 1350 B, rind: nixos 165 ns, 1.00× rind's; desktop 94 ns, 1.00× rind's; nixos2 246 ns, 1.00× rind's; kixtop 212 ns, 1.00× rind's; ovh-iad 398 ns, 1.00× rind's; ovh-sea 380 ns, 1.00× rind's</title></rect>
+<rect x="313.4" y="126.0" width="169.6" height="12.0" rx="2" fill="#3987e5"><title>AES-128-GCM seal, 1350 B, rind: nixos 165 ns, 1.00× rind's; desktop 93 ns, 1.00× rind's; nixos2 246 ns, 1.00× rind's; kixtop 209 ns, 1.00× rind's; ovh-iad 398 ns, 1.00× rind's; ovh-sea 380 ns, 1.00× rind's</title></rect>
 <text x="489.0" y="136.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
 <text x="244.0" y="151.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">aws-lc-rs</text>
-<rect x="313.4" y="142.0" width="210.8" height="12.0" rx="2" fill="#6b6a64"><title>AES-128-GCM seal, 1350 B, aws-lc-rs: nixos 291 ns, 1.77× rind's; desktop 149 ns, 1.59× rind's; nixos2 285 ns, 1.16× rind's; kixtop 180 ns, 0.85× rind's; ovh-iad 460 ns, 1.15× rind's; ovh-sea 439 ns, 1.15× rind's</title></rect>
-<line x1="457.7" y1="148.0" x2="613.4" y2="148.0" stroke="#f0efec"/>
-<line x1="457.7" y1="145.0" x2="457.7" y2="151.0" stroke="#f0efec"/>
+<rect x="313.4" y="142.0" width="214.0" height="12.0" rx="2" fill="#6b6a64"><title>AES-128-GCM seal, 1350 B, aws-lc-rs: nixos 291 ns, 1.77× rind's; desktop 159 ns, 1.71× rind's; nixos2 285 ns, 1.16× rind's; kixtop 181 ns, 0.87× rind's; ovh-iad 460 ns, 1.15× rind's; ovh-sea 439 ns, 1.15× rind's</title></rect>
+<line x1="460.2" y1="148.0" x2="613.4" y2="148.0" stroke="#f0efec"/>
+<line x1="460.2" y1="145.0" x2="460.2" y2="151.0" stroke="#f0efec"/>
 <line x1="613.4" y1="145.0" x2="613.4" y2="151.0" stroke="#f0efec"/>
-<text x="619.4" y="152.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.24×</text>
+<text x="619.4" y="152.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.26×</text>
 <text x="244.0" y="167.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">ring</text>
-<rect x="313.4" y="158.0" width="194.4" height="12.0" rx="2" fill="#6b6a64"><title>AES-128-GCM seal, 1350 B, ring: nixos 191 ns, 1.16× rind's; desktop 118 ns, 1.26× rind's; nixos2 277 ns, 1.13× rind's; kixtop 212 ns, 1.00× rind's; ovh-iad 475 ns, 1.19× rind's; ovh-sea 438 ns, 1.15× rind's</title></rect>
-<line x1="483.3" y1="164.0" x2="527.2" y2="164.0" stroke="#f0efec"/>
-<line x1="483.3" y1="161.0" x2="483.3" y2="167.0" stroke="#f0efec"/>
-<line x1="527.2" y1="161.0" x2="527.2" y2="167.0" stroke="#f0efec"/>
-<text x="533.2" y="168.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.15×</text>
+<rect x="313.4" y="158.0" width="195.3" height="12.0" rx="2" fill="#6b6a64"><title>AES-128-GCM seal, 1350 B, ring: nixos 191 ns, 1.16× rind's; desktop 119 ns, 1.29× rind's; nixos2 277 ns, 1.13× rind's; kixtop 210 ns, 1.01× rind's; ovh-iad 475 ns, 1.19× rind's; ovh-sea 438 ns, 1.15× rind's</title></rect>
+<line x1="484.0" y1="164.0" x2="532.1" y2="164.0" stroke="#f0efec"/>
+<line x1="484.0" y1="161.0" x2="484.0" y2="167.0" stroke="#f0efec"/>
+<line x1="532.1" y1="161.0" x2="532.1" y2="167.0" stroke="#f0efec"/>
+<text x="538.1" y="168.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.15×</text>
 <line x1="12.0" y1="180.0" x2="731.4" y2="180.0" stroke="#383835"/>
 <text x="12.0" y="216.0" font-size="12" text-anchor="start" font-weight="normal" fill="#f0efec">ChaCha20-Poly1305 seal, 1350 B</text>
 <text x="244.0" y="199.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">rind</text>
-<rect x="313.4" y="190.0" width="285.3" height="12.0" rx="2" fill="#3987e5"><title>ChaCha20-Poly1305 seal, 1350 B, rind: nixos 533 ns, 1.00× rind's; desktop 441 ns, 1.00× rind's; nixos2 718 ns, 1.00× rind's; kixtop 792 ns, 1.00× rind's; ovh-iad 1.07 µs, 1.00× rind's; ovh-sea 1.04 µs, 1.00× rind's</title></rect>
+<rect x="313.4" y="190.0" width="285.3" height="12.0" rx="2" fill="#3987e5"><title>ChaCha20-Poly1305 seal, 1350 B, rind: nixos 533 ns, 1.00× rind's; desktop 440 ns, 1.00× rind's; nixos2 718 ns, 1.00× rind's; kixtop 773 ns, 1.00× rind's; ovh-iad 1.07 µs, 1.00× rind's; ovh-sea 1.04 µs, 1.00× rind's</title></rect>
 <text x="604.7" y="200.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
 <text x="244.0" y="215.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">aws-lc-rs</text>
-<rect x="313.4" y="206.0" width="289.7" height="12.0" rx="2" fill="#6b6a64"><title>ChaCha20-Poly1305 seal, 1350 B, aws-lc-rs: nixos 532 ns, 1.00× rind's; desktop 453 ns, 1.03× rind's; nixos2 755 ns, 1.05× rind's; kixtop 771 ns, 0.97× rind's; ovh-iad 1.10 µs, 1.03× rind's; ovh-sea 1.05 µs, 1.02× rind's</title></rect>
-<line x1="591.1" y1="212.0" x2="613.4" y2="212.0" stroke="#f0efec"/>
-<line x1="591.1" y1="209.0" x2="591.1" y2="215.0" stroke="#f0efec"/>
+<rect x="313.4" y="206.0" width="289.4" height="12.0" rx="2" fill="#6b6a64"><title>ChaCha20-Poly1305 seal, 1350 B, aws-lc-rs: nixos 532 ns, 1.00× rind's; desktop 446 ns, 1.01× rind's; nixos2 755 ns, 1.05× rind's; kixtop 759 ns, 0.98× rind's; ovh-iad 1.10 µs, 1.03× rind's; ovh-sea 1.05 µs, 1.02× rind's</title></rect>
+<line x1="593.4" y1="212.0" x2="613.4" y2="212.0" stroke="#f0efec"/>
+<line x1="593.4" y1="209.0" x2="593.4" y2="215.0" stroke="#f0efec"/>
 <line x1="613.4" y1="209.0" x2="613.4" y2="215.0" stroke="#f0efec"/>
-<text x="619.4" y="216.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.02×</text>
+<text x="619.4" y="216.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.01×</text>
 <text x="244.0" y="231.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">ring</text>
-<rect x="313.4" y="222.0" width="283.1" height="12.0" rx="2" fill="#6b6a64"><title>ChaCha20-Poly1305 seal, 1350 B, ring: nixos 527 ns, 0.99× rind's; desktop 447 ns, 1.01× rind's; nixos2 714 ns, 1.00× rind's; kixtop 755 ns, 0.95× rind's; ovh-iad 1.08 µs, 1.00× rind's; ovh-sea 1.04 µs, 1.00× rind's</title></rect>
-<line x1="585.3" y1="228.0" x2="602.3" y2="228.0" stroke="#f0efec"/>
-<line x1="585.3" y1="225.0" x2="585.3" y2="231.0" stroke="#f0efec"/>
-<line x1="602.3" y1="225.0" x2="602.3" y2="231.0" stroke="#f0efec"/>
-<text x="608.3" y="232.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">0.99×</text>
+<rect x="313.4" y="222.0" width="283.6" height="12.0" rx="2" fill="#6b6a64"><title>ChaCha20-Poly1305 seal, 1350 B, ring: nixos 527 ns, 0.99× rind's; desktop 448 ns, 1.02× rind's; nixos2 714 ns, 1.00× rind's; kixtop 741 ns, 0.96× rind's; ovh-iad 1.08 µs, 1.00× rind's; ovh-sea 1.04 µs, 1.00× rind's</title></rect>
+<line x1="586.8" y1="228.0" x2="603.7" y2="228.0" stroke="#f0efec"/>
+<line x1="586.8" y1="225.0" x2="586.8" y2="231.0" stroke="#f0efec"/>
+<line x1="603.7" y1="225.0" x2="603.7" y2="231.0" stroke="#f0efec"/>
+<text x="609.7" y="232.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">0.99×</text>
 <line x1="12.0" y1="244.0" x2="731.4" y2="244.0" stroke="#383835"/>
 <text x="12.0" y="280.0" font-size="12" text-anchor="start" font-weight="normal" fill="#f0efec">X25519</text>
 <text x="244.0" y="263.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">rind</text>
-<rect x="313.4" y="254.0" width="139.9" height="12.0" rx="2" fill="#3987e5"><title>X25519, rind: nixos 23.97 µs, 1.00× rind's; desktop 19.68 µs, 1.00× rind's; nixos2 25.00 µs, 1.00× rind's; kixtop 16.71 µs, 1.00× rind's; ovh-iad 51.79 µs, 1.00× rind's; ovh-sea 51.10 µs, 1.00× rind's</title></rect>
+<rect x="313.4" y="254.0" width="139.9" height="12.0" rx="2" fill="#3987e5"><title>X25519, rind: nixos 23.97 µs, 1.00× rind's; desktop 18.20 µs, 1.00× rind's; nixos2 25.00 µs, 1.00× rind's; kixtop 16.53 µs, 1.00× rind's; ovh-iad 51.79 µs, 1.00× rind's; ovh-sea 51.10 µs, 1.00× rind's</title></rect>
 <text x="459.3" y="264.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
 <text x="244.0" y="279.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">aws-lc-rs</text>
-<rect x="313.4" y="270.0" width="148.6" height="12.0" rx="2" fill="#6b6a64"><title>X25519, aws-lc-rs: nixos 24.61 µs, 1.03× rind's; desktop 19.54 µs, 0.99× rind's; nixos2 30.89 µs, 1.24× rind's; kixtop 17.85 µs, 1.07× rind's; ovh-iad 55.09 µs, 1.06× rind's; ovh-sea 51.15 µs, 1.00× rind's</title></rect>
-<line x1="452.4" y1="276.0" x2="486.3" y2="276.0" stroke="#f0efec"/>
-<line x1="452.4" y1="273.0" x2="452.4" y2="279.0" stroke="#f0efec"/>
+<rect x="313.4" y="270.0" width="150.8" height="12.0" rx="2" fill="#6b6a64"><title>X25519, aws-lc-rs: nixos 24.61 µs, 1.03× rind's; desktop 19.24 µs, 1.06× rind's; nixos2 30.89 µs, 1.24× rind's; kixtop 18.12 µs, 1.10× rind's; ovh-iad 55.09 µs, 1.06× rind's; ovh-sea 51.15 µs, 1.00× rind's</title></rect>
+<line x1="453.5" y1="276.0" x2="486.3" y2="276.0" stroke="#f0efec"/>
+<line x1="453.5" y1="273.0" x2="453.5" y2="279.0" stroke="#f0efec"/>
 <line x1="486.3" y1="273.0" x2="486.3" y2="279.0" stroke="#f0efec"/>
-<text x="492.3" y="280.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.06×</text>
+<text x="492.3" y="280.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.08×</text>
 <text x="244.0" y="295.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">ring</text>
-<rect x="313.4" y="286.0" width="239.7" height="12.0" rx="2" fill="#6b6a64"><title>X25519, ring: nixos 46.72 µs, 1.95× rind's; desktop 35.63 µs, 1.81× rind's; nixos2 53.60 µs, 2.14× rind's; kixtop 24.48 µs, 1.46× rind's; ovh-iad 79.18 µs, 1.53× rind's; ovh-sea 76.22 µs, 1.49× rind's</title></rect>
-<line x1="518.4" y1="292.0" x2="613.4" y2="292.0" stroke="#f0efec"/>
-<line x1="518.4" y1="289.0" x2="518.4" y2="295.0" stroke="#f0efec"/>
+<rect x="313.4" y="286.0" width="244.0" height="12.0" rx="2" fill="#6b6a64"><title>X25519, ring: nixos 46.72 µs, 1.95× rind's; desktop 35.63 µs, 1.96× rind's; nixos2 53.60 µs, 2.14× rind's; kixtop 24.91 µs, 1.51× rind's; ovh-iad 79.18 µs, 1.53× rind's; ovh-sea 76.22 µs, 1.49× rind's</title></rect>
+<line x1="522.1" y1="292.0" x2="613.4" y2="292.0" stroke="#f0efec"/>
+<line x1="522.1" y1="289.0" x2="522.1" y2="295.0" stroke="#f0efec"/>
 <line x1="613.4" y1="289.0" x2="613.4" y2="295.0" stroke="#f0efec"/>
-<text x="619.4" y="296.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.71×</text>
+<text x="619.4" y="296.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.74×</text>
 <line x1="12.0" y1="308.0" x2="731.4" y2="308.0" stroke="#383835"/>
 <text x="12.0" y="344.0" font-size="12" text-anchor="start" font-weight="normal" fill="#f0efec">P-256 ECDSA sign</text>
 <text x="244.0" y="327.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">rind</text>
-<rect x="313.4" y="318.0" width="166.4" height="12.0" rx="2" fill="#3987e5"><title>P-256 ECDSA sign, rind: nixos 9.62 µs, 1.00× rind's; desktop 6.84 µs, 1.00× rind's; nixos2 13.11 µs, 1.00× rind's; kixtop 7.11 µs, 1.00× rind's; ovh-iad 22.42 µs, 1.00× rind's; ovh-sea 21.44 µs, 1.00× rind's</title></rect>
-<text x="485.8" y="328.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
+<rect x="313.4" y="318.0" width="165.0" height="12.0" rx="2" fill="#3987e5"><title>P-256 ECDSA sign, rind: nixos 9.62 µs, 1.00× rind's; desktop 6.74 µs, 1.00× rind's; nixos2 13.11 µs, 1.00× rind's; kixtop 7.13 µs, 1.00× rind's; ovh-iad 22.42 µs, 1.00× rind's; ovh-sea 21.44 µs, 1.00× rind's</title></rect>
+<text x="484.4" y="328.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
 <text x="244.0" y="343.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">aws-lc-rs</text>
-<rect x="313.4" y="334.0" width="229.8" height="12.0" rx="2" fill="#6b6a64"><title>P-256 ECDSA sign, aws-lc-rs: nixos 12.66 µs, 1.32× rind's; desktop 12.33 µs, 1.80× rind's; nixos2 19.80 µs, 1.51× rind's; kixtop 11.27 µs, 1.58× rind's; ovh-iad 24.53 µs, 1.09× rind's; ovh-sea 23.93 µs, 1.12× rind's</title></rect>
-<line x1="495.5" y1="340.0" x2="613.4" y2="340.0" stroke="#f0efec"/>
-<line x1="495.5" y1="337.0" x2="495.5" y2="343.0" stroke="#f0efec"/>
+<rect x="313.4" y="334.0" width="227.7" height="12.0" rx="2" fill="#6b6a64"><title>P-256 ECDSA sign, aws-lc-rs: nixos 12.66 µs, 1.32× rind's; desktop 12.25 µs, 1.82× rind's; nixos2 19.80 µs, 1.51× rind's; kixtop 11.16 µs, 1.56× rind's; ovh-iad 24.53 µs, 1.09× rind's; ovh-sea 23.93 µs, 1.12× rind's</title></rect>
+<line x1="494.0" y1="340.0" x2="613.4" y2="340.0" stroke="#f0efec"/>
+<line x1="494.0" y1="337.0" x2="494.0" y2="343.0" stroke="#f0efec"/>
 <line x1="613.4" y1="337.0" x2="613.4" y2="343.0" stroke="#f0efec"/>
 <text x="619.4" y="344.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.38×</text>
 <text x="244.0" y="359.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">ring</text>
-<rect x="313.4" y="350.0" width="224.6" height="12.0" rx="2" fill="#6b6a64"><title>P-256 ECDSA sign, ring: nixos 13.68 µs, 1.42× rind's; desktop 12.24 µs, 1.79× rind's; nixos2 14.86 µs, 1.13× rind's; kixtop 11.01 µs, 1.55× rind's; ovh-iad 26.21 µs, 1.17× rind's; ovh-sea 24.84 µs, 1.16× rind's</title></rect>
-<line x1="502.0" y1="356.0" x2="611.2" y2="356.0" stroke="#f0efec"/>
-<line x1="502.0" y1="353.0" x2="502.0" y2="359.0" stroke="#f0efec"/>
-<line x1="611.2" y1="353.0" x2="611.2" y2="359.0" stroke="#f0efec"/>
-<text x="617.2" y="360.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.35×</text>
+<rect x="313.4" y="350.0" width="222.8" height="12.0" rx="2" fill="#6b6a64"><title>P-256 ECDSA sign, ring: nixos 13.68 µs, 1.42× rind's; desktop 12.20 µs, 1.81× rind's; nixos2 14.86 µs, 1.13× rind's; kixtop 10.91 µs, 1.53× rind's; ovh-iad 26.21 µs, 1.17× rind's; ovh-sea 24.84 µs, 1.16× rind's</title></rect>
+<line x1="500.5" y1="356.0" x2="612.2" y2="356.0" stroke="#f0efec"/>
+<line x1="500.5" y1="353.0" x2="500.5" y2="359.0" stroke="#f0efec"/>
+<line x1="612.2" y1="353.0" x2="612.2" y2="359.0" stroke="#f0efec"/>
+<text x="618.2" y="360.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.35×</text>
 <line x1="12.0" y1="372.0" x2="731.4" y2="372.0" stroke="#383835"/>
 <text x="12.0" y="408.0" font-size="12" text-anchor="start" font-weight="normal" fill="#f0efec">RSA-2048 PSS sign</text>
 <text x="244.0" y="391.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">rind</text>
-<rect x="313.4" y="382.0" width="225.9" height="12.0" rx="2" fill="#3987e5"><title>RSA-2048 PSS sign, rind: nixos 424.30 µs, 1.00× rind's; desktop 346.52 µs, 1.00× rind's; nixos2 445.92 µs, 1.00× rind's; kixtop 275.29 µs, 1.00× rind's; ovh-iad 819.13 µs, 1.00× rind's; ovh-sea 743.95 µs, 1.00× rind's</title></rect>
+<rect x="313.4" y="382.0" width="225.9" height="12.0" rx="2" fill="#3987e5"><title>RSA-2048 PSS sign, rind: nixos 424.30 µs, 1.00× rind's; desktop 341.45 µs, 1.00× rind's; nixos2 445.92 µs, 1.00× rind's; kixtop 275.82 µs, 1.00× rind's; ovh-iad 819.13 µs, 1.00× rind's; ovh-sea 743.95 µs, 1.00× rind's</title></rect>
 <text x="545.3" y="392.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
 <text x="244.0" y="407.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">aws-lc-rs</text>
-<rect x="313.4" y="398.0" width="235.2" height="12.0" rx="2" fill="#6b6a64"><title>RSA-2048 PSS sign, aws-lc-rs: nixos 481.00 µs, 1.13× rind's; desktop 350.45 µs, 1.01× rind's; nixos2 461.87 µs, 1.04× rind's; kixtop 288.58 µs, 1.05× rind's; ovh-iad 807.21 µs, 0.99× rind's; ovh-sea 772.15 µs, 1.04× rind's</title></rect>
+<rect x="313.4" y="398.0" width="234.8" height="12.0" rx="2" fill="#6b6a64"><title>RSA-2048 PSS sign, aws-lc-rs: nixos 481.00 µs, 1.13× rind's; desktop 346.55 µs, 1.01× rind's; nixos2 461.87 µs, 1.04× rind's; kixtop 285.36 µs, 1.03× rind's; ovh-iad 807.21 µs, 0.99× rind's; ovh-sea 772.15 µs, 1.04× rind's</title></rect>
 <line x1="536.0" y1="404.0" x2="569.5" y2="404.0" stroke="#f0efec"/>
 <line x1="536.0" y1="401.0" x2="536.0" y2="407.0" stroke="#f0efec"/>
 <line x1="569.5" y1="401.0" x2="569.5" y2="407.0" stroke="#f0efec"/>
 <text x="575.5" y="408.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.04×</text>
 <text x="244.0" y="423.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">ring</text>
-<rect x="313.4" y="414.0" width="256.4" height="12.0" rx="2" fill="#6b6a64"><title>RSA-2048 PSS sign, ring: nixos 471.53 µs, 1.11× rind's; desktop 341.45 µs, 0.99× rind's; nixos2 437.28 µs, 0.98× rind's; kixtop 324.86 µs, 1.18× rind's; ovh-iad 1.04 ms, 1.27× rind's; ovh-sea 987.95 µs, 1.33× rind's</title></rect>
+<rect x="313.4" y="414.0" width="256.9" height="12.0" rx="2" fill="#6b6a64"><title>RSA-2048 PSS sign, ring: nixos 471.53 µs, 1.11× rind's; desktop 342.49 µs, 1.00× rind's; nixos2 437.28 µs, 0.98× rind's; kixtop 323.17 µs, 1.17× rind's; ovh-iad 1.04 ms, 1.27× rind's; ovh-sea 987.95 µs, 1.33× rind's</title></rect>
 <line x1="534.9" y1="420.0" x2="613.4" y2="420.0" stroke="#f0efec"/>
 <line x1="534.9" y1="417.0" x2="534.9" y2="423.0" stroke="#f0efec"/>
 <line x1="613.4" y1="417.0" x2="613.4" y2="423.0" stroke="#f0efec"/>
@@ -103,18 +103,18 @@
 <line x1="12.0" y1="436.0" x2="731.4" y2="436.0" stroke="#383835"/>
 <text x="12.0" y="472.0" font-size="12" text-anchor="start" font-weight="normal" fill="#f0efec">cold build of a rustls client</text>
 <text x="244.0" y="455.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">rind</text>
-<rect x="313.4" y="446.0" width="92.3" height="12.0" rx="2" fill="#3987e5"><title>cold build of a rustls client, rind: nixos2 11.3 s, 1.00× rind's; ovh-iad 16.6 s, 1.00× rind's; ovh-sea 14.7 s, 1.00× rind's</title></rect>
-<text x="411.7" y="456.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
+<rect x="313.4" y="446.0" width="57.5" height="12.0" rx="2" fill="#3987e5"><title>cold build of a rustls client, rind: desktop 4.2 s, 1.00× rind's; nixos2 11.3 s, 1.00× rind's; kixtop 6.5 s, 1.00× rind's; ovh-iad 16.6 s, 1.00× rind's; ovh-sea 14.7 s, 1.00× rind's</title></rect>
+<text x="376.9" y="456.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1×</text>
 <text x="244.0" y="471.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">aws-lc-rs</text>
-<rect x="313.4" y="462.0" width="299.1" height="12.0" rx="2" fill="#6b6a64"><title>cold build of a rustls client, aws-lc-rs: nixos2 36.6 s, 3.23× rind's; ovh-iad 54.0 s, 3.25× rind's; ovh-sea 47.6 s, 3.24× rind's</title></rect>
-<line x1="611.6" y1="468.0" x2="613.4" y2="468.0" stroke="#f0efec"/>
-<line x1="611.6" y1="465.0" x2="611.6" y2="471.0" stroke="#f0efec"/>
+<rect x="313.4" y="462.0" width="213.0" height="12.0" rx="2" fill="#6b6a64"><title>cold build of a rustls client, aws-lc-rs: desktop 16.6 s, 3.93× rind's; nixos2 36.6 s, 3.23× rind's; kixtop 34.0 s, 5.22× rind's; ovh-iad 54.0 s, 3.25× rind's; ovh-sea 47.6 s, 3.24× rind's</title></rect>
+<line x1="499.1" y1="468.0" x2="613.4" y2="468.0" stroke="#f0efec"/>
+<line x1="499.1" y1="465.0" x2="499.1" y2="471.0" stroke="#f0efec"/>
 <line x1="613.4" y1="465.0" x2="613.4" y2="471.0" stroke="#f0efec"/>
-<text x="619.4" y="472.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">3.24×, needs cc</text>
+<text x="619.4" y="472.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">3.71×, needs cc</text>
 <text x="244.0" y="487.0" font-size="11" text-anchor="start" font-weight="normal" fill="#c3c2b7">ring</text>
-<rect x="313.4" y="478.0" width="145.8" height="12.0" rx="2" fill="#6b6a64"><title>cold build of a rustls client, ring: nixos2 16.4 s, 1.45× rind's; ovh-iad 27.3 s, 1.65× rind's; ovh-sea 24.4 s, 1.66× rind's</title></rect>
-<line x1="446.9" y1="484.0" x2="466.5" y2="484.0" stroke="#f0efec"/>
-<line x1="446.9" y1="481.0" x2="446.9" y2="487.0" stroke="#f0efec"/>
-<line x1="466.5" y1="481.0" x2="466.5" y2="487.0" stroke="#f0efec"/>
-<text x="472.5" y="488.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.58×, needs cc</text>
+<rect x="313.4" y="478.0" width="96.9" height="12.0" rx="2" fill="#6b6a64"><title>cold build of a rustls client, ring: desktop 7.8 s, 1.85× rind's; nixos2 16.4 s, 1.45× rind's; kixtop 12.2 s, 1.87× rind's; ovh-iad 27.3 s, 1.65× rind's; ovh-sea 24.4 s, 1.66× rind's</title></rect>
+<line x1="396.5" y1="484.0" x2="420.7" y2="484.0" stroke="#f0efec"/>
+<line x1="396.5" y1="481.0" x2="396.5" y2="487.0" stroke="#f0efec"/>
+<line x1="420.7" y1="481.0" x2="420.7" y2="487.0" stroke="#f0efec"/>
+<text x="426.7" y="488.0" font-size="11" text-anchor="start" font-weight="normal" fill="#f0efec">1.69×, needs cc</text>
 </svg>
