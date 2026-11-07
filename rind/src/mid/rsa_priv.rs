@@ -321,3 +321,35 @@ type SecretRsaPosIntD = low::SecretPosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;
 type RsaPosIntModP = low::PosInt<MAX_PRIVATE_MODULUS_WORDS>;
 type RsaPosIntD = low::PosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;
 type RsaPosIntModN = low::PosInt<{ MAX_PRIVATE_MODULUS_WORDS * 2 }>;
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // A prime below 1024 bits is refused before anything is computed from
+    // it, however wide the modulus.
+    #[test]
+    fn short_prime_refused() {
+        fn int<const N: usize>(bytes: &[u8]) -> low::PosInt<N> {
+            low::PosInt::from_bytes(bytes).unwrap()
+        }
+        let mut n = [0u8; 256];
+        n[0] = 0x80;
+        n[255] = 1;
+        let mut p = [0u8; 127];
+        p[0] = 0x80;
+        p[126] = 1;
+        let key = RsaPrivateKey::new(
+            int(&p),
+            int(&[3]),
+            int(&[1]),
+            int(&[1]),
+            int(&[1]),
+            int(&[1]),
+            int(&n),
+            65537,
+        );
+        assert_eq!(key.err(), Some(KeyFormatError::RsaPrimes.into()));
+    }
+}

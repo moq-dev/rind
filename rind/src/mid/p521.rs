@@ -1047,6 +1047,13 @@ const CURVE_ORDER_MM: [u64; 9] = [
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    // The key's Debug, which no public type's Debug reaches, shows nothing of it.
+    #[test]
+    fn private_key_debug() {
+        let key = PrivateKey::new_random().unwrap();
+        assert_eq!(format!("{key:?}"), "PrivateKey { .. }");
+    }
+
     use super::*;
 
     const CURVE_GENERATOR: AffinePoint = AffinePoint {

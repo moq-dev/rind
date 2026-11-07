@@ -433,6 +433,56 @@ mod tests {
     use crate::mid::rng::SliceRandomSource;
 
     #[test]
+    fn oaep_needs_two_hashes_and_two_bytes() {
+        let h_len = 32;
+        for k in [h_len + 4, 2 * h_len, 2 * h_len + 1] {
+            let mut em = vec![0u8; k];
+            let mut rng = SliceRandomSource(&[7; 32]);
+            assert_eq!(
+                encode_oaep::<hash::Sha256>(&mut em, &mut rng, b"", b""),
+                Err(Error::WrongLength),
+                "k {k}"
+            );
+            assert_eq!(
+                decode_oaep::<hash::Sha256>(&mut em, b"", &mut []),
+                Err(Error::DecryptFailed),
+                "k {k}"
+            );
+        }
+
+        let mut em = vec![0u8; 2 * h_len + 2];
+        let mut rng = SliceRandomSource(&[7; 32]);
+        encode_oaep::<hash::Sha256>(&mut em, &mut rng, b"", b"").unwrap();
+        assert_eq!(
+            decode_oaep::<hash::Sha256>(&mut em, b"", &mut []),
+            Ok(&[][..])
+        );
+    }
+
+    /// Each check fails decoding alone, and so do two together.
+    #[test]
+    fn oaep_refuses_wrong_label_and_nonzero_first_byte() {
+        let mut em = [0u8; 128];
+        let mut rng = SliceRandomSource(&[7; 32]);
+        encode_oaep::<hash::Sha256>(&mut em, &mut rng, b"hi", b"label").unwrap();
+        let mut out = [0u8; 128];
+        for (y, label) in [
+            (0, &b"label"[..]),
+            (0, b"other"),
+            (1, b"label"),
+            (1, b"other"),
+        ] {
+            let mut em = em;
+            em[0] = y;
+            let result = decode_oaep::<hash::Sha256>(&mut em, label, &mut out).map(|m| m.to_vec());
+            match (y, label) {
+                (0, b"label") => assert_eq!(result, Ok(b"hi".to_vec())),
+                _ => assert_eq!(result, Err(Error::DecryptFailed), "{y} {label:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn digestinfos_are_correct() {
         for (algorithm, digest_info, hash_len) in [
             (&oid::id_sha1, DIGESTINFO_SHA1, 20),

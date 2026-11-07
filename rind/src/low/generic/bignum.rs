@@ -714,4 +714,11 @@ mod tests {
         low::bignum_modinv(&mut theirs, &x, &m, &mut [0; MAX_WORDS * 3]);
         assert_eq!(ours, theirs);
     }
+
+    // Only the top bit set is where an exclusive or of `x` and `-x` would
+    // drop it.
+    #[test]
+    fn nonzero_at_the_top_bit() {
+        assert_eq!((nonzero(0), nonzero(1), nonzero(1 << 63)), (0, 1, 1));
+    }
 }

@@ -906,7 +906,15 @@ mod tests {
         let private_key =
             SigningKey::from_pkcs8_der(include_bytes!("rsa/rsa2048.pkcs8.der")).unwrap();
 
-        check_all_algs(&mut [0u8; 256], &private_key, &private_key.public_key());
+        // Longer than the modulus: the signature takes the front.
+        check_all_algs(&mut [0u8; 300], &private_key, &private_key.public_key());
+    }
+
+    #[test]
+    fn i2osp_refuses_what_does_not_fit() {
+        let x = PosInt::<1>::from_bytes(&[1, 1, 0, 0]).unwrap();
+        assert_eq!(i2osp(&x, &mut [0; 2]).map(|_| ()), Err(Error::WrongLength));
+        assert_eq!(i2osp(&x, &mut [0xff; 5]).unwrap(), [0, 1, 1, 0, 0]);
     }
 
     /// Primes of 20 words, a multiple of four but not of eight.

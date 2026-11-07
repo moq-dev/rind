@@ -1189,6 +1189,17 @@ mod tests {
         assert_eq!(ours, theirs);
     }
 
+    // Only the top bit set is where an exclusive or of `x` and `-x` would
+    // drop it.
+    #[test]
+    fn nonzero_at_the_top_bit() {
+        let mut x = Fe([0; 8]);
+        assert_eq!(nonzero(&x), 0);
+        x.0[7] = 0x8000_0000;
+        assert_eq!(nonzero(&x), 1);
+        assert_eq!((nonzero_u8(0), nonzero_u8(1), nonzero_u8(0x80)), (0, 1, 1));
+    }
+
     #[test]
     #[should_panic]
     fn other_modulus_refused() {

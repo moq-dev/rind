@@ -138,3 +138,30 @@ pub(crate) fn verify_cpu_features() {
         verify();
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use crate::low::AesKey;
+
+    /// The flag agrees with the AES keys run, whichever features are denied.
+    #[test]
+    fn has_aes_hardware_matches_keys() {
+        let hardware = matches!(AesKey::new(&[0; 16]), AesKey::Hw(_));
+        assert_eq!(super::has_aes_hardware(), hardware);
+    }
+
+    // No CPU a test runs on lacks a required feature, so only this shows
+    // what the panic would say.
+    #[test]
+    fn missing_feature_names_it() {
+        let message = super::MissingFeature("neon").to_string();
+        assert_eq!(
+            message,
+            format!(
+                "rind requires neon CPU support on {}",
+                std::env::consts::ARCH
+            )
+        );
+    }
+}

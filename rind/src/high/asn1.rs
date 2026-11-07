@@ -1064,6 +1064,12 @@ mod tests {
             ObjectId::from_path(&[1, 3, 132, 0, 34]),
         );
 
+        // An arc whose middle group has its top bit set.
+        test_round_trip(
+            &[0x06, 0x04, 0x2a, 0x81, 0x80, 0x00],
+            ObjectId::from_path(&[1, 2, 16384]),
+        );
+
         // meets our self-imposed length limit
         assert_eq!(
             ObjectId::from_bytes(&[

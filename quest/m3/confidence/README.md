@@ -23,4 +23,8 @@ All three constant-time tools state they can't see variable-time instructions. O
 - [Every published test vector rind can run](/quest/m3/confidence/vectors.md) - C2SP's CCTV and latest Wycheproof, and aws-lc's and BoringSSL's vector files
 - [No variable-time instruction on a secret path](/quest/m3/confidence/vartime-scan.md) - a static scan of the compiled secret paths
 - [Statistical timing tests](/quest/m3/confidence/timing.md) - dudect-style tests, and the Marvin toolkit for RSA
-- [Mutation testing](/quest/m3/confidence/mutants.md) - cargo-mutants shows which changes the tests miss
+- [Adapter crates' surviving mutants](/quest/m3/confidence/mutants-adapters.md) - tests for the 103 adapter mutants no test catches
+- [Surviving mutants that need crafted inputs](/quest/m3/confidence/mutants-edge-cases.md) - the AVX2 Ed25519 field arithmetic, points at infinity, and other edges random inputs miss
+- [Mutation testing on AVX-512](/quest/m3/confidence/mutants-avx512.md) - the AVX-512 paths no campaign host runs, under Intel SDE
+- [Mutation testing on armv7](/quest/m3/confidence/mutants-armv7.md) - the code only 32-bit ARM compiles, under qemu-arm
+- [Mutation testing of DIT](/quest/m3/confidence/mutants-dit.md) - DIT detection and setting, on cores that have it

@@ -78,3 +78,22 @@ impl RandomSource for ChainRandomSource<'_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    #[test]
+    fn fill_writes_every_byte() {
+        // Each byte is zero with probability 2^-8, so 64 fills leave one zero
+        // with probability about 2^-512.
+        let mut seen = [0u8; 32];
+        for _ in 0..64 {
+            let mut out = [0u8; 32];
+            crate::rand::fill(&mut out).unwrap();
+            for (seen, out) in seen.iter_mut().zip(out) {
+                *seen |= out;
+            }
+        }
+        assert!(seen.iter().all(|&b| b != 0), "{seen:?}");
+    }
+}

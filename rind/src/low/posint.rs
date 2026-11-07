@@ -897,15 +897,26 @@ mod tests {
     #[test]
     fn mul_word_mod() {
         const TOP: u64 = 1 << 63;
-        for (d, want, why) in [
+        for (mut u, d, want, why) in [
             // 2^192 mod 2^191 + 1: the estimate 2 survives refinement, so
             // the remainder goes negative and d is added back.
-            ([1, 0, TOP], [u64::MAX, u64::MAX, TOP - 1], "added back"),
+            (
+                [0, 0, 1],
+                [1, 0, TOP],
+                [u64::MAX, u64::MAX, TOP - 1],
+                "added back",
+            ),
             // 2^192 mod 2^191 + 2^128 - 2^64: the second word refines the
             // estimate 2 down to 1.
-            ([0, u64::MAX, TOP], [0, 1, TOP - 1], "refined"),
+            ([0, 0, 1], [0, u64::MAX, TOP], [0, 1, TOP - 1], "refined"),
+            // Adding d back carries between words.
+            (
+                [0, u64::MAX, 0],
+                [1, 0, u64::MAX],
+                [0, 0, u64::MAX],
+                "carried back",
+            ),
         ] {
-            let mut u = [0, 0, 1];
             super::mul_word_mod(&mut u, &d);
             assert_eq!(u, want, "{why}");
         }
@@ -1085,6 +1096,27 @@ mod tests {
     fn sub_narrower() {
         let w = PosInt::<2>::from_words(&[1, 1]).unwrap();
         assert_eq!(w.sub(&PosInt::word(3)).as_words(), &[u64::MAX - 1, 0]);
+    }
+
+    #[test]
+    fn is_coprime() {
+        let (four, six, nine) = (PosInt::<1>::word(4), PosInt::word(6), PosInt::word(9));
+        assert!(four.is_coprime(&nine));
+        assert!(!four.is_coprime(&six));
+    }
+
+    // A one-word modulus, which the bits shift in one at a time.
+    #[test]
+    fn reduce_even_by_a_word() {
+        let a =
+            PosInt::<3>::from_words(&[0x0123_4567_89ab_cdef, 0xfedc_ba98_7654_3210, 7]).unwrap();
+        let m = PosInt::<1>::word(0xffff_ffff_0000_0001);
+        let want = ((7u128 << 64 | 0xfedc_ba98_7654_3210) % 0xffff_ffff_0000_0001) << 64
+            | 0x0123_4567_89ab_cdef;
+        assert_eq!(
+            a.reduce_even(&m).as_words(),
+            &[(want % 0xffff_ffff_0000_0001) as u64]
+        );
     }
 
     #[test]

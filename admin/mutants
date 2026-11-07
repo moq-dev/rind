@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Runs cargo-mutants (see .cargo/mutants.toml) on this host's architecture,
+# passing its arguments through. It skips generated assembly, which proofs and
+# differential tests own, and every module only another architecture compiles,
+# whose mutants no test here can reach.
+#
+# Each test runs on this CPU and again with each row of features below denied,
+# so code only CPUs without them run, such as aws-lc's SSE2 AES, is tested
+# too. The rows are ctgrind.yml's. No row reaches the AVX-512 paths a CPU
+# without AVX-512 never runs.
+#
+# cargo-mutants mutates code whatever its `cfg`, so a function only another
+# architecture compiles is missed here. `admin/mutants --survivors DIR...`
+# combines runs' `mutants.out` directories: it prints each mutant some run
+# missed and none caught, and fails if there is one.
+set -euo pipefail
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+if [ "${1:-}" = --survivors ]; then
+    shift
+    # A run with no mutants to test, such as one over an empty diff, writes
+    # none of these.
+    list() {
+        for dir in "$@"; do
+            for outcome in "${outcomes[@]}"; do
+                [ ! -f "$dir/$outcome.txt" ] || cat "$dir/$outcome.txt"
+            done
+        done
+    }
+    outcomes=(missed)
+    missed=$(list "$@" | sort -u)
+    outcomes=(caught timeout unviable)
+    survivors=$(grep -vxF -f <(list "$@") <<<"$missed" || true)
+    [ -z "$survivors" ] || {
+        echo "$survivors"
+        exit 1
+    }
+    exit 0
+fi
+
+case $(uname -m) in
+    x86_64)
+        triple=X86_64_UNKNOWN_LINUX_GNU
+        skip=(
+            'rind/src/low/aarch64/**' 'rind/src/low/arm/**' 'rind/src/mid/arm/**'
+            rind/src/low/generic/mlkem768.rs rind/src/low/generic/order.rs
+        )
+        rows=(
+            "adx vaes"
+            "adx avx intel sha"
+            "adx avx intel sha aes pclmulqdq sse41"
+            "adx ssse3"
+        )
+        ;;
+    aarch64 | arm64)
+        triple=AARCH64_UNKNOWN_LINUX_GNU
+        skip=(
+            'rind/src/low/x86_64/**' 'rind/src/low/arm/**' 'rind/src/mid/arm/**'
+            rind/src/low/generic/mlkem_poly.rs rind/src/low/generic/order.rs
+            rind/src/low/generic/sha1.rs rind/src/low/generic/sha256.rs
+        )
+        rows=(
+            "sha3 dit"
+            "aes pmull sha2 sha3 dit"
+        )
+        ;;
+    *)
+        echo "admin/mutants: no campaign for $(uname -m)" >&2
+        exit 1
+        ;;
+esac
+
+# The test runner: runs one test binary on each row, failing if any fails.
+# Nextest lists a binary's tests through the runner too, which needs one run.
+if [ "${1:-}" = --run ]; then
+    shift
+    "$@"
+    for arg in "$@"; do
+        [ "$arg" != --list ] || exit 0
+    done
+    for row in "${rows[@]}"; do
+        deny=()
+        for feature in $row; do
+            deny+=("RIND_CPU_DISABLE_$feature=1")
+        done
+        env "${deny[@]}" "$@"
+    done
+    exit 0
+fi
+
+cd "$here"
+args=()
+for glob in "${skip[@]}"; do
+    args+=(--exclude "$glob")
+done
+while IFS= read -r file; do
+    args+=(--exclude "$file")
+done < <(git grep -l '^// generated source' -- rind/src)
+
+export "CARGO_TARGET_${triple}_RUNNER=$here/admin/mutants --run"
+# A mutant that hangs the tests until the timeout is caught by them, so only
+# exit 3, timeouts alone, passes beside 0.
+status=0
+cargo mutants "${args[@]}" "$@" || status=$?
+[ "$status" -ne 3 ] || status=0
+exit "$status"

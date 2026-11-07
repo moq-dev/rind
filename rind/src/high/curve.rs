@@ -389,6 +389,20 @@ mod tests {
     use crate::error::KeyFormatError;
     use crate::test::*;
 
+    // Signing retries on a zero `r` or `s`, which only this tells it of.
+    #[test]
+    fn is_zero() {
+        fn check<S: Scalar>() {
+            assert!(S::from_bytes_reduced(&[0; 66][..S::LEN_BYTES]).is_zero());
+            let mut one = [0; 66];
+            one[S::LEN_BYTES - 1] = 1;
+            assert!(!S::from_bytes_reduced(&one[..S::LEN_BYTES]).is_zero());
+        }
+        check::<p256::Scalar>();
+        check::<p384::Scalar>();
+        check::<p521::Scalar>();
+    }
+
     #[test]
     fn private_key_encode_error() {
         let key = p256::StaticPrivateKey::new_random().unwrap();

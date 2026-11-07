@@ -1,0 +1,88 @@
+name: mutants
+
+# Nightly, mutates the Rust that changed in the last day with cargo-mutants,
+# through `admin/mutants`, on each architecture rind has a runner for. A
+# mutant no architecture's tests catch fails the run, which alert.yml
+# reports: kill it with a test, or list it under `exclude_re` in
+# .cargo/mutants.toml with why no test can. Dispatched on a branch, it
+# mutates what the branch changed since `base`.
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Mutate the changes since this revision, rather than the last day's
+        required: false
+        default: ""
+
+concurrency:
+  group: mutants-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mutants:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The diff's base can lie anywhere in the history.
+          fetch-depth: 0
+
+      - uses: ./.github/actions/vectors
+
+      - uses: ./.github/actions/nix
+
+      - name: Diff
+        run: |
+          if [ -z "$BASE" ]; then
+            BASE=$(git rev-list -1 --before="24 hours ago" HEAD)
+          fi
+          git diff "$(git merge-base "$BASE" HEAD)" HEAD -- '*.rs' > "$RUNNER_TEMP/changes.diff"
+        env:
+          BASE: ${{ inputs.base }}
+
+      # Exit 2, a missed mutant, may be code only the other architecture
+      # compiles, so `survivors` decides.
+      - name: Mutate
+        run: nix develop --command admin/mutants --workspace --in-diff "$RUNNER_TEMP/changes.diff" --output "$RUNNER_TEMP" || [ $? -eq 2 ]
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutants-${{ matrix.os }}
+          path: ${{ runner.temp }}/mutants.out
+          retention-days: 14
+          if-no-files-found: ignore
+
+  survivors:
+    needs: mutants
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/mutants
+
+      - name: Survivors
+        run: |
+          shopt -s nullglob
+          admin/mutants --survivors "$RUNNER_TEMP"/mutants/*

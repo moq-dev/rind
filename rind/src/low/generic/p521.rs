@@ -920,6 +920,18 @@ mod tests {
         assert_eq!(ours, theirs);
     }
 
+    // Only the top bit set is where an exclusive or of `x` and `-x` would
+    // drop it, and only words sharing a bit cancel in an exclusive or.
+    #[test]
+    fn nonzero_at_the_top_bit() {
+        assert_eq!(nonzero(&fe(&[0; 9])), 0);
+        assert_eq!(nonzero(&fe(&[1 << 63, 0, 0, 0, 0, 0, 0, 0, 0])), 1);
+        assert_eq!(nonzero(&fe(&[1, 1, 0, 0, 0, 0, 0, 0, 0])), 1);
+        assert_eq!((nonzero_u8(0), nonzero_u8(1), nonzero_u8(0x80)), (0, 1, 1));
+        assert_eq!(mask_nonzero(0), 0);
+        assert_eq!(mask_nonzero(1 << 63), u64::MAX);
+    }
+
     #[test]
     #[should_panic]
     fn other_modulus_refused() {

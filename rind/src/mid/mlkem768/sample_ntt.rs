@@ -200,3 +200,32 @@ impl Iterator for Shake128TwelveBitIterator {
         Some(item)
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    // The tail rarely needs a second block, so this reads three: each three
+    // bytes of every block yield two 12-bit samples.
+    #[test]
+    fn twelve_bit_samples_span_blocks() {
+        let state: [u64; 25] =
+            core::array::from_fn(|i| (i as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15));
+        let mut bytes = [0u8; 3 * sha3::SHAKE_128_R_BYTES];
+        sha3::Shake128SqueezingSponge::new(state).squeeze(&mut bytes);
+        let want: Vec<i16> = bytes
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .flat_map(|b| {
+                let x = u32::from_le_bytes([b[0], b[1], b[2], 0]);
+                [(x & 0xfff) as i16, (x >> 12) as i16]
+            })
+            .collect();
+        let got: Vec<i16> = Shake128TwelveBitIterator::new(SqueezingSponge::new(state))
+            .take(want.len())
+            .collect();
+        assert_eq!(got, want);
+    }
+}

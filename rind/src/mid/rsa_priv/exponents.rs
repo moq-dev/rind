@@ -364,6 +364,24 @@ mod tests {
             shift_right_secret(&words(x), shift, &mut out);
             assert_eq!(to_u128(&out), x >> shift, "{shift}");
         }
+
+        // Four words, so shifts of 128 and more take passes two words do not.
+        let x = [1, 2, 3, 0x8000_0000_0000_0004];
+        for shift in [128, 129, 200, 255] {
+            let mut out = [0u64; 4];
+            shift_right_secret(&x, shift, &mut out);
+            let mut want = [0u64; 4];
+            for (i, want) in want.iter_mut().enumerate() {
+                let bit = i * 64 + shift;
+                let (word, bits) = (bit / 64, bit % 64);
+                let low = x.get(word).map_or(0, |w| w >> bits);
+                let high = x
+                    .get(word + 1)
+                    .map_or(0, |w| w.checked_shl(64 - bits as u32).unwrap_or(0));
+                *want = low | if bits == 0 { 0 } else { high };
+            }
+            assert_eq!(out, want, "{shift}");
+        }
     }
 
     #[test]

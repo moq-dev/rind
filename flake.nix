@@ -246,6 +246,8 @@
                   pkg-config
                   openssl
                   cargo-deny
+                  # admin/mutants and the mutants workflow.
+                  cargo-mutants
                   cargo-nextest
                   cargo-semver-checks
                   # Linters used by `just check` and `just fix`, which skip a

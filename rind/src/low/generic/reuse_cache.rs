@@ -133,5 +133,19 @@ mod tests {
         assert_eq!(cache.get_or_build(|| unreachable!()), None);
         assert_eq!(cache.get_or_build_now(|| 7), 7);
         assert_eq!(cache.clone().get_or_build_now(|| unreachable!()), 7);
+        assert_eq!(format!("{cache:?}"), "ReuseCache(Some(7))");
+    }
+
+    /// A build that panicked holds `BUILDING`, as one on another thread
+    /// would: the value is built and returned, but no use keeps it.
+    #[test]
+    fn never_keeps_beside_a_build() {
+        let cache = ReuseCache::<u64>::new();
+        assert_eq!(cache.get_or_build(|| unreachable!()), None);
+        let build = core::panic::AssertUnwindSafe(|| cache.get_or_build(|| panic!("build")));
+        assert!(std::panic::catch_unwind(build).is_err());
+        assert_eq!(cache.get_or_build_now(|| 7), 7);
+        assert_eq!(cache.get_or_build(|| unreachable!()), None);
+        assert_eq!(format!("{cache:?}"), "ReuseCache(None)");
     }
 }

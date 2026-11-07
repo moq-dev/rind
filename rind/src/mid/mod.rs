@@ -3,19 +3,12 @@
 
 #![deny(unsafe_code)]
 
-cfg_if::cfg_if! {
-    if #[cfg(target_arch = "arm")] {
-        // libcrux exposes whole operations rather than the field and bignum
-        // arithmetic these build on, so 32-bit ARM swaps them at this layer.
-        #[path = "arm/aes_gcm.rs"]
-        pub(super) mod aes_gcm;
-        #[path = "arm/ed25519.rs"]
-        pub(super) mod ed25519;
-    } else {
-        pub(super) mod aes_gcm;
-        pub(super) mod ed25519;
-    }
-}
+// libcrux exposes whole operations rather than the field and bignum
+// arithmetic these build on, so 32-bit ARM swaps them at this layer.
+#[cfg_attr(target_arch = "arm", path = "arm/aes_gcm.rs")]
+pub(super) mod aes_gcm;
+#[cfg_attr(target_arch = "arm", path = "arm/ed25519.rs")]
+pub(super) mod ed25519;
 
 pub(super) mod aes;
 pub(super) mod aes_cbc;

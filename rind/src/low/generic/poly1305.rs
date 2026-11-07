@@ -185,19 +185,39 @@ fn full_reduce(h: &mut [u64; 3]) {
     let (g1, carry1a) = h[1].overflowing_sub(carry0 as u64);
     let (g1, carry1b) = g1.overflowing_sub(0u64.wrapping_sub(1));
     let (g2, carry2a) = h[2].overflowing_sub((carry1a as u64).wrapping_add(carry1b as u64));
-    let (g2, carry2b) = g2.overflowing_sub(3);
+    let (_, carry2b) = g2.overflowing_sub(3);
 
     let positive_mask = ((carry2a | carry2b) as u64).wrapping_sub(1);
     let negative_mask = !positive_mask;
     h[0] = (h[0] & negative_mask) | (g0 & positive_mask);
     h[1] = (h[1] & negative_mask) | (g1 & positive_mask);
-    h[2] = (h[2] & negative_mask) | (g2 & positive_mask);
+    // `finish` reads only the low 128 bits, so `h[2]` is left as it is.
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+
+    // Each split of a message, so updates start partway into a block and
+    // run past its end, gives the one-shot tag.
+    #[test]
+    fn split_updates() {
+        let key: [u8; 32] = core::array::from_fn(|i| i as u8 * 7 + 1);
+        let message: Vec<u8> = (0..80u8).map(|i| i.wrapping_mul(29)).collect();
+        let mut p = Poly1305::new(&key);
+        p.add_bytes(&message);
+        let want = p.finish();
+        for first in 0..=message.len() {
+            for second in first..=message.len().min(first + 40) {
+                let mut p = Poly1305::new(&key);
+                p.add_bytes(&message[..first]);
+                p.add_bytes(&message[first..second]);
+                p.add_bytes(&message[second..]);
+                assert_eq!(p.finish(), want, "{first}, {second}");
+            }
+        }
+    }
 
     #[test]
     fn test_vectors() {
