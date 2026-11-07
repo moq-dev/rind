@@ -210,9 +210,15 @@ impl Nonce {
 
 pub struct Tag([u8; TAG_LEN]);
 
+impl AsRef<[u8]> for Tag {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 ```
 
-The model departs from the Rust in five ways, and adds no axiom:
+The model departs from the Rust in four ways, and adds no axiom:
 
 - `Sealer<C>` is its key, and `Sealer`'s `seal` and `open` call `C`'s
   directly: `Sealer` and `Ops` are private to `aead`, where only
@@ -224,9 +230,12 @@ The model departs from the Rust in five ways, and adds no axiom:
 - `?` is a `match`, since each error it passes on is already an `Error`.
 - `open_in_place` returns the bytes before the tag, which it opens in place,
   and `split_last_chunk_mut` is `take` and `drop`.
-- `seal_in_place_append_tag`, whose `InOut` is any extendable buffer, is not
-  modelled: it seals as `seal_in_place_separate_tag` does, then appends the
-  tag.
+
+`seal_in_place_append_tag` takes `InOut`'s `AsMut<[u8]>` and `Extend<&u8>`
+impls as arguments, Aeneas's structures for those traits, as the translation
+passes a trait bound; `Extend` receives the shared borrow `&u8` as the `U8`
+Aeneas reads it as, and the tag through the slice iterator that `&[u8]`'s
+`IntoIterator` impl makes.
 
 Of the algorithm statics, only the AES-GCM ones are modelled;
 `CHACHA20_POLY1305` is quoted so the check sees every `Algorithm`.
@@ -307,6 +316,21 @@ def aead.Key.seal_in_place_separate_tag (self : aead.Key) (nonce : aead.Nonce) (
       aead.Sealer.seal mid.chacha20poly1305.ChaCha20Poly1305.Insts.RindAeadCipher key nonce.bytes aad in_out tag
   match r with
   | .Ok () => ok (.Ok ⟨tag⟩, in_out)
+  | .Err e => ok (.Err e, in_out)
+
+/-- `Key::seal_in_place_append_tag`: seals the buffer's `as_mut` view, then
+hands the tag to its `extend`. -/
+def aead.Key.seal_in_place_append_tag {InOut : Type} (AsMutInst : core.convert.AsMut InOut (Slice U8))
+    (ExtendInst : core.iter.traits.collect.Extend InOut U8) (self : aead.Key) (nonce : aead.Nonce)
+    (aad : Slice U8) (in_out : InOut) : Result ((core.result.Result Unit error.Error) × InOut) := do
+  let (view, back) ← AsMutInst.as_mut in_out
+  let (r, view) ← aead.Key.seal_in_place_separate_tag self nonce aad view
+  let in_out := back view
+  match r with
+  | .Ok tag =>
+    let in_out ← ExtendInst.extend (SharedSlice.Insts.CoreIterTraitsCollectIntoIteratorSharedIter U8) in_out
+      tag.bytes.to_slice
+    ok (.Ok (), in_out)
   | .Err e => ok (.Err e, in_out)
 
 /-- `Key::open_in_place_separate_tag`. -/

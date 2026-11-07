@@ -221,6 +221,13 @@ from the AEAD API's `Key` to HACL*'s Vale AES-GCM routines, in
 - `aes_gcm_seal`: for AAD under 2^32 bytes and messages of 129 bytes up to
   that, the ciphertext in place and the tag are Vale's `gcm_encrypt_LE` of the
   key, nonce, message, and AAD;
+- `aes_gcm_seal_append_tag`: the same for a seal that appends the tag to any
+  buffer: the ciphertext lands in the view its `as_mut` gives, and the call
+  returns what its `extend` makes of that, handed the tag; and
+  `aes_gcm_seal_append_tag_vec`: a `Vec<u8>` with room for the tag becomes
+  the ciphertext followed by the tag, assuming `VecAsMut` and `VecExtend`,
+  that std's impls view the whole vector and append the tag as
+  `extend_from_slice` does;
 - `aes_gcm_open_separate_tag` and `aes_gcm_open`: for AAD and messages under
   2^32 bytes, the call succeeds exactly when Vale's `gcm_decrypt_LE` accepts
   the tag, leaving its plaintext in place, and otherwise fails, leaving zeros.
@@ -236,7 +243,8 @@ EverCrypt's proven Low* wrapper does. It pads them with GHASH's
 `load_partial` and `store_partial`, whose overlapping loads and stores
 `Rind/X86_64/PartialBlock.lean` proves are the bytes at every length. The theorems assume `RunsValeAesGcm`: rind's CPU-feature
 checks pick Vale's tier. `Rind/X86_64/AeadDispatch.lean` models the AEAD API's
-function pointers (`Algorithm`'s `expand` and `Sealer`'s `Ops`).
+function pointers (`Algorithm`'s `expand` and `Sealer`'s `Ops`), and
+`seal_in_place_append_tag`, which is generic over its buffer.
 
 `admin/prove` fails if a hand model's quote no longer matches the source, if
 the source names `Ops`, builds a `Masker`, or writes its `mask` outside the

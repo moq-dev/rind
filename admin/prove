@@ -80,7 +80,7 @@ check_quote X86_64/AesNi aes_ni_items
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static AES_128_GCM:' 'pub static AES_192_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
-    'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag('
+    'pub struct Nonce(' 'impl Nonce {' 'pub struct Tag(' 'impl AsRef<[u8]> for Tag {'
 check_quote X86_64/DigestDispatch items rind/src/high/digest.rs 'pub fn digest(' 'impl Context {' \
     'impl State {' 'struct Hashing<' 'struct Ops<' 'impl<C: Variant> Hashing<C> {' 'fn one_shot<' \
     'trait Variant:'

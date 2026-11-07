@@ -270,6 +270,73 @@ theorem aes_gcm_seal (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algo
   rw [key_bytes alg key hkl] at hout
   exact (WP.spec_ok _).2 ⟨⟨tag⟩, rfl, hlen, hout⟩
 
+/-- Sealing through any buffer `InOut`: for the view its `as_mut` gives, the
+call returns what its `extend` makes of the buffer holding the view's
+ciphertext, handed the tag, both Vale's `gcm_encrypt_LE` of the view. -/
+theorem aes_gcm_seal_append_tag (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
+    (key : List (BitVec 8)) (k : aead.Key) (hk : KeyReady alg key k) (nonce : aead.Nonce) (aad : Slice U8)
+    {InOut : Type} (AsMutInst : core.convert.AsMut InOut (Slice U8))
+    (ExtendInst : core.iter.traits.collect.Extend InOut U8) (in_out : InOut) (view : Slice U8)
+    (back : Slice U8 → InOut) (hview : AsMutInst.as_mut in_out = ok (view, back))
+    (haad : aad.length < 2 ^ 32) (hin : view.length < 2 ^ 32) (hlong : 129 ≤ view.length)
+    (Q : (core.result.Result Unit error.Error) × InOut → Prop)
+    (hext : ∀ (ct : Slice U8) (tag : Std.Array U8 16#usize), ct.length = view.length →
+      (bvs ct.val, bvs tag.val) = gcmEncrypt alg key (bvs nonce.bytes.val) (bvs view.val) (bvs aad.val) →
+      ExtendInst.extend (SharedSlice.Insts.CoreIterTraitsCollectIntoIteratorSharedIter U8) (back ct)
+        tag.to_slice ⦃ out => Q (.Ok (), out) ⦄) :
+    k.seal_in_place_append_tag AsMutInst ExtendInst nonce aad in_out ⦃ Q ⦄ := by
+  unfold aead.Key.seal_in_place_append_tag
+  simp only [hview, bind_ok]
+  apply WP.spec_bind (aes_gcm_seal he alg key k hk nonce aad view haad hin hlong)
+  rintro ⟨r, ct⟩ ⟨tag, hr, hlen, henc⟩
+  dsimp only at hr
+  subst hr
+  exact WP.spec_bind (hext ct tag.bytes hlen henc) fun out h => (WP.spec_ok _).2 h
+
+/-- `Vec<u8>`'s `AsMut<[u8]>` impl views the whole vector. -/
+def VecAsMut (AsMutInst : core.convert.AsMut (alloc.vec.Vec U8) (Slice U8)) : Prop :=
+  ∀ v, AsMutInst.as_mut v = ok (alloc.vec.Vec.deref_mut v)
+
+/-- `Vec<u8>`'s `Extend<&u8>` impl appends a slice's bytes, as its
+`extend_from_slice` does. -/
+def VecExtend (ExtendInst : core.iter.traits.collect.Extend (alloc.vec.Vec U8) U8) : Prop :=
+  ∀ v s, ExtendInst.extend (SharedSlice.Insts.CoreIterTraitsCollectIntoIteratorSharedIter U8) v s =
+    alloc.vec.Vec.extend_from_slice core.clone.CloneU8 v s
+
+/-- Sealing a `Vec<u8>` with room for the tag: the vector becomes the
+ciphertext followed by the tag, Vale's `gcm_encrypt_LE` of the message. -/
+theorem aes_gcm_seal_append_tag_vec (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
+    (key : List (BitVec 8)) (k : aead.Key) (hk : KeyReady alg key k) (nonce : aead.Nonce) (aad : Slice U8)
+    (AsMutInst : core.convert.AsMut (alloc.vec.Vec U8) (Slice U8))
+    (ExtendInst : core.iter.traits.collect.Extend (alloc.vec.Vec U8) U8) (hasmut : VecAsMut AsMutInst)
+    (hextend : VecExtend ExtendInst) (in_out : alloc.vec.Vec U8) (haad : aad.length < 2 ^ 32)
+    (hin : in_out.length < 2 ^ 32) (hlong : 129 ≤ in_out.length) (hroom : in_out.length + 16 ≤ Usize.max) :
+    k.seal_in_place_append_tag AsMutInst ExtendInst nonce aad in_out ⦃ r =>
+      r.1 = .Ok () ∧ r.2.length = in_out.length + 16 ∧
+        (bvs (r.2.val.take in_out.length), bvs (r.2.val.drop in_out.length)) =
+          gcmEncrypt alg key (bvs nonce.bytes.val) (bvs in_out.val) (bvs aad.val) ⦄ := by
+  have hl : in_out.slice.length = in_out.length := rfl
+  apply aes_gcm_seal_append_tag he alg key k hk nonce aad AsMutInst ExtendInst in_out in_out.slice
+    (fun s => ⟨s⟩) (hasmut in_out) haad (by rw [hl]; exact hin) (by rw [hl]; exact hlong)
+  intro ct tag hlen henc
+  have hct : ct.val.length = in_out.length := hlen
+  have htag : tag.to_slice.val = tag.val := by simp [Std.Array.to_slice]
+  have htl : tag.val.length = 16 := by simp
+  rw [hextend]
+  unfold alloc.vec.Vec.extend_from_slice
+  have hfit : (⟨ct⟩ : alloc.vec.Vec U8).length + tag.to_slice.length ≤ Usize.max := by
+    change ct.val.length + tag.to_slice.val.length ≤ Usize.max
+    rw [htag, htl, hct]; exact hroom
+  rw [dite_eq_left hfit]
+  apply WP.spec_bind (List.clone_spec fun _ _ => rfl)
+  rintro s' ⟨hs', -⟩
+  have hv : ∀ h, (alloc.vec.Vec.from ((⟨ct⟩ : alloc.vec.Vec U8).val ++ s'.val) h).val = ct.val ++ tag.val := by
+    intro h; rw [alloc.vec.Vec.from_val, hs', htag]; rfl
+  refine (WP.spec_ok _).2 ⟨rfl, ?_, ?_⟩
+  · rw [alloc.vec.Vec.length, hv, List.length_append, hct, htl]
+  · rw [hv, List.take_left' hct, List.drop_left' hct]
+    exact henc
+
 theorem aes_gcm_open_separate_tag (he : ∃ e, low.entry.Entry.new_secret = ok e) (alg : Algorithm)
     (key : List (BitVec 8)) (k : aead.Key) (hk : KeyReady alg key k) (nonce : aead.Nonce) (aad : Slice U8)
     (tag : aead.Tag) (in_out : Slice U8) (haad : aad.length < 2 ^ 32) (hin : in_out.length < 2 ^ 32) :

@@ -71,6 +71,24 @@ change to the trust base.
 #guard_msgs in
 #print axioms aes_gcm_seal
 
+/-- info: 'rind.x86_64.aes_gcm_seal_append_tag' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_encrypt_opt_spec,
+ gcm256_encrypt_opt_spec] -/
+#guard_msgs in
+#print axioms aes_gcm_seal_append_tag
+
+/-- info: 'rind.x86_64.aes_gcm_seal_append_tag_vec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ counter_block_spec,
+ gcm128_encrypt_opt_spec,
+ gcm256_encrypt_opt_spec] -/
+#guard_msgs in
+#print axioms aes_gcm_seal_append_tag_vec
+
 /-- info: 'rind.x86_64.aes_gcm_open_separate_tag' depends on axioms: [propext,
  Classical.choice,
  Quot.sound,
