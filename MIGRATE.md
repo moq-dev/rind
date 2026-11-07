@@ -71,7 +71,7 @@ Stop here, before changing anything, if a release target is on another
 architecture, a dependency in what ships hard-wires aws-lc-rs, a ring older
 than 0.17, or in a library, which cannot patch for its users, any ring, or the
 project calls an item rind lacks: for ring's API, one [rind-ring's README]
-leaves out, and for aws-lc-rs's, one [MIGRATING.md] maps to none.
+leaves out, and for aws-lc-rs's, one [rind-aws-lc-rs's README] leaves out.
 MIGRATING.md on `main` may name items not yet released, which count as
 missing. Check every condition, then report each that holds in the format of
 step 5, without the table, naming the target, dependency path, or item, and
@@ -111,7 +111,10 @@ For each way the survey found:
   crate root. rind-ring keeps ring's signatures, such as
   `digest::Context::finish(self)`, so leave the code as it is: MIGRATING.md's
   tables map to rind's own API, where `finish` takes `&mut self`.
-- **aws-lc-rs's API.** Port each call to rind's, using MIGRATING.md's tables.
+- **aws-lc-rs's API.** Rename the dependency the same way, with no code
+  changes: `aws-lc-rs = { package = "rind-aws-lc-rs", version = "1" }`, or in
+  a library `#[cfg(feature = "<its feature>")] extern crate rind_aws_lc_rs as
+  aws_lc_rs;`. Drop the `fips` feature, which rind-aws-lc-rs refuses.
 - **A crate that hard-wires ring 0.17.** Patch ring in the root `Cargo.toml`
   of each binary's workspace, then run `cargo update -p ring`, which changes
   ring alone:
@@ -129,8 +132,8 @@ For each way the survey found:
 
 rind panics on a CPU missing a feature it requires. At the start of each
 binary's `main`, refuse one by exiting with the error from an adapter's
-`default_provider()`, rind-ring's `cpu::check()`, rind-rcgen's `check()`,
-or `rind::cpu::check()`.
+`default_provider()`, rind-ring's or rind-aws-lc-rs's `cpu::check()`,
+rind-rcgen's `check()`, or `rind::cpu::check()`.
 A library leaves this to the binaries that use it, and says so in its docs.
 
 Commit as you go, with messages in the project's style.
@@ -225,3 +228,4 @@ Ask the user, and do each only if they agree:
 
 [MIGRATING.md]: https://raw.githubusercontent.com/moq-dev/rind/main/MIGRATING.md
 [rind-ring's README]: https://raw.githubusercontent.com/moq-dev/rind/main/rind-ring/README.md
+[rind-aws-lc-rs's README]: https://raw.githubusercontent.com/moq-dev/rind/main/rind-aws-lc-rs/README.md

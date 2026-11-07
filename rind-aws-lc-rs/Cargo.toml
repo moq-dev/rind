@@ -1,0 +1,49 @@
+[package]
+name = "rind-aws-lc-rs"
+version = "1.0.0"
+edition = "2024"
+repository = "https://github.com/moq-dev/rind"
+license = "Apache-2.0 OR ISC OR MIT-0"
+description = "aws-lc-rs 1.x's API backed by rind"
+categories = ["cryptography"]
+rust-version.workspace = true
+readme = "README.md"
+
+# The aws-lc-rs version whose API this crate offers, which its own version
+# tracks (sh/adapter-versions.sh), since it implements aws-lc-rs rather than
+# depending on it.
+[package.metadata.rind]
+upstream = "1"
+
+# aws-lc-rs's feature names, so a manifest naming them builds unchanged; each
+# changes nothing. `fips` is left out, so a manifest asking for it fails to
+# resolve: rind is not FIPS validated.
+[features]
+default = ["aws-lc-sys", "alloc", "ring-io", "ring-sig-verify"]
+alloc = []
+asan = []
+aws-lc-sys = []
+bindgen = []
+dev-tests-only = []
+legacy-des = []
+non-fips = ["aws-lc-sys"]
+prebuilt-nasm = []
+ring-io = []
+ring-sig-verify = []
+test_logging = []
+unstable = []
+
+[dependencies]
+rind = { version = "0.2.1", path = "../rind" }
+untrusted = "0.7.1"
+zeroize = "1.9"
+
+[dev-dependencies]
+aws-lc-rs = { version = "1.19", default-features = false, features = ["alloc", "prebuilt-nasm", "non-fips", "ring-io", "ring-sig-verify"] }
+# Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
+# features, as `admin/ctgrind` does; otherwise they build as no-ops.
+crabgrind = { version = "0.4", default-features = false }
+hex = { version = "0.4", features = ["serde"] }
+proptest = "1.5.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

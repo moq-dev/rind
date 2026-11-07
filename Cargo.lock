@@ -3034,6 +3034,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rind-aws-lc-rs"
+version = "1.0.0"
+dependencies = [
+ "aws-lc-rs",
+ "crabgrind 0.4.0",
+ "hex",
+ "proptest",
+ "rind",
+ "serde",
+ "serde_json",
+ "untrusted 0.7.1",
+ "zeroize",
+]
+
+[[package]]
 name = "rind-bench"
 version = "0.1.0"
 dependencies = [

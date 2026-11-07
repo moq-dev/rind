@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "rind",
+  "rind-aws-lc-rs",
   "rind-bench",
   "rind-cpuid",
   "rind-dimpl",

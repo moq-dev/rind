@@ -382,7 +382,7 @@ impl fmt::Debug for Context {
 }
 
 /// The output of a hash function.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Digest {
     algorithm: &'static Algorithm,
     value: [u8; MAX_OUTPUT_LEN],

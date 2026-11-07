@@ -98,6 +98,7 @@ Each crate's README shows its setup.
 | Crate | For |
 |---|---|
 | [rind-ring][] | ring 0.17's API, name for name: rename the dependency, with no code changes |
+| [rind-aws-lc-rs][] | aws-lc-rs 1.x's API, name for name, for every item rind backs: rename the dependency, with no code changes |
 | [rind-dimpl][] | DTLS 1.2 and 1.3 through [dimpl](https://github.com/algesten/dimpl) |
 | [rind-jsonwebtoken][] | JWTs through [jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | [rind-object-store][] | S3, Azure, and GCS request signing through [object_store](https://github.com/apache/arrow-rs-object-store) |
@@ -192,6 +193,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [LICENSE]: https://github.com/moq-dev/rind/blob/main/LICENSE
 [rind-rustls]: https://github.com/moq-dev/rind/tree/main/rind-rustls
 [rind-ring]: https://github.com/moq-dev/rind/tree/main/rind-ring
+[rind-aws-lc-rs]: https://github.com/moq-dev/rind/tree/main/rind-aws-lc-rs
 [rind-dimpl]: https://github.com/moq-dev/rind/tree/main/rind-dimpl
 [rind-jsonwebtoken]: https://github.com/moq-dev/rind/tree/main/rind-jsonwebtoken
 [rind-object-store]: https://github.com/moq-dev/rind/tree/main/rind-object-store
