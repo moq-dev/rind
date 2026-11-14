@@ -102,9 +102,12 @@ module rs '^(rind[^/]*/|fuzz/|thirdparty/|Cargo\.(toml|lock)$|\.rustfmt(\.unstab
 # rind's aarch64, armv7, portable, and wasm32 builds, which the host's own
 # build skips, and which a toolchain bump can break. A change under one
 # backend's low/ directory checks only the builds of that backend (see
-# `reach`), so an x86_64 kernel selects none of them.
+# `reach`), so an x86_64 kernel selects none of them. On Linux its aarch64 and
+# armv7 builds run in nix's cross shells.
+cross_tools=cargo
+[[ $(uname -s) != Linux ]] || cross_tools='cargo nix'
 module cross '^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)' \
-    tools='cargo' compiles
+    tools="$cross_tools" compiles
 # Dependents may build with the workspace's declared rust-version. Plain
 # `cargo check` covers the lib and bin targets, all a dependent builds, so a
 # crate's tests, benches, and docs cannot break it. A Rust crate nested in
