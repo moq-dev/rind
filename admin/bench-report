@@ -834,6 +834,7 @@ TIER_ROWS = [
 UNRANKED = [
     (r"rsa\d+-key-generation", "RSA key generation varies too much from run to run to rank"),
     (r"jwt-[^/]+/\*/load$", "a token's key loading, the part of `token` spent on the key"),
+    (r"argon2id-", "aws-lc-rs and ring have no Argon2, so it has no baseline"),
 ]
 
 # rind's time over the fastest library's above which benchmarks/gaps.toml

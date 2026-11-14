@@ -250,6 +250,23 @@ fn ml_dsa_expanded_set<P: rind::signature::sign::MlDsaParameterSet>(
     });
 }
 
+/// Argon2id's memory is as good as the password to an attacker, who could
+/// finish the hash from it without paying for the memory.
+#[test]
+fn argon2() {
+    let params = rind::argon2::Params::new(32, 2, 2).unwrap();
+    independent(
+        "Argon2id",
+        [*b"password one", *b"password two"],
+        |password| {
+            let mut out = [0u8; 32];
+            rind::argon2::derive(params, password, b"saltsalt", &mut out).unwrap();
+            // Verifying derives its key on the heap.
+            black_box(rind::argon2::verify(params, password, b"saltsalt", &out).is_ok())
+        },
+    );
+}
+
 /// The key `seed` expands to, as PKCS#8 in RFC 9881's expanded form, which
 /// rind writes only for a key loaded from it, so aws-lc-rs expands it.
 #[cfg(not(any(miri, target_family = "wasm")))]

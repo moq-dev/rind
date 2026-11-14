@@ -11,6 +11,7 @@ codspeed-criterion-compat = { optional = true, version = "6" }
 
 [dev-dependencies]
 aes-gcm = "0.11"
+argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 aws-lc-rs = { version = "1.19", features = ["non-fips"], default-features = false }
 # For XChaCha20-Poly1305, which aws-lc-rs does not expose.
 aws-lc-sys = { version = "0.47", default-features = false }
@@ -67,6 +68,10 @@ rustls-openssl = { version = "0.4", default-features = false }
 [features]
 __bench_openssl = []
 __bench_codspeed = ["dep:codspeed-criterion-compat"]
+
+[[bench]]
+name = "argon2"
+harness = false
 
 [[bench]]
 name = "x25519"

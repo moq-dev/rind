@@ -628,6 +628,32 @@ pub mod pbkdf2 {
     }
 }
 
+/// Password hashing and key derivation with Argon2id.
+///
+/// [`argon2::derive`] derives a key from a password and salt at the memory
+/// and time [`argon2::Params`] sets, and [`argon2::verify`] checks one
+/// derived before. This example takes RFC 9106's second recommendation,
+/// 64 MiB over three passes, so it is not run as a test.
+///
+/// ```no_run
+/// use rind::argon2;
+///
+/// let params = argon2::Params::SECOND_RECOMMENDED;
+/// let mut stored = [0u8; 32];
+/// // Each account's salt is its own, stored beside its key.
+/// argon2::derive(params, b"password", b"per-user salt", &mut stored).unwrap();
+///
+/// argon2::verify(params, b"password", b"per-user salt", &stored).unwrap();
+/// ```
+///
+/// After the first half of its first pass, Argon2id reads memory at offsets
+/// that depend on the password, so an attacker who can watch the cache learns
+/// something about the password. That is the price of its resistance to
+/// trading memory for time, which RFC 9106 accepts.
+pub mod argon2 {
+    pub use super::high::argon2::{Params, derive, verify};
+}
+
 /// Authenticated encryption.
 ///
 /// An [`aead::Key`] is built from an algorithm constant and key bytes, and

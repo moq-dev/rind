@@ -103,6 +103,8 @@ slow=(
     low::posint::tests::mont_exp_matches_square_and_multiply
     low::posint::tests::pub_montifier
     mid::aes::tests::cavp
+    mid::argon2::tests::matches_rustcrypto
+    mid::argon2::tests::reference_kat
     mid::aes::tests::srtp_aes_cm
     mid::mldsa::tests::wycheproof
     mid::p256::tests::base_point_precomp

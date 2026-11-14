@@ -34,6 +34,24 @@ why = "Divides 256 by the window width, which is 4 for the basepoint table rind 
 "s390x-unknown-linux-gnu" = "dlgr"
 
 [[public]]
+function = "rind::mid::argon2::argon2id"
+why = "Divides the public memory cost by the public lane count into segments, and takes a reference's lane as the public lane count's remainder of a random word that is public or, in Argon2id's data-dependent addressing, declassified, as AGENTS.md excepts."
+[public.holds]
+"x86_64-unknown-linux-gnu" = "div x2"
+"aarch64-unknown-linux-gnu" = "udiv x2"
+"armv7-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod x2"
+"x86_64-unknown-linux-gnu+portable" = "div x4"
+"armv7-unknown-linux-gnueabihf+portable" = "calls __aeabi_uidiv, calls __aeabi_uidivmod x2"
+"i686-unknown-linux-gnu" = "div x3"
+"arm-unknown-linux-gnueabihf" = "calls __aeabi_uidiv, calls __aeabi_uidivmod x2"
+"loongarch64-unknown-linux-gnu" = "div.du, mod.du, mod.wu"
+"powerpc-unknown-linux-gnu" = "divwu x3"
+"powerpc64-unknown-linux-gnu" = "divdu x2, divwu"
+"powerpc64le-unknown-linux-gnu" = "divdu x2, divwu"
+"riscv64gc-unknown-linux-gnu" = "divu, remu, remuw"
+"s390x-unknown-linux-gnu" = "dlgr x2, dlr"
+
+[[public]]
 function = "<rind::high::pbkdf2::Secret>::derive"
 why = "The length check and step_by iterator divide only the public output length by the selected hash's public tag length; neither operand comes from the password or derived key. Retains the formally verified implementation."
 [public.holds]

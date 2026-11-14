@@ -46,6 +46,7 @@ mod vartime_planted;
 pub mod inline_assembly_safety;
 
 mod generic {
+    pub(crate) mod argon2;
     // The portable backend's RSA arithmetic, which armv7 shares, also built
     // in tests elsewhere to check it against s2n-bignum.
     #[cfg(any(rind_backend = "arm", rind_backend = "portable", test))]
@@ -122,6 +123,9 @@ mod entry;
 mod posint;
 
 pub(crate) use entry::Entry;
+pub(crate) use generic::argon2::Argon2Block;
+#[cfg(not(rind_backend = "x86_64"))]
+pub(crate) use generic::argon2::argon2_compress;
 pub(crate) use generic::blockwise::{Blockwise, UpdateBlocks, pad, sha256_digest, split_tail};
 pub(crate) use generic::chacha20::{chacha20_block, hchacha20};
 pub(crate) use generic::ct_copy::{ct_copy, ct_select_i16};
@@ -224,6 +228,7 @@ mod x86_64;
 cfg_if::cfg_if! {
     if #[cfg(rind_backend = "x86_64")] {
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state, missing_cpu_feature};
+        pub(crate) use x86_64::argon2::argon2_compress;
         pub(crate) use x86_64::chacha20;
         pub(crate) use x86_64::chacha20poly1305;
         pub(crate) use x86_64::aes::{AesDecKey, AesKey};

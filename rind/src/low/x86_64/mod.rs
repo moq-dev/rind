@@ -10,6 +10,7 @@ pub(crate) mod aes_gcm_avx;
 pub(crate) mod aes_gcm_vaes;
 #[path = "../generic/aes_nohw.rs"]
 pub(crate) mod aes_nohw;
+pub(crate) mod argon2;
 pub(crate) mod bignum_add;
 pub(crate) mod bignum_add_p25519;
 pub(crate) mod bignum_add_p256;

@@ -6,7 +6,7 @@ This is one Rust workspace: the `rind` library, its `rind-<consumer>` adapter cr
 
 - Exactly one backend compiles per target, the portable one where rind has no assembly, and a CPU missing a required feature fails with an error naming it.
 - Keys, signatures, ciphertexts, and encodings are hostile input: a malformed one is an error, never a panic, and its cost is bounded by design.
-- Secret-dependent code runs in constant time: no branch, memory index, or variable-time instruction depends on a secret. New secret-handling paths get a ctgrind test (`admin/ctgrind`).
+- Secret-dependent code runs in constant time: no branch, memory index, or variable-time instruction depends on a secret. New secret-handling paths get a ctgrind test (`admin/ctgrind`). The one exception is Argon2id's data-dependent addressing, everything after its first pass's first half, which picks the memory it reads from password-derived values: the cost of its memory hardness, which RFC 9106 and RFC 9807 accept. It declassifies each such index, so ctgrind still checks the rest.
 - Pick the fastest permissively licensed source for each primitive on each backend. Take a formally verified one (s2n-bignum, libcrux/HACL*, fiat-crypto) only where it measures as fast at every size; otherwise run the fastest and plan its proof. New arithmetic states where its correctness argument comes from.
 - Test every primitive against Wycheproof where vectors exist, and differentially against aws-lc-rs (a dev-dependency only).
 - Give the API one way to do each job. Borrow an aws-lc-rs or ring name only when it is as clear; the migration guide maps theirs to rind's.
