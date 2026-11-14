@@ -99,9 +99,6 @@ type has one role, so misuse fails to compile:
 use rind::signature::{EcdsaKeyPair, PublicKey, sign, verify};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // An error naming the missing CPU feature, rather than a panic later.
-    rind::cpu::check()?;
-
     let key_pair = EcdsaKeyPair::generate(&sign::ECDSA_P256_SHA256_ASN1)?;
     let signature = key_pair.sign(b"hello")?;
 
@@ -183,10 +180,9 @@ portable Rust on any other architecture. CI tests Linux (glibc and musl),
 macOS, and Windows on x86_64 and aarch64, Linux and Windows on 32-bit x86, iOS
 in the simulator, Android on aarch64, armv7, ARMv5TE, x86_64, and 32-bit x86,
 and Linux on armv7, ARMv6, big-endian s390x, riscv64gc (glibc and musl),
-loongarch64, powerpc64le, and big-endian powerpc64 and powerpc. Any x86_64 CPU
-runs it, little-endian aarch64 needs NEON, and every operation panics on a CPU
-missing a feature rind requires: call `rind::cpu::check()` at startup to get an
-error naming it instead.
+loongarch64, powerpc64le, and big-endian powerpc64 and powerpc. rind needs only
+what each target enables at compile time, so it runs on every CPU the target
+does.
 [PLATFORMS.md][platforms] lists what each architecture runs without each
 feature.
 

@@ -48,7 +48,6 @@ exclude_re = [
   'rind/src/high/sec1\.rs:\d+:\d+: replace \| with \^ in is_public_key$',
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace \| with \^ in (inc32|lengths)$',
   'rind/src/mid/portable/aes_gcm\.rs:\d+:\d+: replace \| with \^ in (add32|lengths)$',
-  'rind/src/low/aarch64/cpu\.rs:162:\d+: replace << with >>$',
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace \| with \^ in (detect|detect_once)$',
   'rind/src/low/generic/bignum\.rs:\d+:\d+: replace \| with \^ in (add_masked|bignum_add|bignum_cmp_lt|bignum_modadd|gcd_step|mod_halve|sub_masked)$',
   'rind/src/low/generic/mont\.rs:\d+:\d+: replace \| with \^ in (bignum_montredc|bignum_mul|cmp_lt_limbs|mod_double|mont_mul|mont_mul_limbs|sub_limbs_masked)$',
@@ -174,7 +173,7 @@ exclude_re = [
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace <= with > in tagged_from$',
   'rind/src/low/aarch64/aes_gcm\.rs:\d+:\d+: replace \+ with \* in tagged_from$',
   'rind/src/low/aarch64/bignum_copy_row_from_table_mux\.rs:\d+:\d+: replace match guard width\.is_multiple_of\(8\) with false in bignum_copy_row_from_table$',
-  'rind/src/low/aarch64/cpu\.rs:317:\d+: replace prefetch_ro with \(\)$',
+  'rind/src/low/aarch64/cpu\.rs:298:\d+: replace prefetch_ro with \(\)$',
   # Invisible to a test: whether the speculation barrier after setting DIT
   # runs, and which one.
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: (replace dit::speculation_barrier with \(\)|replace (!= with ==|& with [|^]) in dit::write)$',
@@ -206,7 +205,7 @@ exclude_re = [
   'rind/src/low/x86_64/chacha20\.rs:\d+:\d+: delete match arm \(Some\(_\), _, 65\.\.\) in ChaCha20::cipher$',
   'rind/src/low/x86_64/chacha20poly1305\.rs:48:\d+: replace << with >>$',
   'rind/src/low/x86_64/chacha20poly1305\.rs:48:\d+: replace \| with &$',
-  'rind/src/low/x86_64/cpu\.rs:554:\d+: replace prefetch with \(\)$',
+  'rind/src/low/x86_64/cpu\.rs:524:\d+: replace prefetch with \(\)$',
   'rind/src/low/x86_64/mont\.rs:\d+:\d+: delete match arm \(Some\(_\), 16 \| 32\) in (mont_mul|mont_sqr)$',
   'rind/src/low/x86_64/mont\.rs:40:\d+: replace >= with < in mont_sqr$',
   'rind/src/low/x86_64/mont\.rs:\d+:\d+: replace match guard k >= 2 with false in (mont_mul|mont_sqr)$',
@@ -252,9 +251,9 @@ exclude_re = [
   # denial row in `admin/mutants` denies alone, only in a release build,
   # which tests never are, or only off Linux.
   'rind/src/low/aarch64/cpu\.rs:\d+:\d+: replace && with \|\| in detect$',
-  'rind/src/low/aarch64/cpu\.rs:169:\d+: replace << with >>$',
-  'rind/src/low/aarch64/cpu\.rs:295:\d+: replace test_toggle -> bool with false$',
-  'rind/src/low/aarch64/cpu\.rs:295:\d+: replace test_toggle -> bool with true$',
+  'rind/src/low/aarch64/cpu\.rs:153:\d+: replace << with >>$',
+  'rind/src/low/aarch64/cpu\.rs:276:\d+: replace test_toggle -> bool with false$',
+  'rind/src/low/aarch64/cpu\.rs:276:\d+: replace test_toggle -> bool with true$',
   # The portable backend has no CPU state to save, so `leave_cpu_state`
   # ignores it.
   'rind/src/low/portable/cpu\.rs:\d+:\d+: replace enter_cpu_state -> u32 with 1$',
@@ -271,6 +270,9 @@ exclude_re = [
   # The FIPS module's `SystemRandom`, compiled only under `--cfg rind_fips`,
   # which no mutation run sets; `fips_rng`'s tests cover what it calls.
   'rind/src/mid/rng\.rs:29:\d+: replace <impl RandomSource for SystemRandom>::fill -> Result<\(\), Error> with Ok\(\(\)\)$',
+  # The FIPS module's CPU check, also compiled only under `--cfg rind_fips`;
+  # rind-fips's `tests/cpu.rs` covers it.
+  'rind/src/(fips|low/(aarch64|x86_64)/cpu)\.rs:\d+:\d+: .*missing_cpu_feature',
   # Wipes a thread's DRBG as the thread exits, where no test can read it;
   # `high::hmac_drbg::tests::zeroise_wipes_the_state_under_wipe` checks the wipe.
   'rind/src/fips_rng\.rs:\d+:\d+: replace <impl Drop for ThreadDrbg>::drop with \(\)$',
@@ -306,7 +308,7 @@ exclude_re = [
   'rind/src/low/aarch64/sha1\.rs:\d+:\d+: replace match guard blocks\.is_empty\(\) with false in sha1_compress_blocks$',
   'rind/src/low/entry\.rs:\d+:\d+: replace - with / in <impl Drop for Entry>::drop$',
   'rind/src/low/entry\.rs:\d+:\d+: replace - with \+ in <impl Drop for Entry>::drop$',
-  'rind/src/low/entry\.rs:61:\d+: replace Entry::assert_held with \(\)$',
+  'rind/src/low/entry\.rs:58:\d+: replace Entry::assert_held with \(\)$',
   'rind/src/low/generic/blockwise\.rs:154:24: replace \* with / in pad$',
   'rind/src/low/posint\.rs:149:\d+: replace PosInt<N>::debug with \(\)$',
   'rind/src/mid/rsa_priv/exponents\.rs:\d+:\d+: replace >= with < in Exponents::derive$',

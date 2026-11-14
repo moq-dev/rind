@@ -68,9 +68,8 @@ The modules:
   types export.
 - `constant_time`: comparing secrets such as MACs without a timing leak.
 - `rand`: random bytes from the system.
-- `cpu`: the startup check for required CPU features, whether AES runs
-  in hardware, and `Dit`, which holds data-independent timing on across a
-  batch of calls.
+- `cpu`: whether AES runs in hardware, and `Dit`, which holds
+  data-independent timing on across a batch of calls.
 
 The public modules wrap three private layers:
 
@@ -86,7 +85,7 @@ or intrinsic-based implementations for a certain platform.
 
 `rind/build.rs` picks one backend per target and sets `rind_backend` to it:
 `x86_64`, `aarch64`, or `arm` on little-endian targets of those
-architectures (`arm` only from ARMv7 on), and `portable` everywhere else, or wherever `--cfg
+architectures (`aarch64` only with NEON, `arm` only from ARMv7 on), and `portable` everywhere else, or wherever `--cfg
 rind_portable` forces it. Code outside `low` gates on `rind_backend`, never
 `target_arch`. `low::portable` is pure Rust and needs no CPU features; the
 `arm` backend wraps its types with the crypto extension's, NEON's, and

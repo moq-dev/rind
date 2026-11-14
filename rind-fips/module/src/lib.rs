@@ -46,11 +46,15 @@ pub(crate) const VERSION: &str = concat!("rind-fips ", env!("CARGO_PKG_VERSION")
 static INIT: extern "C" fn() = init;
 
 extern "C" fn init() {
-    // The integrity test runs on HMAC-SHA-256, so those go first. Their
-    // first call detects the CPU's features, so the `RIND_CPU_DISABLE_*`
+    // The CPU check detects the CPU's features, so the `RIND_CPU_DISABLE_*`
     // mask, by which each CPU path is reached for its ACVP run, is read at
-    // load, and a CPU missing a feature the module requires aborts here,
-    // naming it.
+    // load. rind checks no features at runtime, so the module refuses a CPU
+    // missing one it requires here, before any instruction needs it.
+    if let Some(feature) = rind::fips::missing_cpu_feature() {
+        std::eprintln!("rind-fips: requires {feature} CPU support");
+        std::process::abort();
+    }
+    // The integrity test runs on HMAC-SHA-256, so those go first.
     selftest::ensure(&[selftest::SelfTest::Sha256, selftest::SelfTest::Hmac]);
     if !integrity::check() {
         rind::fips::fail("integrity");

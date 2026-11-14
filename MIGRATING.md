@@ -317,12 +317,12 @@ aws-lc-rs's `error::Unspecified` and `error::KeyRejected` become one
 ## cpu
 
 ring and aws-lc-rs detect CPU features and fall back to slower code, down
-to portable C. rind picks its path per CPU too, but only down to a floor (see
-[PLATFORMS.md](PLATFORMS.md)): it panics on a CPU below it.
+to portable C. rind picks its path per CPU too, down to what the target
+enables at compile time (see [PLATFORMS.md](PLATFORMS.md)), so it runs on every
+CPU the target does.
 
 | aws-lc-rs | rind |
 |---|---|
-| none | `cpu::check()`, at startup, returns `cpu::MissingFeature` naming the feature |
 | none | `cpu::has_aes_hardware()`, for preferring ChaCha20-Poly1305 where AES runs in software |
 
 ## key_wrap
@@ -354,10 +354,7 @@ ring has none.
 ## Adapter crates
 
 Each `rind-*` crate stands in for a crate's crypto backend, such as its
-aws-lc-rs, ring, or RustCrypto one, and offers that backend's signatures, so
-none returns an error for a CPU it lacks.
-Call `rind::cpu::check()` at startup to get that error, as the [cpu](#cpu)
-section describes.
+aws-lc-rs, ring, or RustCrypto one, and offers that backend's signatures.
 
 ### rind-ring
 

@@ -8,7 +8,9 @@ Linux on `armv7`, ARMv6, big-endian `s390x`, `riscv64gc` (glibc and musl),
 `loongarch64`, `powerpc64le`, and big-endian `powerpc64` and `powerpc` under
 qemu. iOS devices' code is only built.
 
-- `aarch64` requires the `neon` CPU feature. Where the CPU has the crypto
+- The `aarch64` assembly backend requires NEON, which every aarch64 target
+  with `std` enables at compile time; a build without it uses the portable
+  backend. Where the CPU has the crypto
   extension (`aes`, `pmull`, and `sha2`), as the Raspberry Pi 5 and most
   aarch64 servers and phones do, AES, GHASH, SHA1, and SHA256 run on its
   instructions. Without it, as on the Raspberry Pi 4, CM4, and Zero 2 W, they
@@ -97,8 +99,8 @@ qemu. iOS devices' code is only built.
   1.101), whose 128-bit products take one or two multiply instructions, and
   on 32-bit limbs elsewhere, where a 128-bit product would be a library call.
 
-Every operation panics on a CPU missing one of these. Call `rind::cpu::check()`
-at startup to get an error naming the missing feature instead.
+A backend requires only what its target enables at compile time, so rind runs
+on every CPU its target does; every other feature only picks a faster path.
 
 [rind-fips](rind-fips/README.md)'s FIPS 140-3 module builds only for glibc
 Linux on `x86_64` and `aarch64`, and runs only the fastest paths there: on

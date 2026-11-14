@@ -694,18 +694,8 @@ pub mod key_wrap {
 }
 
 /// CPU support.
-///
-/// Every operation panics on a CPU missing a feature rind requires. Check at
-/// startup to refuse cleanly instead:
-///
-/// ```
-/// if let Err(missing) = rind::cpu::check() {
-///     eprintln!("{missing}");
-///     std::process::exit(1);
-/// }
-/// ```
 pub mod cpu {
-    pub use crate::low::cpu::{Dit, MissingFeature, check, has_aes_hardware};
+    pub use crate::low::cpu::{Dit, has_aes_hardware};
 }
 
 /// Random bytes from the system's secure random source.

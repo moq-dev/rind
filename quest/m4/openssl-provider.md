@@ -22,10 +22,9 @@ Planned by the maintainer on 2026-11-04 in m4.
   it OpenSSL carries on past a configuration error: "access will be allowed
   but the desired configuration will not be used"
   ([config(5)](https://docs.openssl.org/3.5/man5/config/)). A rind provider
-  that refuses to load, as it must on a CPU missing a required feature,
-  would then leave every algorithm on `default` without a word, which is the
-  fallback `AGENTS.md` forbids. Test that such a load fails the process's
-  OpenSSL initialization with rind's error.
+  that refuses to load would then leave every algorithm on `default`
+  without a word, which is the fallback `AGENTS.md` forbids. Test that such
+  a load fails the process's OpenSSL initialization with rind's error.
 - Register only what measures faster, on `openssl speed` and on a Node and a
   Python workload, and keys must round-trip through OpenSSL's encoders and
   decoders so mixed use works.

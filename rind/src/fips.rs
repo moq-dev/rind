@@ -222,9 +222,10 @@ impl DrbgHold {
 }
 
 /// The name of the first CPU feature the module requires that this CPU
-/// lacks, as [`crate::cpu::check`] reports it.
+/// lacks. The module builds only on the x86_64 and aarch64 backends.
+#[cfg(all(rind_fips, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 pub fn missing_cpu_feature() -> Option<&'static str> {
-    crate::cpu::check().err().map(|missing| missing.name())
+    crate::low::missing_cpu_feature()
 }
 
 /// `error`'s code, which is never 0, the code of success.
