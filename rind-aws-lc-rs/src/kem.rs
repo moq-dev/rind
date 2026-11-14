@@ -84,8 +84,7 @@ impl<Id: AlgorithmIdentifier> Algorithm<Id> {
 
 generated_encodings!((EncapsulationKeyBytes, EncapsulationKeyBytesType, false));
 
-/// A decapsulation key, which decapsulates any number of ciphertexts, wiped
-/// on drop under the `wipe` feature.
+/// A decapsulation key, which decapsulates any number of ciphertexts, wiped on drop.
 pub struct DecapsulationKey<Id = AlgorithmId>
 where
     Id: AlgorithmIdentifier,
@@ -208,8 +207,7 @@ impl<'a> From<&'a [u8]> for Ciphertext<'a> {
     }
 }
 
-/// The shared secret encapsulation and decapsulation agree on, wiped on drop
-/// under the `wipe` feature.
+/// The shared secret encapsulation and decapsulation agree on, wiped on drop.
 pub struct SharedSecret(Wiped<Box<[u8]>>);
 
 impl AsRef<[u8]> for SharedSecret {

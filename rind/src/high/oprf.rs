@@ -691,7 +691,7 @@ suited!(
 );
 
 /// The server's key in the OPRF mode, which evaluates blinded elements for
-/// clients, wiped on drop under the `wipe` feature.
+/// clients, wiped on drop.
 ///
 /// Its outputs differ from a [`voprf::ServerKey`]'s with the same scalar, as
 /// RFC 9497 separates the modes.
@@ -795,8 +795,7 @@ impl fmt::Debug for ServerKey {
 }
 
 /// A client's secret for one input in the OPRF mode, which turns the
-/// server's evaluated element into the output, wiped on drop under the
-/// `wipe` feature.
+/// server's evaluated element into the output, wiped on drop.
 pub struct Blind(BlindInner);
 
 impl Blind {
@@ -884,8 +883,7 @@ impl fmt::Debug for EvaluatedElement {
     }
 }
 
-/// An OPRF output, the suite's hash length, wiped on drop under the `wipe`
-/// feature.
+/// An OPRF output, the suite's hash length, wiped on drop.
 pub struct Output(Bytes<MAX_OUTPUT>);
 
 impl AsRef<[u8]> for Output {
@@ -906,7 +904,7 @@ impl fmt::Debug for Output {
     }
 }
 
-/// An encoded server key, wiped on drop under the `wipe` feature.
+/// An encoded server key, wiped on drop.
 pub struct ServerKeyBytes(Bytes<MAX_SCALAR>);
 
 impl AsRef<[u8]> for ServerKeyBytes {

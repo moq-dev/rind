@@ -214,14 +214,6 @@ for module in "${selected[@]}"; do
             # `cargo test`, it passes a selection with no tests, such as the
             # benches alone.
             cargo nextest run "${packages[@]}" --locked --no-tests=warn
-            # Only the zeroing and heap scratch tests see the opt-in wipe,
-            # which the default build turns into no-ops.
-            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind|--workspace'; then
-                cargo nextest run -p rind --features wipe --test zeroing --test heap_scratch --locked
-            fi
-            if ((${#packages[@]} == 0)) || printf '%s\n' "${packages[@]}" | grep -qxE 'rind-aws-lc-rs|--workspace'; then
-                cargo nextest run -p rind-aws-lc-rs --features wipe --test zeroing --locked
-            fi
             # The FIPS module's own code compiles only under its cfg, which a
             # workspace build leaves off, and only for glibc Linux on x86_64
             # and aarch64, where rind-fips is not empty. Its break build
@@ -302,11 +294,9 @@ for module in "${selected[@]}"; do
                 cargo clippy -p rind --lib --locked --target armv7-unknown-linux-gnueabihf -- --deny warnings
             # wasm32 compiles on the portable backend; the browser target
             # needs getrandom's JavaScript source, WASI has its own.
-            for features in "" wipe; do
-                cargo clippy -p rind --lib --locked --target wasm32-wasip2 --features "$features" -- --deny warnings
-                cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
-                    --features "$features,getrandom/wasm_js" -- --deny warnings
-            done
+            cargo clippy -p rind --lib --locked --target wasm32-wasip2 -- --deny warnings
+            cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
+                --features getrandom/wasm_js -- --deny warnings
             ;;
         check:structure) admin/structure ;;
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;

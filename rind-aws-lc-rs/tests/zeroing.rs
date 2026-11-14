@@ -5,10 +5,6 @@
 //! one records the blocks freed while the values that held a secret are
 //! dropped, and checks none still holds it. Inline values are boxed so they
 //! live on the heap too.
-//!
-//! The wipe is opt-in, so these tests build only with the `wipe` feature.
-
-#![cfg(feature = "wipe")]
 
 #[path = "../../rind/tests/freed/mod.rs"]
 mod freed;

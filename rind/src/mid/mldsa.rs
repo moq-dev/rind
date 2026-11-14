@@ -184,7 +184,7 @@ const fn signature_len<P: Params>() -> usize {
 /// from, if known. Signing expands them as it goes, as mldsa-native and
 /// aws-lc do, which keeps the key small.
 ///
-/// It wipes its whole value on drop under the `wipe` feature.
+/// It wipes its whole value on drop.
 pub(crate) struct KeyPair<P: Params> {
     seed: Option<[u8; SEED_LEN]>,
     secret_key: P::SecretKey,
@@ -336,8 +336,8 @@ pub(crate) fn verify<P: Params>(
     verify_internal::<P>(pk, &mu, signature)
 }
 
-/// Polynomials on the heap, wiped before they are freed under the `wipe`
-/// feature, as heap scratch derived from a private key must be.
+/// Polynomials on the heap, wiped before they are freed, as heap scratch
+/// derived from a private key must be.
 struct Scratch(Vec<Poly>);
 
 impl Scratch {

@@ -35,12 +35,11 @@ Planned by the maintainer on 2026-11-04 in m4.
   are rind's own Dart bindings; this is the first C ABI whose callers rind
   does not write.
 - Decided 2026-11-11 (maintainer, /quest-unblock): rind-openssl always
-  builds rind with `wipe`, and wipes the `OSSL_PARAM` buffers it fills with
-  key material (rejected: a build flag off by default as in rind; wiping
-  nothing). `AGENTS.md` leaves other scratch unwiped because safe Rust cannot
-  read freed memory; that reason does not cover these buffers. They are heap
-  scratch derived from a private key, which `AGENTS.md` wipes under `wipe`,
-  and the provider's heap is the host process's, which C code reads. OpenSSL's
-  own providers cleanse keys, so anything less is a regression for whoever
-  switches. Whether `wipe` is on by default for rind itself is a separate
-  question, open in [the wipe-default quest](/quest/m2/wipe-default.md).
+  wipes, including the `OSSL_PARAM` buffers it fills with key material
+  (rejected: a build flag off by default; wiping nothing). `AGENTS.md`
+  leaves other scratch unwiped because safe Rust cannot read freed memory;
+  that reason does not cover these buffers. They are heap scratch derived
+  from a private key, which `AGENTS.md` wipes, and the provider's heap is the
+  host process's, which C code reads. OpenSSL's own providers cleanse keys,
+  so anything less is a regression for whoever switches. rind itself always
+  wipes its keys.

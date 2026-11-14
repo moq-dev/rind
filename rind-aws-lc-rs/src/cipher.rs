@@ -169,7 +169,7 @@ impl DecryptionContext {
     }
 }
 
-/// A key not yet given a mode; wiped on drop under the `wipe` feature.
+/// A key not yet given a mode; wiped on drop.
 pub struct UnboundCipherKey {
     algorithm: &'static Algorithm,
     key: Key,
@@ -246,7 +246,7 @@ fn ctr(key: &UnboundCipherKey) -> Result<rind::cipher::AesCtr, Unspecified> {
         .map_err(crate::error::unspecified)
 }
 
-/// A key that encrypts in CBC, without padding, or CTR mode; wiped on drop under the `wipe` feature.
+/// A key that encrypts in CBC, without padding, or CTR mode; wiped on drop.
 pub struct EncryptingKey {
     algorithm: &'static Algorithm,
     key: Encrypting,
@@ -339,7 +339,7 @@ impl Decrypting {
     }
 }
 
-/// A key that decrypts in CBC, without padding, or CTR mode; wiped on drop under the `wipe` feature.
+/// A key that decrypts in CBC, without padding, or CTR mode; wiped on drop.
 pub struct DecryptingKey {
     algorithm: &'static Algorithm,
     key: Decrypting,
@@ -401,7 +401,7 @@ impl fmt::Debug for DecryptingKey {
     }
 }
 
-/// A key that pads with PKCS#7 and encrypts in CBC mode; wiped on drop under the `wipe` feature.
+/// A key that pads with PKCS#7 and encrypts in CBC mode; wiped on drop.
 pub struct PaddedBlockEncryptingKey {
     algorithm: &'static Algorithm,
     key: rind::cipher::AesCbcEncryptingKey,
@@ -469,7 +469,7 @@ impl fmt::Debug for PaddedBlockEncryptingKey {
     }
 }
 
-/// A key that decrypts in CBC mode and removes PKCS#7 padding; wiped on drop under the `wipe` feature.
+/// A key that decrypts in CBC mode and removes PKCS#7 padding; wiped on drop.
 pub struct PaddedBlockDecryptingKey {
     algorithm: &'static Algorithm,
     key: rind::cipher::AesCbcDecryptingKey,

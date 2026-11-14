@@ -156,7 +156,7 @@ pub struct Suite {
     pub aead: &'static Aead,
 }
 
-/// A recipient's private key, wiped on drop under the `wipe` feature.
+/// A recipient's private key, wiped on drop.
 pub struct PrivateKey {
     kem: low::ZeroableRef<Kem>,
     key: agreement::PrivateKey,
@@ -355,7 +355,7 @@ impl fmt::Debug for EncapsulatedKey {
 }
 
 /// A sender's context, which seals messages in order and exports secrets;
-/// wiped on drop under the `wipe` feature.
+/// wiped on drop.
 pub struct Sender {
     sealing: Sealing,
     exporter: Exporter,
@@ -435,7 +435,7 @@ impl fmt::Debug for Sender {
 }
 
 /// A recipient's context, which opens messages in the order they were sealed
-/// and exports secrets; wiped on drop under the `wipe` feature.
+/// and exports secrets; wiped on drop.
 pub struct Recipient {
     sealing: Sealing,
     exporter: Exporter,
@@ -502,7 +502,7 @@ impl fmt::Debug for Recipient {
 }
 
 /// An export-only context (RFC 9180 section 5.3), which derives secrets but
-/// seals and opens nothing; wiped on drop under the `wipe` feature.
+/// seals and opens nothing; wiped on drop.
 pub struct Exporter {
     secret: Prk,
     /// The key schedule's `suite_id`, which `Export` labels with.

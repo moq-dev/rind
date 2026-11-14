@@ -461,7 +461,7 @@ impl fmt::Debug for Signature {
     }
 }
 
-/// A private key encoded as PKCS#8 DER, wiped on drop under the `wipe` feature.
+/// A private key encoded as PKCS#8 DER, wiped on drop.
 pub struct Pkcs8(pub(super) Buffer<MAX_PKCS8_LEN>);
 
 impl AsRef<[u8]> for Pkcs8 {
@@ -499,7 +499,7 @@ impl fmt::Debug for Spki {
 }
 
 /// An ECDSA private key encoded as a SEC1 (RFC 5915) `ECPrivateKey` in
-/// DER, wiped on drop under the `wipe` feature.
+/// DER, wiped on drop.
 pub struct Sec1(Buffer<{ sec1::MAX_LEN }>);
 
 impl AsRef<[u8]> for Sec1 {
@@ -521,7 +521,7 @@ impl Drop for Sec1 {
 }
 
 /// An ECDSA private key as a big-endian scalar exactly the curve's length,
-/// wiped on drop under the `wipe` feature.
+/// wiped on drop.
 pub struct EcdsaScalar(Buffer<MAX_SCALAR_LEN>);
 
 impl AsRef<[u8]> for EcdsaScalar {
@@ -542,7 +542,7 @@ impl Drop for EcdsaScalar {
     }
 }
 
-/// An Ed25519 private key as its 32-byte seed, wiped on drop under the `wipe` feature.
+/// An Ed25519 private key as its 32-byte seed, wiped on drop.
 pub struct Ed25519Seed([u8; 32]);
 
 impl AsRef<[u8]> for Ed25519Seed {
@@ -1839,8 +1839,7 @@ impl<P: MlDsaParameterSet> fmt::Debug for MlDsaSignature<P> {
     }
 }
 
-/// An ML-DSA private key's 32-byte seed, wiped on drop under the `wipe`
-/// feature.
+/// An ML-DSA private key's 32-byte seed, wiped on drop.
 pub struct MlDsaSeed([u8; mldsa::SEED_LEN]);
 
 impl AsRef<[u8]> for MlDsaSeed {

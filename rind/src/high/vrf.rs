@@ -67,7 +67,7 @@ pub static ECVRF_P256_SHA256_TAI: Algorithm = Algorithm {
     id: AlgorithmId::P256Sha256Tai,
 };
 
-/// The secret key that proves outputs, wiped on drop under the `wipe` feature.
+/// The secret key that proves outputs, wiped on drop.
 ///
 /// It keeps its public key, computed once when it is generated or loaded.
 ///
@@ -291,7 +291,7 @@ impl fmt::Debug for SecretKey {
     }
 }
 
-/// An encoded secret key, wiped on drop under the `wipe` feature.
+/// An encoded secret key, wiped on drop.
 pub struct SecretKeyBytes([u8; 32]);
 
 impl AsRef<[u8]> for SecretKeyBytes {

@@ -61,6 +61,7 @@ And these behave differently:
   `rand::SystemRandom`, the only `SecureRandom`, does.
 - An Ed25519 public key of small order verifies no signature, where
   ring verifies some that nobody made on it.
+- A key wipes its memory on drop, which ring never does.
 - A `error::KeyRejected`'s `Display` gives rind's reason, not ring's
   name for it, which ring documents as changing between releases.
 

@@ -82,9 +82,9 @@ qemu. iOS devices' code is only built.
   ARMv5TE, on `powerpc64le` and big-endian `powerpc64` and `powerpc` Linux,
   and on `x86_64`,
   where `--cfg rind_portable` forces it. `just ci` also compiles the library
-  for `wasm32-wasip2` and `wasm32-unknown-unknown`, with and without `wipe`,
-  when a change touches rind, the workspace manifest or lockfile, or the
-  flake, and `just gate` always does. `wasm32-unknown-unknown` enables
+  for `wasm32-wasip2` and `wasm32-unknown-unknown` when a change touches
+  rind, the workspace manifest or lockfile, or the flake, and `just gate`
+  always does. `wasm32-unknown-unknown` enables
   `getrandom/wasm_js` for JavaScript randomness; the WASI target uses its
   system random source. The nightly `build.yml` runs the vector tests
   on `wasm32-wasip2` under wasmtime (`just wasm`), without the differential
