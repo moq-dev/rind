@@ -1,6 +1,6 @@
+use rustls::crypto::CipherSuiteCommon;
 #[cfg(feature = "tls12")]
 use rustls::crypto::KeyExchangeAlgorithm;
-use rustls::crypto::CipherSuiteCommon;
 #[cfg(feature = "tls12")]
 use rustls::crypto::tls12::PrfUsingHmac;
 use rustls::crypto::tls13::HkdfUsingHmac;
