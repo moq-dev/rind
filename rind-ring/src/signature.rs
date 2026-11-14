@@ -8,7 +8,9 @@
 use core::fmt;
 
 /// An RSA public key as its big-endian modulus and exponent.
+#[cfg(feature = "alloc")]
 pub use crate::rsa::PublicKeyComponents as RsaPublicKeyComponents;
+#[cfg(feature = "alloc")]
 pub use crate::rsa::{
     RsaParameters,
     padding::{
@@ -27,6 +29,7 @@ pub use crate::rsa::{
 use crate::{der, error, pkcs8, rand, sealed};
 
 /// An RSA key pair, for signing.
+#[cfg(feature = "alloc")]
 pub type RsaKeyPair = crate::rsa::KeyPair;
 
 /// A signature from an ECDSA or Ed25519 key pair.
@@ -137,7 +140,8 @@ mod public_key {
     use core::fmt;
 
     /// An ECDSA key pair's uncompressed point, or an Ed25519 key pair's 32 bytes.
-    #[derive(Clone)]
+    /// `Copy`, as ring's are.
+    #[derive(Clone, Copy)]
     pub struct PublicKey {
         bytes: [u8; MAX_LEN],
         len: usize,

@@ -38,6 +38,7 @@ fn read<'a>(
 
 /// Reads a positive INTEGER and returns its magnitude, without the zero byte DER
 /// adds when its top bit is set.
+#[cfg(feature = "alloc")]
 fn positive_integer<'a>(input: &mut untrusted::Reader<'a>) -> Result<&'a [u8], error::Unspecified> {
     let value = read(input, INTEGER)?.as_slice_less_safe();
     match value {
@@ -51,6 +52,7 @@ fn positive_integer<'a>(input: &mut untrusted::Reader<'a>) -> Result<&'a [u8], e
 }
 
 /// Reads a PKCS#1 `RSAPublicKey`, returning the modulus and the exponent.
+#[cfg(feature = "alloc")]
 pub(crate) fn rsa_public_key(der: &[u8]) -> Result<(&[u8], &[u8]), error::Unspecified> {
     untrusted::Input::from(der).read_all(error::Unspecified, |input| {
         read(input, SEQUENCE)?.read_all(error::Unspecified, |input| {

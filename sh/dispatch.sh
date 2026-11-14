@@ -60,7 +60,7 @@ declare -A scope=(
     # Each adapter's API against its upstream's, which reaches rind only
     # through a lockfile change, as read by the flake's rustdoc.
     # rind-object-store has none to copy.
-    [adapters]='^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api(\.drift)?$)'
+    [adapters]='^(rind/(src/|Cargo\.toml$)|rind-(aws-lc-rs|ring|rustls|rcgen|jsonwebtoken|dimpl|str0m|openmls)/(src/|Cargo\.toml$|README\.md$)|Cargo\.lock$|flake\.(nix|lock)$|admin/adapter-api$)'
     [license]='^(rind/src/|rind/LICENSE$|rind-python/LICENSE$|admin/scan-license$)'
     # Dependents may build with the workspace's declared rust-version.
     [msrv]='^(rind[^/]*/|fuzz/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
@@ -312,17 +312,7 @@ for module in "${selected[@]}"; do
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;
         check:deny) cargo deny --locked check ;;
         check:versions) sh/adapter-versions.sh ;;
-        # The drift list only shrinks against the diff's merge base, even
-        # when an orchestration change forces a full run. Only an explicit
-        # --all has no diff to shrink from.
-        check:adapters)
-            if [[ "$base" != --all ]]; then
-                drift_base=$(sh/changed.sh --merge-base "$base")
-                python3 admin/adapter-api --base "$drift_base"
-            else
-                python3 admin/adapter-api
-            fi
-            ;;
+        check:adapters) python3 admin/adapter-api ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
         check:mutants) admin/mutants --pins ;;

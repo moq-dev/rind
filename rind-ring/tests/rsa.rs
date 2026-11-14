@@ -1,6 +1,8 @@
 //! ring signs only with moduli of 2048 to 4096 bits, which rind-ring keeps
 //! though rind loads keys up to 8192 bits; ring's own vectors stop at 4096.
 
+#![cfg(feature = "alloc")]
+
 use rind_ring::{rand, signature};
 
 #[test]

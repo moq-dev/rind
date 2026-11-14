@@ -750,10 +750,12 @@ impl RandomizedNonceKey {
     }
 
     /// Seals `in_out` in place under a random nonce, appends the tag, and returns the nonce.
-    pub fn seal_in_place_append_tag<A, InOut>(
+    // aws-lc-rs names the lifetime, so this does too.
+    #[allow(clippy::needless_lifetimes)]
+    pub fn seal_in_place_append_tag<'a, A, InOut>(
         &self,
         aad: Aad<A>,
-        in_out: &mut InOut,
+        in_out: &'a mut InOut,
     ) -> Result<Nonce, error::Unspecified>
     where
         A: AsRef<[u8]>,
