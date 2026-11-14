@@ -1,5 +1,7 @@
 [workspace]
-dependencies_update = true
+# Crates move only in reviewed updates held to Dependabot's cooldown, never in
+# a release PR's `cargo update`.
+dependencies_update = false
 git_release_enable = false
 # Publish only when the commit is a merged release PR, so an ordinary merge to
 # `main` never publishes.
