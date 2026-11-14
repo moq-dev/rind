@@ -6,6 +6,7 @@
 //! Load the key as PKCS#1 or PKCS#8 instead.
 
 use core::fmt;
+use core::marker::PhantomData;
 
 use crate::{der, error, rand, signature};
 
@@ -192,6 +193,9 @@ impl<B: FromIterator<u8>> From<&PublicKey> for PublicKeyComponents<B> {
 pub struct RsaParameters {
     rind: &'static rind::signature::RsaVerificationAlgorithm,
     id: &'static str,
+    // ring's holds a `&'static dyn` padding, which is neither `UnwindSafe`
+    // nor `RefUnwindSafe`, so neither is this.
+    unwind: PhantomData<&'static dyn Sync>,
 }
 
 impl fmt::Debug for RsaParameters {
@@ -222,6 +226,7 @@ pub(crate) mod verification {
             pub static $name: RsaParameters = RsaParameters {
                 rind: &$rind,
                 id: stringify!($name),
+                unwind: core::marker::PhantomData,
             };
         };
     }
