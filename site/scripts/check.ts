@@ -47,7 +47,9 @@ function anchors(file: string): Set<string> {
 		tokens
 			.map((t) => ("tokens" in t && t.tokens ? plain(t.tokens) : "text" in t ? t.text : ""))
 			.join("");
-	const seen = new Map<string, number>();
+	// A repeated slug takes the next `-n` no earlier anchor holds, as github-slugger does,
+	// so `Foo`, `Foo`, `Foo-1` are `foo`, `foo-1`, `foo-1-1`.
+	const counts = new Map<string, number>();
 	const out = new Set<string>();
 	for (const t of Lexer.lex(readFileSync(path.join(root, file), "utf8"))) {
 		if (t.type !== "heading") continue;
@@ -55,9 +57,13 @@ function anchors(file: string): Set<string> {
 			.toLowerCase()
 			.replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
 			.replaceAll(" ", "-");
-		const n = seen.get(base) ?? 0;
-		seen.set(base, n + 1);
-		out.add(n === 0 ? base : `${base}-${n}`);
+		let slug = base;
+		while (out.has(slug)) {
+			const n = (counts.get(base) ?? 0) + 1;
+			counts.set(base, n);
+			slug = `${base}-${n}`;
+		}
+		out.add(slug);
 	}
 	return out;
 }
@@ -111,6 +117,13 @@ function css(file: string, body: string) {
 	for (const m of body.matchAll(/@import\s+['"]([^'"]+)/g)) check(file, m[1], true);
 }
 
+// Scripts, inline or built, load every module specifier, local ones included:
+// `import "x"`, `import("x")`, and the `from "x"` of named imports and
+// re-exports, minified or not.
+function js(file: string, body: string) {
+	for (const m of body.matchAll(/\b(?:import\s*\(?|from)\s*["']([^"']+)["']/g)) check(file, m[1], true);
+}
+
 for (const file of files) {
 	if (file.endsWith(".html")) {
 		const html = text(file);
@@ -121,12 +134,11 @@ for (const file of files) {
 			for (const candidate of m[1].split(",")) check(file, candidate.trim().split(/\s+/)[0], true);
 		}
 		css(file, html);
+		for (const m of html.matchAll(/<script(?:\s+type="module")?\s*>([\s\S]*?)<\/script>/g)) js(file, m[1]);
 	} else if (file.endsWith(".css")) {
 		css(file, text(file));
 	} else if (file.endsWith(".js")) {
-		// Every module specifier, local ones included: `import "x"`, `import("x")`,
-		// and the `from "x"` of named imports and re-exports, minified or not.
-		for (const m of text(file).matchAll(/\b(?:import\s*\(?|from)\s*["']([^"']+)["']/g)) check(file, m[1], true);
+		js(file, text(file));
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
 		// Links, and URLs quoted as text, such as the prompt's.
 		const body = text(file);

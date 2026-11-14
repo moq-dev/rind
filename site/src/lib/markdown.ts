@@ -86,6 +86,10 @@ export function hrefs(tokens: Token[]): string[] {
 			if (t.type === "link") found.push(t.href);
 			if ("tokens" in t && t.tokens) walk(t.tokens);
 			if (t.type === "list") for (const item of (t as Tokens.List).items) walk(item.tokens);
+			if (t.type === "table") {
+				const table = t as Tokens.Table;
+				for (const cell of [...table.header, ...table.rows.flat()]) walk(cell.tokens);
+			}
 		}
 	};
 	walk(tokens);
