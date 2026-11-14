@@ -258,6 +258,9 @@ fn test_toggle(_id: &str, detected: bool) -> bool {
 #[cfg(any(debug_assertions, rind_cpu_disable))]
 fn test_toggle(id: &str, detected: bool) -> bool {
     if std::env::var(format!("RIND_CPU_DISABLE_{id}")).is_ok() {
+        // The FIPS module honours the mask in its release build, where its
+        // caller's stdout is not its own.
+        #[cfg(not(rind_fips))]
         println!("DEBUG: denying cpuid {id:?}");
         false
     } else {
@@ -275,6 +278,16 @@ pub(in crate::low) fn prefetch_ro<T>(ptr: *const T) {
             options(readonly, nostack)
         );
     }
+}
+
+/// The first CPU feature the FIPS module requires that this CPU lacks.
+///
+/// The module requires the crypto extension, which every core it is tested
+/// on has, so its vpaes and NEON GHASH paths, which no tested core runs,
+/// need no ACVP run of their own.
+#[cfg(rind_fips)]
+pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
+    (features() & CRYPTO_EXT == 0).then_some("aes, pmull, and sha2")
 }
 
 #[cfg(test)]

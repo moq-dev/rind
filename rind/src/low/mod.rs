@@ -185,9 +185,9 @@ pub(crate) use generic::{
         p384_montjmixadd,
     },
     limbs::p521::{
-        bignum_add_p521, bignum_aff_point_select_p521, bignum_inv_p521, bignum_mod_n521,
-        bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd, p521_jdouble, p521_jmixadd,
-        p521_jscalarmul,
+        Naf as P521Naf, bignum_add_p521, bignum_aff_point_select_p521, bignum_inv_p521,
+        bignum_mod_n521, bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd,
+        p521_jdouble, p521_jmixadd, p521_jscalarmul, p521_public_twin_multiply,
     },
     mldsa_poly::{
         mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
@@ -224,6 +224,8 @@ mod x86_64;
 cfg_if::cfg_if! {
     if #[cfg(rind_backend = "x86_64")] {
         pub(in crate::low) use x86_64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
+        #[cfg(rind_fips)]
+        pub(crate) use x86_64::cpu::missing_cpu_feature;
         pub(crate) use x86_64::chacha20;
         pub(crate) use x86_64::chacha20poly1305;
         pub(crate) use x86_64::aes::{AesDecKey, AesKey};
@@ -244,7 +246,9 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::bignum_copy_row_from_table::bignum_copy_row_from_table;
         pub(crate) use x86_64::bignum_ctz::bignum_ctz;
         pub(crate) use x86_64::bignum_demont::bignum_demont;
-        pub(crate) use x86_64::bignum_point_select::{bignum_aff_point_select_p384, bignum_aff_point_select_p521};
+        pub(crate) use x86_64::bignum_point_select::{
+            bignum_aff_point_select_p256, bignum_aff_point_select_p384, bignum_aff_point_select_p521,
+        };
         pub(crate) use x86_64::adx_mux::bignum_demont_p256;
         pub(crate) use x86_64::adx_mux::bignum_demont_p384;
         pub(crate) use x86_64::bignum_digitsize::bignum_digitsize;
@@ -323,7 +327,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::p256_montjdouble;
         pub(crate) use x86_64::adx_mux::p256_montjmixadd;
         pub(crate) use x86_64::adx_mux::p256_scalarmul;
-        pub(crate) use x86_64::ecp_nistz256::{P256GeneratorRow, p256_point_add_affine, p256_select_w7};
+        pub(crate) use x86_64::ecp_nistz256::p256_point_add_affine;
         pub(crate) use x86_64::adx_mux::p384_montjadd;
         pub(crate) use x86_64::adx_mux::p384_montjmixadd;
         pub(crate) use x86_64::adx_mux::p384_montjdouble;
@@ -341,6 +345,8 @@ cfg_if::cfg_if! {
 
     } else if #[cfg(rind_backend = "aarch64")] {
         pub(in crate::low) use aarch64::cpu::{enter_cpu_state, zero_bytes, ct_compare_bytes, ct_compare_16, leave_cpu_state};
+        #[cfg(rind_fips)]
+        pub(crate) use aarch64::cpu::missing_cpu_feature;
         pub(crate) use aarch64::aes::{AesDecKey, AesKey};
         pub(crate) use aarch64::aes_cbc;
         pub(crate) use aarch64::aes_ctr;
