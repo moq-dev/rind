@@ -15,4 +15,3 @@ SHA-256, SHA-384, and SHA-512, and the MACs and KDFs over them, earn the ✓ on 
 ## Required
 
 - [x86_64 SHA-256 on AVX2 without SHA-NI is proven](/quest/m4/verified/sha256-x86-avx2.md) - the SHA-256 spec work and its `ShaBlocks` axiom shape
-- [x86_64 SHA-512 on AVX2 is proven](/quest/m4/verified/sha512-x86-avx2.md) - the SHA-512 spec work and the `RunsSha512` widening

@@ -985,6 +985,26 @@ let x86_AND = new_definition
  *** moderately recent extensions.
  ***)
 
+(*** ANDN (BMI1) and RORX (BMI2). ANDN sets SF and ZF from its result and
+ *** clears OF and CF, leaving AF and PF undefined; RORX leaves the flags.
+ ***)
+
+let x86_ANDN = new_definition
+ `x86_ANDN dest src1 src2 s =
+        let x = read src1 s and y = read src2 s in
+        let z = word_and (word_not x) y in
+        (dest := (z:N word) ,,
+         ZF := (val z = 0) ,,
+         SF := (ival z < &0) ,,
+         CF := F ,,
+         OF := F ,,
+         UNDEFINED_VALUES[AF;PF]) s`;;
+
+let x86_RORX = new_definition
+ `x86_RORX dest src c s =
+        let x = read src s in
+        (dest := (word_ror x c:N word)) s`;;
+
 let x86_BSF = new_definition
  `x86_BSF dest src s =
         let x:N word = read src s in
@@ -3075,6 +3095,13 @@ let x86_execute = define
          add_store_event dest s ,,
         (\s. (x86_AESKEYGENASSIST (OPERAND128_SSE dest s) (OPERAND128_SSE src s)
                                   (OPERAND8 imm8 s)) s)) s
+    | ANDN dest src1 src2 ->
+       (add_load_event src1 s ,, add_load_event src2 s ,,
+        add_store_event dest s ,,
+       (\s. (match operand_size dest with
+          64 -> x86_ANDN (OPERAND64 dest s) (OPERAND64 src1 s) (OPERAND64 src2 s)
+        | 32 -> x86_ANDN (OPERAND32 dest s) (OPERAND32 src1 s) (OPERAND32 src2 s))
+          s)) s
     | AND dest src ->
         (add_load_event src s ,, add_load_event dest s ,,
          add_store_event dest s ,,
@@ -3542,6 +3569,13 @@ let x86_execute = define
                         (val(read (OPERAND8 src s) s) MOD 32)
          | 8 -> x86_ROL (OPERAND8 dest s)
                         (val(read (OPERAND8 src s) s) MOD 32)) s)) s
+    | RORX dest src imm8 ->
+       (add_load_event src s ,, add_store_event dest s ,,
+       (\s. (match operand_size dest with
+           64 -> x86_RORX (OPERAND64 dest s) (OPERAND64 src s)
+                          (val(read (OPERAND8 imm8 s) s) MOD 64)
+         | 32 -> x86_RORX (OPERAND32 dest s) (OPERAND32 src s)
+                          (val(read (OPERAND8 imm8 s) s) MOD 32)) s)) s
     | ROR dest src ->
        (add_load_event dest s ,, add_load_event src s ,,
         add_store_event dest s ,,
@@ -5038,7 +5072,7 @@ let X86_OPERATION_CLAUSES =
        CONV_RULE(TOP_DEPTH_CONV let_CONV) o SPEC_ALL)
    [x86_ADC_ALT; x86_ADCX_ALT; x86_ADOX_ALT; x86_ADD_ALT;
     x86_AESDEC; x86_AESDECLAST; x86_AESENC; x86_AESENCLAST;
-    x86_AESKEYGENASSIST; x86_AND;
+    x86_AESKEYGENASSIST; x86_AND; x86_ANDN;
     x86_BSF; x86_BSR; x86_BSWAP; x86_BT; x86_BTC_ALT; x86_BTR_ALT; x86_BTS_ALT;
     x86_CALL_ALT; x86_CLC; x86_CLD; x86_CMC; x86_CMOV; x86_CMP_ALT; x86_DEC;
     x86_ENDBR64; x86_IMUL; x86_IMUL2; x86_IMUL3; x86_INC; x86_LEA; x86_LZCNT;
@@ -5050,7 +5084,7 @@ let X86_OPERATION_CLAUSES =
     x86_POR; x86_PSHUFB_ALT; x86_PSHUFD_ALT; x86_PSLLD_ALT; x86_PSLLDQ; x86_PSRAD_ALT;
     x86_PSRLD_ALT; x86_PSRLDQ; x86_PSRLW_ALT;
     x86_PUNPCKHDQ; x86_PUNPCKHQDQ; x86_PUNPCKLDQ; x86_PUNPCKLQDQ; x86_PUSH_ALT; x86_PXOR;
-    x86_RCL; x86_RCR; x86_RET; x86_ROL; x86_ROR;
+    x86_RCL; x86_RCR; x86_RET; x86_ROL; x86_ROR; x86_RORX;
     x86_SAR; x86_SBB_ALT; x86_SET;
     x86_SHA256RNDS2; x86_SHA256MSG1; x86_SHA256MSG2;
     x86_SHL; x86_SHLD; x86_SHR; x86_SHRD;

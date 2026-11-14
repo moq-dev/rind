@@ -67,6 +67,14 @@ those inputs, in any worktree, restores in under a second.
   the SHA-512 instructions, computes s2n-bignum's FIPS 180-4 spec,
   `sha512_hash_blocks`, and stores it to the state, as `sha256`'s above; the
   proof checks its round constants against FIPS 180-4's.
+- `x86_64/sha512_block_data_order_avx2.ml`:
+  `SHA512_AVX2_SUBROUTINE_CORRECT`, rind's proof that the naked function
+  `low::x86_64::sha512::sha512_block_data_order_avx2`, OpenSSL's routine for
+  AVX2, computes s2n-bignum's FIPS 180-4 spec, `sha512_hash_blocks`, and
+  stores it to the state, as `sha256`'s above, on s2n-bignum's x86 model with
+  the instructions rind's fork adds (`thirdparty/s2n-bignum/RIND.md`); the proof checks its round
+  constants against FIPS 180-4's. Its stack frame, which the routine aligns
+  down to 2048 bytes, lies in the 3440 bytes below the stack pointer.
 - `aarch64/bn_mul_mont.ml`: `BN_MUL_MONT_GENERIC_SUBROUTINE_CORRECT`, rind's
   proof that the naked function `low::aarch64::mont::bn_mul_mont`, aws-lc's
   Montgomery multiplication, writes the Montgomery product
@@ -419,13 +427,15 @@ The hash is cryptol-specs' FIPS 180-4 SHA-512, in `Rind/Sha2.lean`, with its
 block compression `processBlock_Common` transliterated from FIPS 180-4 and
 checked by `Rind/Sha2Test.lean` against its examples. Each theorem assumes
 `RunsSha512`: on x86_64 that rind picks aws-lc's AVX routine, on an Intel CPU
-with AVX but without AVX2, the routine whose proof states its result; on
-aarch64 only that rind's checks pass, as both of aws-lc's routines there have
-proofs: aws-lc-verification's of its scalar routine, and rind's HOL Light proof
-above of its routine for the SHA-512 instructions, which
-`Rind/Aarch64/AwsLc.lean` restates as the axiom
-`sha512_block_data_order_hw_spec` and `Rind/S2nSha512.lean` proves
-`Rind/Sha2.lean`'s. The
+with AVX but without AVX2, or OpenSSL's AVX2 routine, on a CPU with AVX2 but
+without the SHA512 instructions, whose proof is rind's HOL Light proof above,
+which `Rind/X86_64/AwsLc.lean` restates as the axiom
+`sha512_block_data_order_avx2_spec`; on aarch64 only that rind's checks pass,
+as both of aws-lc's routines there have proofs: aws-lc-verification's of its
+scalar routine, and rind's HOL Light proof above of its routine for the
+SHA-512 instructions, which `Rind/Aarch64/AwsLc.lean` restates as the axiom
+`sha512_block_data_order_hw_spec`. For both HOL Light proofs,
+`Rind/S2nSha512.lean` proves s2n-bignum's spec `Rind/Sha2.lean`'s. The
 digest API reaches each hash through function pointers too, which
 `Rind/X86_64/DigestDispatch.lean` models, and `Rind/X86_64/DigestAlgorithm.lean`
 models the `Algorithm` statics that hold them, and `Digest`, whose

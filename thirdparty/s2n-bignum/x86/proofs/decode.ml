@@ -918,6 +918,14 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
            match pfxs with
            | (T, Rep0, SG0) -> SOME (VPMULLD (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm),l)
            | _ -> NONE)
+        | [0xf2:8] ->
+          let sz = op_size_W rex T pfxs in
+          read_ModRM_operand rex sz l >>= \((reg,rm),l).
+          (match pfxs with
+          | (F, Rep0, SG0) ->
+             if L then NONE
+             else SOME (ANDN reg (%(Gpr v sz)) rm, l)
+          | _ -> NONE)
         | [0xf5:8] ->
           let sz = op_size_W rex T pfxs in
           read_ModRM_operand rex sz l >>= \((reg,rm),l).
@@ -1275,6 +1283,15 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
             match pfxs with
             | (T, Rep0, SG0) -> SOME (VPALIGNR (mmreg reg sz) (mmreg v sz) (simd_of_RM sz rm) imm8,l)
             | _ -> NONE)
+        | [0xf0:8] -> if L then NONE else
+          if word_not v = (word 0b1111:4 word) then
+          let sz = op_size_W rex T pfxs in
+          (read_ModRM_operand rex sz l >>= \((reg,rm),l).
+           read_imm Byte l >>= \(imm8,l).
+           match pfxs with
+           | (F, RepNZ, SG0) -> SOME (RORX reg rm imm8,l)
+           | _ -> NONE)
+          else NONE
         | [0x15:8] ->
            if word_not v = (word 0b1111:4 word) then
            (if L then NONE else
@@ -1397,8 +1414,9 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
     SOME (STD,l)
   | [0xf:4; x; 0b11:2; v] -> if has_pfxs pfxs then NONE else
     let sz = op_size_W rex v pfxs in
-    read_opcode_ModRM_operand rex sz l >>= \((opc,rm),l).
-    decode_hi x v (to_wordsize sz) opc rm l
+    read_opcode_ModRM rex l >>= \((opc,rm),l).
+    if x /\ v /\ opc = word 6 then SOME (PUSH (operand_of_RM Full_64 rm),l)
+    else let rm = operand_of_RM sz rm in decode_hi x v (to_wordsize sz) opc rm l
   | _ -> NONE`;;
 
 let decode = new_definition `decode l =

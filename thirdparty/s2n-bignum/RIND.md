@@ -71,8 +71,9 @@ rind's decoders below refuse it.
 What aws-lc's x86_64 ChaCha20-Poly1305 and ChaCha20 routines need,
 `chacha20_poly1305_{seal,open}`, `poly_hash_ad_internal`, and
 `ChaCha20_ctr32_ssse3_4x` (maintainer, 2026-11-11, on
-[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)). With them
-every instruction of those routines, as rind's release build emits them,
+[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)), and what
+OpenSSL's `sha512_block_data_order_avx2` adds to them: BMI1's `ANDN`, BMI2's
+`RORX`, and `PUSH m64`. With them every instruction of those routines, as rind's release build emits them,
 decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
 
@@ -90,6 +91,9 @@ decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 | `PUNPCKLDQ xmm, xmm/m128` | 66 0F 62 /r | |
 | `PUNPCKHDQ xmm, xmm/m128` | 66 0F 6A /r | |
 | `VBROADCASTI128 ymm, m128` | VEX.256.66.0F38.W0 5A /r | |
+| `ANDN r32/64, r32/64, r/m32/64` | VEX.LZ.0F38.W0/W1 F2 /r | sets SF and ZF, clears OF and CF, AF and PF undefined |
+| `RORX r32/64, r/m32/64, imm8` | VEX.LZ.F2.0F3A.W0/W1 F0 /r ib | leaves the flags |
+| `PUSH r/m64` | FF /6 | the memory form; the model already decodes the register one |
 | `RET` with the F3 prefix | F3 C3 | aws-lc's `rep ret`, which every CPU runs as `RET` |
 
 The legacy SSE forms write only the low 128 bits of their register, as the
