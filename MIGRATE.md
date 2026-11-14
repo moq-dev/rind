@@ -57,9 +57,9 @@ the old backend's feature in otherwise the same command.
    library's are the targets its CI builds, and those its users build, such
    as every architecture ring or aws-lc-rs supports. rind runs assembly on
    x86_64, aarch64, and ARMv7, and portable Rust on every other
-   architecture; [PLATFORMS.md] lists those its CI tests. Its adapters do
-   not target wasm32. A target rind's CI does not test may still fail: Verify
-   builds each one. Distribution packages
+   architecture; [PLATFORMS.md] lists those its CI tests, the adapters on
+   `wasm32-wasip2` and `wasm32-unknown-unknown` included. A target rind's CI
+   does not test may still fail: Verify builds each one. Distribution packages
    and `cargo install` build where the project does not; list what they lose
    under Breaking changes rather than stopping.
 
@@ -70,9 +70,8 @@ the old backend's feature in otherwise the same command.
    or image its CI pins. A library with a rind feature keeps its own, since
    only that feature needs rind's: say so in its docs.
 
-Stop here, before changing anything, if a binary's release target needs an
-adapter on wasm32, a dependency in what ships hard-wires aws-lc-rs, a ring older
-than 0.17, or in a library, which cannot patch for its users, any ring, or the
+Stop here, before changing anything, if a dependency in what ships hard-wires
+aws-lc-rs, a ring older than 0.17, or in a library, which cannot patch for its users, any ring, or the
 project calls an item rind lacks: for ring's API, one [rind-ring's README]
 leaves out, and for aws-lc-rs's, one [rind-aws-lc-rs's README] leaves out.
 MIGRATING.md on `main` may name items not yet released, which count as
@@ -137,6 +136,12 @@ rind panics on a CPU missing a feature it requires. At the start of each
 binary's `main`, refuse one by exiting with the error from
 `rind::cpu::check()`.
 A library leaves this to the binaries that use it, and says so in its docs.
+
+A binary released for `wasm32-unknown-unknown` adds, under
+`[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]`,
+what [PLATFORMS.md] lists for the browser that its tree lacks: rind's
+JavaScript random source, `getrandom = { version = "0.4", features =
+["wasm_js"] }`, and what the adapters' upstreams need there with any backend.
 
 Commit as you go, with messages in the project's style.
 

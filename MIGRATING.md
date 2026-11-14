@@ -359,6 +359,13 @@ none returns an error for a CPU it lacks.
 Call `rind::cpu::check()` at startup to get that error, as the [cpu](#cpu)
 section describes.
 
+Each builds for `wasm32-wasip2` and `wasm32-unknown-unknown`, the browser,
+where aws-lc-rs does not build and ring needs a C compiler targeting wasm.
+In the browser, rind needs its JavaScript random source,
+`getrandom = { version = "0.4", features = ["wasm_js"] }`, or rind-ring's
+`wasm32_unknown_unknown_js`, as ring does; [PLATFORMS.md](PLATFORMS.md)
+lists what each adapter's upstream needs there with any backend.
+
 ### rind-ring
 
 rind-ring offers ring 0.17's API name for name, so a crate on ring swaps it

@@ -228,6 +228,8 @@ mod tests {
 
     // rustls's aws-lc-rs provider offers ML-KEM-1024 and ML-DSA, which rind
     // lacks; everything else it offers, this crate offers too.
+    // aws-lc-rs does not build for wasm.
+    #[cfg(not(target_family = "wasm"))]
     #[test]
     fn aws_lc_rs_parity() {
         use rustls::crypto::aws_lc_rs;
@@ -320,6 +322,8 @@ mod tests {
     // included, short of `kx_group::MLKEM1024`, has the same name and type
     // here, but for `hpke`'s suites, which are `&dyn Hpke` rather than
     // `&HpkeAwsLcRs<..>`. This fails to compile on a divergence.
+    // aws-lc-rs does not build for wasm.
+    #[cfg(not(target_family = "wasm"))]
     #[test]
     fn aws_lc_rs_items() {
         use rustls::crypto::aws_lc_rs as theirs;

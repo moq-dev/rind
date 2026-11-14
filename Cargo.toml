@@ -18,7 +18,8 @@ members = [
   "rind-str0m",
   "rind-jsonwebtoken",
   "rind-python",
-  "fuzz"
+  "fuzz",
+  "admin/wasm-fixture"
 ]
 
 [workspace.package]

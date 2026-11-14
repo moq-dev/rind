@@ -67,6 +67,9 @@ declare -A scope=(
     # rind's aarch64, armv7, portable, and wasm32 builds, which the host's
     # own build skips, and which a toolchain bump can break.
     [cross]='^(rind/(src/|tests/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
+    # The adapters' wasm32 builds, and the tests the nightly runs there. rind's
+    # manifest picks the random source rind-ring's browser feature reaches.
+    [wasm]='^(rind/Cargo\.toml$|rind-[^/]+/(src/|tests/|Cargo\.toml$)|admin/wasm-fixture/|Cargo\.(toml|lock)$|flake\.(nix|lock)$)'
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
     [vartime]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
@@ -119,6 +122,7 @@ declare -A tools=(
     [license]='find grep'
     [msrv]='nix cargo jq'
     [cross]='cargo'
+    [wasm]='cargo jq'
     [vartime]='nix'
     [inplace]='python3'
     [mutants]='cargo-mutants python3'
@@ -139,7 +143,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross wasm vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -307,6 +311,20 @@ for module in "${selected[@]}"; do
                 cargo clippy -p rind --lib --locked --target wasm32-unknown-unknown \
                     --features "$features,getrandom/wasm_js" -- --deny warnings
             done
+            ;;
+        check:wasm)
+            # Each published adapter, as sh/adapter-versions.sh finds them.
+            mapfile -t adapters < <(cargo metadata --format-version 1 --no-deps --locked |
+                jq -r '.packages[] | select((.name | startswith("rind-")) and .publish == null) | "-p", .name')
+            cargo clippy "${adapters[@]}" --lib --locked --target wasm32-wasip2 -- --deny warnings
+            # The tests `just wasm` runs, without the differential ones.
+            cargo clippy -p rind-rustls -p rind-ring --lib --tests --locked --target wasm32-wasip2 -- --deny warnings
+            # The browser: admin/wasm-fixture adds what a caller adds, and
+            # rind-ring also takes ring's own feature for it.
+            CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
+                cargo clippy -p wasm-fixture "${adapters[@]}" --lib --locked --target wasm32-unknown-unknown -- --deny warnings
+            cargo clippy -p rind-ring --lib --locked --target wasm32-unknown-unknown \
+                --features wasm32_unknown_unknown_js -- --deny warnings
             ;;
         check:structure) admin/structure ;;
         check:vartime) nix develop .#ct-vartime --command admin/ct-vartime ;;

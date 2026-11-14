@@ -13,7 +13,8 @@ changes:
 ring = { package = "rind-ring", version = "0.17" }
 ```
 
-Every ring feature is accepted and changes nothing.
+Every ring feature is accepted, and all but `wasm32_unknown_unknown_js` (see
+[WebAssembly](#webassembly)) change nothing.
 
 The rename reaches only the crate that makes it. A binary moves every crate
 in its tree on ring 0.17 to rind, including dependencies that name ring such
@@ -63,5 +64,13 @@ And these behave differently:
   ring verifies some that nobody made on it.
 - A `error::KeyRejected`'s `Display` gives rind's reason, not ring's
   name for it, which ring documents as changing between releases.
+
+## WebAssembly
+
+rind-ring builds for `wasm32-wasip2`, where CI runs its tests under wasmtime,
+and for `wasm32-unknown-unknown`, the browser, where its
+`wasm32_unknown_unknown_js` feature takes the JavaScript random source, as
+ring's does. Neither needs the C compiler targeting wasm that ring needs.
+rind's constant-time checks do not cover wasm; [PLATFORMS.md](https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md) says why.
 
 License: Apache-2.0 OR ISC OR MIT-0
