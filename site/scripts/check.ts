@@ -114,7 +114,8 @@ for (const file of files) {
 	} else if (file.endsWith(".css")) {
 		css(file, text(file));
 	} else if (file.endsWith(".js")) {
-		for (const m of text(file).matchAll(/\bimport\s*\(?\s*["'](https?:[^"']+)/g)) check(file, m[1], true);
+		// `import "x"`, `import("x")`, and the `from "x"` of named imports and re-exports, minified or not.
+		for (const m of text(file).matchAll(/\b(?:import|from)\s*\(?\s*["'](https?:[^"']+)/g)) check(file, m[1], true);
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
 		// Links, and URLs quoted as text, such as the prompt's.
 		const body = text(file);
