@@ -46,10 +46,13 @@ jobs:
     env:
       RIND_TEST_ARM_CRYPTO_EXT: 1
       RIND_TEST_ARM_SHA3: 0
+      # A pull request whose change reaches no backend this job builds skips it.
+      RIND_SCOPE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: ./.github/actions/vectors
 

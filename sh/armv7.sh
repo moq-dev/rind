@@ -11,6 +11,16 @@ fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# RIND_SCOPE=BASE skips the whole run when nothing the branch changed since
+# BASE reaches the armv7 backend, as sh/backends.sh decides.
+if [[ -n "${RIND_SCOPE:-}" ]]; then
+    reached=$(sh/changed.sh "$RIND_SCOPE" | sh/backends.sh -)
+    if ! grep -qxE 'all|arm' <<<"$reached"; then
+        echo "armv7: nothing changed since $RIND_SCOPE reaches the armv7 backend" >&2
+        exit 0
+    fi
+fi
+
 # Fail before the long cross build rather than partway through the tests.
 unfetched=$(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
 if [[ -n "$unfetched" ]]; then

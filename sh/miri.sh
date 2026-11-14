@@ -14,6 +14,16 @@ fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# RIND_SCOPE=BASE skips the run when nothing the branch changed since BASE
+# reaches the portable backend, as sh/backends.sh decides.
+if [[ -n "${RIND_SCOPE:-}" ]]; then
+    reached=$(sh/changed.sh "$RIND_SCOPE" | sh/backends.sh -)
+    if ! grep -qxE 'all|portable' <<<"$reached"; then
+        echo "miri: nothing changed since $RIND_SCOPE reaches the portable backend" >&2
+        exit 0
+    fi
+fi
+
 unfetched=$(git submodule status -- thirdparty/cavp thirdparty/cctv thirdparty/wycheproof | sed -n 's/^-[0-9a-f]* //p')
 if [[ -n "$unfetched" ]]; then
     echo "error: test vectors not checked out; run: git submodule update --init ${unfetched//$'\n'/ }" >&2

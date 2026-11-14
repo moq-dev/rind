@@ -23,8 +23,9 @@ cargo bench
 [BENCHMARKS.md](BENCHMARKS.md#updating-this-report) says how to refresh the benchmark report.
 
 With [Nix](https://nixos.org), `nix develop` (or direnv) provides CI's
-toolchain, and `just check` runs CI's gate over what the branch changed; the
-nightly tools are in [TESTING.md](TESTING.md#running-the-tools).
+toolchain, and `just check` runs CI's gate over what the branch changed,
+three modules at a time (`sh/dispatch.sh` lists the `CHECK_*` variables that
+change that); the nightly tools are in [TESTING.md](TESTING.md#running-the-tools).
 
 # Commits
 
