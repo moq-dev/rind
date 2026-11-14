@@ -140,7 +140,7 @@ fn mlkem768_keygen(c: &mut Criterion) {
         use rind::kem::*;
 
         b.iter(|| {
-            black_box(DecapsulationKey::generate(&ML_KEM_768).unwrap());
+            black_box(DecapsulationKey::<MlKem768>::generate().unwrap());
         });
     });
 
@@ -228,12 +228,12 @@ fn mlkem768_encaps(c: &mut Criterion) {
     group.bench_function("rind", |b| {
         use rind::kem::*;
 
-        let encaps = DecapsulationKey::generate(&ML_KEM_768)
+        let encaps = DecapsulationKey::<MlKem768>::generate()
             .unwrap()
             .public_key();
 
         b.iter(|| {
-            let encaps = EncapsulationKey::new(&ML_KEM_768, encaps.as_ref()).unwrap();
+            let encaps = EncapsulationKey::<MlKem768>::new(encaps.as_ref()).unwrap();
             black_box(encaps.encapsulate().unwrap());
         });
     });
@@ -312,10 +312,13 @@ fn mlkem768_decaps(c: &mut Criterion) {
     group.bench_function("rind", |b| {
         use rind::kem::*;
 
-        let decaps = DecapsulationKey::generate(&ML_KEM_768).unwrap();
+        let decaps = DecapsulationKey::<MlKem768>::generate().unwrap();
         let (ciphertext, _secret) = decaps.public_key().encapsulate().unwrap();
 
-        b.iter(|| black_box(decaps.decapsulate(ciphertext.as_ref()).unwrap()))
+        b.iter(|| {
+            let ciphertext = Ciphertext::<MlKem768>::new(ciphertext.as_ref()).unwrap();
+            black_box(decaps.decapsulate(&ciphertext))
+        })
     });
 
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
@@ -409,11 +412,12 @@ fn mlkem768_combined(c: &mut Criterion) {
         use rind::kem::*;
 
         b.iter(|| {
-            let decaps = DecapsulationKey::generate(&ML_KEM_768).unwrap();
+            let decaps = DecapsulationKey::<MlKem768>::generate().unwrap();
             let encaps_encoded = decaps.public_key();
-            let encaps = EncapsulationKey::new(&ML_KEM_768, encaps_encoded.as_ref()).unwrap();
+            let encaps = EncapsulationKey::<MlKem768>::new(encaps_encoded.as_ref()).unwrap();
             let (ciphertext, _secret) = encaps.encapsulate().unwrap();
-            black_box(decaps.decapsulate(ciphertext.as_ref()).unwrap());
+            let ciphertext = Ciphertext::<MlKem768>::new(ciphertext.as_ref()).unwrap();
+            black_box(decaps.decapsulate(&ciphertext));
         });
     });
 
@@ -430,11 +434,181 @@ fn mlkem768_combined(c: &mut Criterion) {
     });
 }
 
+/// ML-KEM-512 and ML-KEM-1024 against aws-lc-rs and libcrux, each operation
+/// measured as its ML-KEM-768 group measures it.
+macro_rules! mlkem_set {
+    (
+        $keygen:ident, $encaps:ident, $decaps:ident, $name:literal, $set:ident, $aws:ident,
+        $libcrux:ident, $public:ident, $ciphertext:ident
+    ) => {
+        fn $keygen(c: &mut Criterion) {
+            let mut group = c.benchmark_group(concat!($name, "-keygen"));
+            group.throughput(Throughput::Elements(1));
+
+            group.bench_function("aws-lc-rs", |b| {
+                use aws_lc_rs::kem;
+
+                b.iter(|| {
+                    let decaps = kem::DecapsulationKey::generate(&kem::$aws).unwrap();
+                    black_box(decaps.encapsulation_key().unwrap())
+                })
+            });
+
+            group.bench_function("libcrux-ml-kem", |b| {
+                use libcrux_ml_kem::$libcrux;
+
+                b.iter(|| {
+                    let mut rand = [0u8; 64];
+                    getrandom::fill(&mut rand).unwrap();
+                    black_box($libcrux::generate_key_pair(rand).into_parts());
+                });
+            });
+
+            group.bench_function("rind", |b| {
+                use rind::kem::*;
+
+                b.iter(|| {
+                    black_box(DecapsulationKey::<$set>::generate().unwrap());
+                });
+            });
+        }
+
+        fn $encaps(c: &mut Criterion) {
+            let mut group = c.benchmark_group(concat!($name, "-encaps"));
+            group.throughput(Throughput::Elements(1));
+
+            group.bench_function("aws-lc-rs", |b| {
+                use aws_lc_rs::kem;
+
+                let decaps = kem::DecapsulationKey::generate(&kem::$aws).unwrap();
+                let encaps_bytes = decaps
+                    .encapsulation_key()
+                    .unwrap()
+                    .key_bytes()
+                    .unwrap()
+                    .as_ref()
+                    .to_vec();
+
+                b.iter(|| {
+                    let encaps = kem::EncapsulationKey::new(&kem::$aws, &encaps_bytes).unwrap();
+                    black_box(encaps.encapsulate().unwrap());
+                })
+            });
+
+            group.bench_function("libcrux-ml-kem", |b| {
+                use libcrux_ml_kem::$libcrux;
+
+                let mut rand = [0u8; 64];
+                getrandom::fill(&mut rand).unwrap();
+                let (_, encaps) = $libcrux::generate_key_pair(rand).into_parts();
+                let encaps_bytes = encaps.as_slice().to_vec();
+
+                b.iter(|| {
+                    let encaps = $libcrux::$public::try_from(encaps_bytes.as_slice()).unwrap();
+                    let mut rand = [0u8; 32];
+                    getrandom::fill(&mut rand).unwrap();
+                    black_box($libcrux::encapsulate(&encaps, rand))
+                });
+            });
+
+            group.bench_function("rind", |b| {
+                use rind::kem::*;
+
+                let encaps = DecapsulationKey::<$set>::generate().unwrap().public_key();
+
+                b.iter(|| {
+                    let encaps = EncapsulationKey::<$set>::new(encaps.as_ref()).unwrap();
+                    black_box(encaps.encapsulate().unwrap());
+                });
+            });
+        }
+
+        fn $decaps(c: &mut Criterion) {
+            let mut group = c.benchmark_group(concat!($name, "-decaps"));
+            group.throughput(Throughput::Elements(1));
+
+            group.bench_function("aws-lc-rs", |b| {
+                use aws_lc_rs::kem;
+
+                let decaps = kem::DecapsulationKey::generate(&kem::$aws).unwrap();
+                let (ciphertext, _secret) =
+                    decaps.encapsulation_key().unwrap().encapsulate().unwrap();
+                let ciphertext = ciphertext.as_ref().to_vec();
+
+                b.iter(|| {
+                    let ciphertext = kem::Ciphertext::from(ciphertext.as_slice());
+                    black_box(decaps.decapsulate(ciphertext).unwrap())
+                })
+            });
+
+            group.bench_function("libcrux-ml-kem", |b| {
+                use libcrux_ml_kem::$libcrux;
+
+                let mut rand = [0u8; 64];
+                getrandom::fill(&mut rand).unwrap();
+                let (decaps, encaps) = $libcrux::generate_key_pair(rand).into_parts();
+
+                let mut rand = [0u8; 32];
+                getrandom::fill(&mut rand).unwrap();
+                let (ciphertext, _secret) = $libcrux::encapsulate(&encaps, rand);
+                let ciphertext = ciphertext.as_slice().to_vec();
+
+                b.iter(|| {
+                    let ciphertext =
+                        $libcrux::$ciphertext::try_from(ciphertext.as_slice()).unwrap();
+                    black_box($libcrux::decapsulate(&decaps, &ciphertext));
+                });
+            });
+
+            group.bench_function("rind", |b| {
+                use rind::kem::*;
+
+                let decaps = DecapsulationKey::<$set>::generate().unwrap();
+                let (ciphertext, _secret) = decaps.public_key().encapsulate().unwrap();
+
+                b.iter(|| {
+                    let ciphertext = Ciphertext::<$set>::new(ciphertext.as_ref()).unwrap();
+                    black_box(decaps.decapsulate(&ciphertext))
+                })
+            });
+        }
+    };
+}
+
+mlkem_set!(
+    mlkem512_keygen,
+    mlkem512_encaps,
+    mlkem512_decaps,
+    "mlkem512",
+    MlKem512,
+    ML_KEM_512,
+    mlkem512,
+    MlKem512PublicKey,
+    MlKem512Ciphertext
+);
+mlkem_set!(
+    mlkem1024_keygen,
+    mlkem1024_encaps,
+    mlkem1024_decaps,
+    "mlkem1024",
+    MlKem1024,
+    ML_KEM_1024,
+    mlkem1024,
+    MlKem1024PublicKey,
+    MlKem1024Ciphertext
+);
+
 criterion_group!(
     benches,
+    mlkem512_keygen,
+    mlkem512_encaps,
+    mlkem512_decaps,
     mlkem768_keygen,
     mlkem768_encaps,
     mlkem768_decaps,
     mlkem768_combined,
+    mlkem1024_keygen,
+    mlkem1024_encaps,
+    mlkem1024_decaps,
 );
 criterion_main!(benches);

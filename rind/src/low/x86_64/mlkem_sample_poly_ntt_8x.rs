@@ -5,7 +5,7 @@ use core::{arch::x86_64::*, ops::Range};
 
 use super::cpu::HaveAvx512ForMlKem;
 
-pub(crate) fn mlkem768_sample_poly_ntt_8x(
+pub(crate) fn mlkem_sample_poly_ntt_8x(
     inputs: &[[u8; 40]; 8],
     outputs: &mut [i16; 256 * 8],
     fallback_fn: fn(&[[u8; 40]; 8], &mut [i16; 256 * 8]),

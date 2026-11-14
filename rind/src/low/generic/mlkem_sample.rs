@@ -1,7 +1,7 @@
 // Written for Graviola by Joe Birr-Pixton, 2026.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-/// This does `SampleNTT()` for MLKEM768, yielding 8 polynomials worth of coefficients.
+/// This does ML-KEM's `SampleNTT()`, yielding 8 polynomials worth of coefficients.
 ///
 /// `inputs` are eight pre-formatted SHAKE inputs (already containing the domain separation bits.
 ///
@@ -13,7 +13,7 @@
 /// `tail_fn` takes a keccak state (which requires an immedate permutation prior to use) and a set
 /// of "tail" coefficients which need to be filled via sampling the SHAKE output in the usual way.
 /// This is called in uncommon situations.
-pub(crate) fn mlkem768_sample_poly_ntt_8x(
+pub(crate) fn mlkem_sample_poly_ntt_8x(
     inputs: &[[u8; 40]; 8],
     outputs: &mut [i16; 256 * 8],
     fallback_fn: fn(&[[u8; 40]; 8], &mut [i16; 256 * 8]),

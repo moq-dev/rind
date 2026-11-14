@@ -36,7 +36,7 @@ pub(super) mod edwards25519;
 pub(super) mod hash_to_curve;
 pub(super) mod md5;
 pub(super) mod mldsa;
-pub(super) mod mlkem768;
+pub(super) mod mlkem;
 pub(super) mod p256;
 pub(super) mod p384;
 pub(super) mod p521;

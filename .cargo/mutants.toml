@@ -23,6 +23,7 @@ exclude_globs = [
   # Tools, not libraries.
   "rind-bench/**",
   "rind-cpuid/**",
+  "rind-timing/src/cases.rs",
   "fuzz/**",
   # The FIPS module, which refuses the CPUs admin/mutants masks features on;
   # its differential and break tests cover what it adds to rind.
@@ -55,7 +56,7 @@ exclude_re = [
   'rind/src/low/generic/limb(32|64)\.rs:\d+:\d+: replace \| with \^ in join$',
   'rind/src/low/generic/chacha20\.rs:\d+:\d+: replace \| with \^ in quarter_round$',
   'rind/src/low/generic/mldsa_poly\.rs:\d+:\d+: replace \| with \^ in (mldsa_polyz_unpack_17|mldsa_polyz_unpack_19|mldsa_rej_uniform_vartime)$',
-  'rind/src/low/generic/mlkem\.rs:\d+:\d+: replace \| with \^ in (mlkem_compress_d10|mlkem_compress_d4|mlkem_frombytes)$',
+  'rind/src/low/generic/mlkem\.rs:\d+:\d+: replace \| with \^ in (compress|compress_one|mlkem_frombytes)$',
   'rind/src/low/generic/mlkem_poly\.rs:\d+:\d+: replace \| with \^ in (mlkem_rej_uniform_vartime|mlkem_tobytes)$',
   'rind/src/low/generic/p256\.rs:\d+:\d+: replace \| with \^ in (booth_w5|join|select_u8)$',
   'rind/src/low/generic/p256_mul32\.rs:\d+:\d+: replace \| with \^ in sqr_wide$',
@@ -84,7 +85,6 @@ exclude_re = [
   'rind/src/mid/aes_cbc\.rs:\d+:\d+: replace \| with \^ in AesCbcDecryptingKey::decrypt$',
   'rind/src/mid/ed25519\.rs:\d+:\d+: replace \| with \^ in EdwardsPoint::compress$',
   'rind/src/mid/mldsa\.rs:\d+:\d+: replace \| with \^ in (pack_eta|pack_t0|pack_t1|pack_w1|pack_z|unpack_eta|unpack_t0|unpack_t1)$',
-  'rind/src/mid/mlkem768\.rs:\d+:\d+: replace \| with \^ in Coeffs<\{K \*N\}, Normal>::decompress_from_bytes_du_10$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace \| with \^ in (booth_recode_w7|JacobianMontPoint::public_x_is)$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace << with >> in booth_recode_w7$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace > with >= in Scalar::booth_w7$',
@@ -102,6 +102,7 @@ exclude_re = [
   'rind/src/high/sec1\.rs:14:\d+: replace \+ with \*$',
   'rind/src/high/signature\.rs:(229|1683):\d+: replace \+ with \*$',
   'rind/src/low/generic/mont\.rs:167:\d+: replace \+ with \* in mont_mul$',
+  'rind/src/low/x86_64/mlkem_sample_poly_ntt_8x\.rs:229:\d+: replace \+ with \* in _squeeze_rate_and_reject$',
   'rind/src/mid/mldsa\.rs:(367|462|509):\d+: replace \+ with \* in (keygen|public_key_from_secret|sign_internal)$',
   'rind/src/mid/rsa_priv\.rs:311:\d+: replace / with \*$',
   'rind/src/mid/rsa_priv\.rs:296:44: replace \+ with \*$',
@@ -149,7 +150,6 @@ exclude_re = [
   'rind/src/mid/aes\.rs:\d+:\d+: replace < with <= in AesCtr::apply_keystream$',
   'rind/src/mid/aes_kw\.rs:187:\d+: replace - with / in AesKek::unwrap_padded$',
   'rind/src/mid/mldsa\.rs:841:\d+: replace < with <= in expand_s$',
-  'rind/src/mid/mlkem768\.rs:487:\d+: replace \+ with \* in Coeffs<\{K \*K \*N\}, Ntt>::transpose$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace < with <= in (JacobianMontPoint::public_twin_multiply|public_below_p)$',
   'rind/src/mid/p384\.rs:\d+:\d+: replace < with <= in JacobianMontPoint::public_twin_multiply$',
   'rind/src/low/generic/p521\.rs:\d+:\d+: replace < with <= in p521_public_twin_multiply$',

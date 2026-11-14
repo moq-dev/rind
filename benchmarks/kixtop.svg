@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1023" height="1706" viewBox="0 0 1023 1706" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" width="1023" height="1826" viewBox="0 0 1023 1826" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img">
 <title>Times on kixtop, by operation and library</title>
 <rect x="12.0" y="8.0" width="12.0" height="12.0" rx="2" fill="#1a9641"/>
 <text x="28.0" y="18.0" font-size="11" text-anchor="start" font-weight="normal" fill="#52514e">fastest, or within 10%</text>
@@ -866,77 +866,83 @@
 <text x="873.2" y="1456.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">9.48 µs</text>
 <rect x="921.2" y="1443.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>ML-KEM-768 decapsulate, OpenSSL: 24.66 µs, 6.13× the fastest</title></rect>
 <text x="965.2" y="1456.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">24.66 µs</text>
-<text x="12.0" y="1480.0" font-size="12" text-anchor="start" font-weight="bold" fill="#0b0b0b">ML-DSA</text>
-<line x1="12.0" y1="1484.0" x2="1011.2" y2="1484.0" stroke="#c3c2b7"/>
-<text x="12.0" y="1502.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-DSA-65 key generation</text>
-<text x="12.0" y="1522.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-DSA-65 sign</text>
-<text x="12.0" y="1542.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-DSA-65 verify</text>
-<text x="12.0" y="1566.0" font-size="12" text-anchor="start" font-weight="bold" fill="#0b0b0b">P-384 and P-521</text>
-<line x1="12.0" y1="1570.0" x2="1011.2" y2="1570.0" stroke="#c3c2b7"/>
-<text x="12.0" y="1588.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-384 ECDH</text>
-<rect x="277.2" y="1575.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-384 ECDH, rind: 90.11 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="1588.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">90.11 µs</text>
-<rect x="461.2" y="1575.0" width="88.0" height="18.0" rx="2" fill="#74c476"><title>P-384 ECDH, aws-lc-rs: 104.99 µs, 1.17× the fastest</title></rect>
-<text x="505.2" y="1588.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">104.99 µs</text>
-<rect x="553.2" y="1575.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDH, ring: 413.70 µs, 4.59× the fastest</title></rect>
-<text x="597.2" y="1588.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">413.70 µs</text>
-<rect x="645.2" y="1575.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDH, RustCrypto + dalek: 488.31 µs, 5.42× the fastest</title></rect>
-<text x="689.2" y="1588.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">488.31 µs</text>
-<rect x="737.2" y="1575.0" width="88.0" height="18.0" rx="2" fill="#f9d64a"><title>P-384 ECDH, graviola: 150.93 µs, 1.67× the fastest</title></rect>
-<text x="781.2" y="1588.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">150.93 µs</text>
-<rect x="921.2" y="1575.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-384 ECDH, OpenSSL: 280.83 µs, 3.12× the fastest</title></rect>
-<text x="965.2" y="1588.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">280.83 µs</text>
-<text x="12.0" y="1608.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-384 ECDSA sign</text>
-<rect x="277.2" y="1595.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-384 ECDSA sign, rind: 22.30 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="1608.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">22.30 µs</text>
-<rect x="461.2" y="1595.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-384 ECDSA sign, aws-lc-rs: 49.21 µs, 2.21× the fastest</title></rect>
-<text x="505.2" y="1608.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">49.21 µs</text>
-<rect x="553.2" y="1595.0" width="88.0" height="18.0" rx="2" fill="#a50f15"><title>P-384 ECDSA sign, ring: 222.34 µs, 9.97× the fastest</title></rect>
-<text x="597.2" y="1608.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">222.34 µs</text>
-<rect x="645.2" y="1595.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDSA sign, RustCrypto + dalek: 111.89 µs, 5.02× the fastest</title></rect>
-<text x="689.2" y="1608.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">111.89 µs</text>
-<rect x="737.2" y="1595.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-384 ECDSA sign, graviola: 80.22 µs, 3.60× the fastest</title></rect>
-<text x="781.2" y="1608.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">80.22 µs</text>
-<rect x="921.2" y="1595.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDSA sign, OpenSSL: 102.69 µs, 4.60× the fastest</title></rect>
-<text x="965.2" y="1608.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">102.69 µs</text>
-<text x="12.0" y="1628.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-384 ECDSA verify</text>
-<rect x="277.2" y="1615.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-384 ECDSA verify, rind: 84.01 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="1628.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">84.01 µs</text>
-<rect x="461.2" y="1615.0" width="88.0" height="18.0" rx="2" fill="#c2e07c"><title>P-384 ECDSA verify, aws-lc-rs: 110.79 µs, 1.32× the fastest</title></rect>
-<text x="505.2" y="1628.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">110.79 µs</text>
-<rect x="553.2" y="1615.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDSA verify, ring: 397.21 µs, 4.73× the fastest</title></rect>
-<text x="597.2" y="1628.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">397.21 µs</text>
-<rect x="645.2" y="1615.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDSA verify, RustCrypto + dalek: 422.13 µs, 5.02× the fastest</title></rect>
-<text x="689.2" y="1628.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">422.13 µs</text>
-<rect x="737.2" y="1615.0" width="88.0" height="18.0" rx="2" fill="#f9d64a"><title>P-384 ECDSA verify, graviola: 148.92 µs, 1.77× the fastest</title></rect>
-<text x="781.2" y="1628.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">148.92 µs</text>
-<rect x="921.2" y="1615.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-384 ECDSA verify, OpenSSL: 237.68 µs, 2.83× the fastest</title></rect>
-<text x="965.2" y="1628.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">237.68 µs</text>
-<text x="12.0" y="1648.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-521 ECDH</text>
-<rect x="277.2" y="1635.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-521 ECDH, rind: 129.82 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="1648.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">129.82 µs</text>
-<rect x="461.2" y="1635.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-521 ECDH, aws-lc-rs: 142.27 µs, 1.10× the fastest</title></rect>
-<text x="505.2" y="1648.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">142.27 µs</text>
-<rect x="645.2" y="1635.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDH, RustCrypto + dalek: 396.28 µs, 3.05× the fastest</title></rect>
-<text x="689.2" y="1648.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">396.28 µs</text>
-<rect x="921.2" y="1635.0" width="88.0" height="18.0" rx="2" fill="#f9d64a"><title>P-521 ECDH, OpenSSL: 247.04 µs, 1.90× the fastest</title></rect>
-<text x="965.2" y="1648.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">247.04 µs</text>
-<text x="12.0" y="1668.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-521 ECDSA sign</text>
-<rect x="277.2" y="1655.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-521 ECDSA sign, rind: 36.25 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="1668.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">36.25 µs</text>
-<rect x="461.2" y="1655.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA sign, aws-lc-rs: 84.10 µs, 2.32× the fastest</title></rect>
-<text x="505.2" y="1668.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">84.10 µs</text>
-<rect x="645.2" y="1655.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA sign, RustCrypto + dalek: 80.09 µs, 2.21× the fastest</title></rect>
-<text x="689.2" y="1668.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">80.09 µs</text>
-<rect x="921.2" y="1655.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA sign, OpenSSL: 132.31 µs, 3.65× the fastest</title></rect>
-<text x="965.2" y="1668.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">132.31 µs</text>
-<text x="12.0" y="1688.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-521 ECDSA verify</text>
-<rect x="277.2" y="1675.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-521 ECDSA verify, rind: 120.99 µs, 1.00× the fastest</title></rect>
-<text x="321.2" y="1688.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">120.99 µs</text>
-<rect x="461.2" y="1675.0" width="88.0" height="18.0" rx="2" fill="#c2e07c"><title>P-521 ECDSA verify, aws-lc-rs: 166.73 µs, 1.38× the fastest</title></rect>
-<text x="505.2" y="1688.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">166.73 µs</text>
-<rect x="645.2" y="1675.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA verify, RustCrypto + dalek: 251.97 µs, 2.08× the fastest</title></rect>
-<text x="689.2" y="1688.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">251.97 µs</text>
-<rect x="921.2" y="1675.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA verify, OpenSSL: 254.26 µs, 2.10× the fastest</title></rect>
-<text x="965.2" y="1688.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">254.26 µs</text>
+<text x="12.0" y="1476.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-KEM-1024 key generation</text>
+<text x="12.0" y="1496.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-KEM-1024 encapsulate</text>
+<text x="12.0" y="1516.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-KEM-1024 decapsulate</text>
+<text x="12.0" y="1536.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-KEM-512 key generation</text>
+<text x="12.0" y="1556.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-KEM-512 encapsulate</text>
+<text x="12.0" y="1576.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-KEM-512 decapsulate</text>
+<text x="12.0" y="1600.0" font-size="12" text-anchor="start" font-weight="bold" fill="#0b0b0b">ML-DSA</text>
+<line x1="12.0" y1="1604.0" x2="1011.2" y2="1604.0" stroke="#c3c2b7"/>
+<text x="12.0" y="1622.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-DSA-65 key generation</text>
+<text x="12.0" y="1642.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-DSA-65 sign</text>
+<text x="12.0" y="1662.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">ML-DSA-65 verify</text>
+<text x="12.0" y="1686.0" font-size="12" text-anchor="start" font-weight="bold" fill="#0b0b0b">P-384 and P-521</text>
+<line x1="12.0" y1="1690.0" x2="1011.2" y2="1690.0" stroke="#c3c2b7"/>
+<text x="12.0" y="1708.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-384 ECDH</text>
+<rect x="277.2" y="1695.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-384 ECDH, rind: 90.11 µs, 1.00× the fastest</title></rect>
+<text x="321.2" y="1708.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">90.11 µs</text>
+<rect x="461.2" y="1695.0" width="88.0" height="18.0" rx="2" fill="#74c476"><title>P-384 ECDH, aws-lc-rs: 104.99 µs, 1.17× the fastest</title></rect>
+<text x="505.2" y="1708.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">104.99 µs</text>
+<rect x="553.2" y="1695.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDH, ring: 413.70 µs, 4.59× the fastest</title></rect>
+<text x="597.2" y="1708.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">413.70 µs</text>
+<rect x="645.2" y="1695.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDH, RustCrypto + dalek: 488.31 µs, 5.42× the fastest</title></rect>
+<text x="689.2" y="1708.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">488.31 µs</text>
+<rect x="737.2" y="1695.0" width="88.0" height="18.0" rx="2" fill="#f9d64a"><title>P-384 ECDH, graviola: 150.93 µs, 1.67× the fastest</title></rect>
+<text x="781.2" y="1708.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">150.93 µs</text>
+<rect x="921.2" y="1695.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-384 ECDH, OpenSSL: 280.83 µs, 3.12× the fastest</title></rect>
+<text x="965.2" y="1708.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">280.83 µs</text>
+<text x="12.0" y="1728.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-384 ECDSA sign</text>
+<rect x="277.2" y="1715.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-384 ECDSA sign, rind: 22.30 µs, 1.00× the fastest</title></rect>
+<text x="321.2" y="1728.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">22.30 µs</text>
+<rect x="461.2" y="1715.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-384 ECDSA sign, aws-lc-rs: 49.21 µs, 2.21× the fastest</title></rect>
+<text x="505.2" y="1728.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">49.21 µs</text>
+<rect x="553.2" y="1715.0" width="88.0" height="18.0" rx="2" fill="#a50f15"><title>P-384 ECDSA sign, ring: 222.34 µs, 9.97× the fastest</title></rect>
+<text x="597.2" y="1728.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#ffffff">222.34 µs</text>
+<rect x="645.2" y="1715.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDSA sign, RustCrypto + dalek: 111.89 µs, 5.02× the fastest</title></rect>
+<text x="689.2" y="1728.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">111.89 µs</text>
+<rect x="737.2" y="1715.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-384 ECDSA sign, graviola: 80.22 µs, 3.60× the fastest</title></rect>
+<text x="781.2" y="1728.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">80.22 µs</text>
+<rect x="921.2" y="1715.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDSA sign, OpenSSL: 102.69 µs, 4.60× the fastest</title></rect>
+<text x="965.2" y="1728.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">102.69 µs</text>
+<text x="12.0" y="1748.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-384 ECDSA verify</text>
+<rect x="277.2" y="1735.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-384 ECDSA verify, rind: 84.01 µs, 1.00× the fastest</title></rect>
+<text x="321.2" y="1748.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">84.01 µs</text>
+<rect x="461.2" y="1735.0" width="88.0" height="18.0" rx="2" fill="#c2e07c"><title>P-384 ECDSA verify, aws-lc-rs: 110.79 µs, 1.32× the fastest</title></rect>
+<text x="505.2" y="1748.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">110.79 µs</text>
+<rect x="553.2" y="1735.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDSA verify, ring: 397.21 µs, 4.73× the fastest</title></rect>
+<text x="597.2" y="1748.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">397.21 µs</text>
+<rect x="645.2" y="1735.0" width="88.0" height="18.0" rx="2" fill="#e4572e"><title>P-384 ECDSA verify, RustCrypto + dalek: 422.13 µs, 5.02× the fastest</title></rect>
+<text x="689.2" y="1748.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">422.13 µs</text>
+<rect x="737.2" y="1735.0" width="88.0" height="18.0" rx="2" fill="#f9d64a"><title>P-384 ECDSA verify, graviola: 148.92 µs, 1.77× the fastest</title></rect>
+<text x="781.2" y="1748.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">148.92 µs</text>
+<rect x="921.2" y="1735.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-384 ECDSA verify, OpenSSL: 237.68 µs, 2.83× the fastest</title></rect>
+<text x="965.2" y="1748.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">237.68 µs</text>
+<text x="12.0" y="1768.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-521 ECDH</text>
+<rect x="277.2" y="1755.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-521 ECDH, rind: 129.82 µs, 1.00× the fastest</title></rect>
+<text x="321.2" y="1768.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">129.82 µs</text>
+<rect x="461.2" y="1755.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-521 ECDH, aws-lc-rs: 142.27 µs, 1.10× the fastest</title></rect>
+<text x="505.2" y="1768.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">142.27 µs</text>
+<rect x="645.2" y="1755.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDH, RustCrypto + dalek: 396.28 µs, 3.05× the fastest</title></rect>
+<text x="689.2" y="1768.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">396.28 µs</text>
+<rect x="921.2" y="1755.0" width="88.0" height="18.0" rx="2" fill="#f9d64a"><title>P-521 ECDH, OpenSSL: 247.04 µs, 1.90× the fastest</title></rect>
+<text x="965.2" y="1768.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">247.04 µs</text>
+<text x="12.0" y="1788.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-521 ECDSA sign</text>
+<rect x="277.2" y="1775.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-521 ECDSA sign, rind: 36.25 µs, 1.00× the fastest</title></rect>
+<text x="321.2" y="1788.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">36.25 µs</text>
+<rect x="461.2" y="1775.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA sign, aws-lc-rs: 84.10 µs, 2.32× the fastest</title></rect>
+<text x="505.2" y="1788.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">84.10 µs</text>
+<rect x="645.2" y="1775.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA sign, RustCrypto + dalek: 80.09 µs, 2.21× the fastest</title></rect>
+<text x="689.2" y="1788.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">80.09 µs</text>
+<rect x="921.2" y="1775.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA sign, OpenSSL: 132.31 µs, 3.65× the fastest</title></rect>
+<text x="965.2" y="1788.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">132.31 µs</text>
+<text x="12.0" y="1808.0" font-size="12" text-anchor="start" font-weight="normal" fill="#0b0b0b">P-521 ECDSA verify</text>
+<rect x="277.2" y="1795.0" width="88.0" height="18.0" rx="2" fill="#1a9641"><title>P-521 ECDSA verify, rind: 120.99 µs, 1.00× the fastest</title></rect>
+<text x="321.2" y="1808.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">120.99 µs</text>
+<rect x="461.2" y="1795.0" width="88.0" height="18.0" rx="2" fill="#c2e07c"><title>P-521 ECDSA verify, aws-lc-rs: 166.73 µs, 1.38× the fastest</title></rect>
+<text x="505.2" y="1808.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">166.73 µs</text>
+<rect x="645.2" y="1795.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA verify, RustCrypto + dalek: 251.97 µs, 2.08× the fastest</title></rect>
+<text x="689.2" y="1808.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">251.97 µs</text>
+<rect x="921.2" y="1795.0" width="88.0" height="18.0" rx="2" fill="#f6a03c"><title>P-521 ECDSA verify, OpenSSL: 254.26 µs, 2.10× the fastest</title></rect>
+<text x="965.2" y="1808.0" font-size="11" text-anchor="middle" font-weight="normal" fill="#0b0b0b">254.26 µs</text>
 </svg>

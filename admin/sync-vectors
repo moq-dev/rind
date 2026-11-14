@@ -52,6 +52,11 @@ boringssl_files=(
     crypto/evp/test/mlkem_tests.txt
     crypto/evp/test/rsa_tests.txt
     crypto/evp/test/x25519_tests.txt
+    crypto/mlkem/mlkem1024_decap_tests.txt
+    crypto/mlkem/mlkem1024_encap_tests.txt
+    crypto/mlkem/mlkem1024_keygen_tests.txt
+    crypto/mlkem/mlkem1024_nist_decap_tests.txt
+    crypto/mlkem/mlkem1024_nist_keygen_tests.txt
     crypto/mlkem/mlkem768_decap_tests.txt
     crypto/mlkem/mlkem768_encap_tests.txt
     crypto/mlkem/mlkem768_keygen_tests.txt

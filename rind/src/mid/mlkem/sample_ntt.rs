@@ -1,97 +1,81 @@
 // Written for Graviola by Joe Birr-Pixton, 2026.
 // SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
 
-use super::{K, N, Q};
+use super::{N, Poly, Q};
 use crate::{
     low,
     mid::sha3::{self, SqueezingSponge},
 };
 
-pub(super) fn sample_ntt(rho: &[u8; 32]) -> [i16; K * K * N] {
-    _sample_ntt::<false>(rho)
-}
-
-pub(super) fn sample_ntt_transposed(rho: &[u8; 32]) -> [i16; K * K * N] {
-    _sample_ntt::<true>(rho)
-}
-
-fn _sample_ntt<const TRANSPOSED: bool>(rho: &[u8; 32]) -> [i16; K * K * N] {
-    let mut r = [0; _];
-
-    // We have K * K polynomials to generate.  In this case, K := 3, so 9.
-    // We attack this as one block of 8, followed by a stragger.
-
-    let (output_8, output_tail) = r.split_at_mut(N * 8);
-
-    let inputs = match TRANSPOSED {
-        false => &[
-            [0, 0],
-            [1, 0],
-            [2, 0],
-            [0, 1],
-            [1, 1],
-            [2, 1],
-            [0, 2],
-            [1, 2],
-        ],
-        true => &[
-            [0, 0],
-            [0, 1],
-            [0, 2],
-            [1, 0],
-            [1, 1],
-            [1, 2],
-            [2, 0],
-            [2, 1],
-        ],
-    };
-
-    sample_poly_ntt_8x(rho, inputs, output_8.try_into().unwrap());
-
-    Shake128ForMlKem::new(rho, &[2, 2]).sample_into(output_tail.try_into().unwrap());
-
-    r
-}
-
-fn sample_poly_ntt_8x(rho: &[u8; 32], inputs: &[[u8; 2]; 8], outputs: &mut [i16; N * 8]) {
+/// FIPS-203's `SampleNTT` of each polynomial of a `K` by `K` matrix into
+/// `out`, row by row, or of its transpose: eight at a time where the CPU
+/// samples eight at once, then four, then one.
+pub(super) fn sample_ntt(rho: &[u8; 32], transposed: bool, out: &mut [Poly]) {
+    let k = super::rank(out.len());
     let mut buf = [0; 40];
     buf[..32].copy_from_slice(rho);
     buf[34] = sha3::SHAKE_PAD_BYTE;
 
-    // Expand the indices `inputs` into the prefix of SHAKE inputs, by prepending `rho` and
-    // appending `SHAKE_PAD_BYTE`.
-    let inputs = inputs.map(|ij| {
-        let mut buf_ij = buf;
-        buf_ij[32..34].clone_from_slice(&ij);
-        buf_ij
+    // Each polynomial's SHAKE128 input, row by row: `rho`, its column and row
+    // indices (row and column, for the transpose), and the padding. Counting
+    // rows and columns, rather than dividing, keeps division out of the code.
+    let mut inputs = (0..k as u8).flat_map(|i| {
+        (0..k as u8).map(move |j| {
+            let mut input = buf;
+            input[32..34].copy_from_slice(&match transposed {
+                false => [j, i],
+                true => [i, j],
+            });
+            input
+        })
     });
+    let mut next = || inputs.next().unwrap_or(buf);
 
-    low::mlkem768_sample_poly_ntt_8x(&inputs, outputs, _sample_poly_ntt_8x, _sample_poly_ntt_tail)
+    let (eights, rest) = out.as_chunks_mut::<8>();
+    for outputs in eights {
+        let inputs = core::array::from_fn(|_| next());
+        low::mlkem_sample_poly_ntt_8x(
+            &inputs,
+            outputs.as_flattened_mut().try_into().unwrap(),
+            _sample_poly_ntt_8x,
+            _sample_poly_ntt_tail,
+        );
+    }
+
+    let (fours, rest) = rest.as_chunks_mut::<4>();
+    for outputs in fours {
+        let inputs = core::array::from_fn(|_| next());
+        sample_poly_ntt_4x(&inputs, outputs);
+    }
+
+    for output in rest {
+        let input = next();
+        Shake128ForMlKem::new(rho, &[input[32], input[33]]).sample_into(output);
+    }
 }
 
 fn _sample_poly_ntt_8x(inputs: &[[u8; 40]; 8], outputs: &mut [i16; N * 8]) {
     let (input_quads, _) = inputs.as_chunks::<4>();
-    let (output_quads, _) = outputs.as_chunks_mut::<{ N * 4 }>();
+    let (output_quads, _) = outputs.as_chunks_mut::<N>().0.as_chunks_mut::<4>();
     for (inputs, outputs) in input_quads.iter().zip(output_quads.iter_mut()) {
-        let sponge_4x = sha3::SqueezingSponge4xShake128::new(inputs);
+        sample_poly_ntt_4x(inputs, outputs);
+    }
+}
 
-        let mut samples = [[0; sha3::SHAKE_128_R_BYTES * 3]; 4];
-        let tail_sponges = sponge_4x.squeeze(&mut samples);
+fn sample_poly_ntt_4x(inputs: &[[u8; 40]; 4], outputs: &mut [Poly; 4]) {
+    let sponge_4x = sha3::SqueezingSponge4xShake128::new(inputs);
 
-        for ((output, samples), tail_sponge) in outputs
-            .as_chunks_mut::<N>()
-            .0
-            .iter_mut()
-            .zip(samples.iter())
-            .zip(tail_sponges)
-        {
-            let tail = Shake128ForMlKem::sample(samples, output);
-            if !tail.is_empty() {
-                Shake128ForMlKem {
-                    sponge: tail_sponge,
-                }
-                .tail_case(tail);
+    let mut samples = [[0; sha3::SHAKE_128_R_BYTES * 3]; 4];
+    let tail_sponges = sponge_4x.squeeze(&mut samples);
+
+    for ((output, samples), tail_sponge) in outputs.iter_mut().zip(samples.iter()).zip(tail_sponges)
+    {
+        let tail = Shake128ForMlKem::sample(samples, output);
+        if !tail.is_empty() {
+            Shake128ForMlKem {
+                sponge: tail_sponge,
             }
+            .tail_case(tail);
         }
     }
 }
