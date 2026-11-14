@@ -112,6 +112,8 @@ SECTIONS = [
             "rustls-full-handshake-key/ed25519/{lib}",
             "rustls-full-handshake-key/rsa-2048/{lib}",
             "rustls-resumed-handshake/x25519/{lib}",
+            "rustls-full-handshake-threads/x25519/{lib}",
+            "rustls-resumed-handshake-threads/x25519/{lib}",
             "rustls-bulk/aes128-gcm/{lib}",
             "rustls-bulk/aes256-gcm/{lib}",
             "rustls-bulk/chacha20poly1305/{lib}",
@@ -407,6 +409,9 @@ def run(args):
 
     env = dict(os.environ, CARGO_BUILD_JOBS=str(args.jobs), CARGO_TERM_COLOR="never")
     env["CARGO_TARGET_DIR"] = os.path.abspath(args.target_dir)
+    # The every-logical-CPU rows refuse to run on fewer CPUs than this, so the
+    # report's "all N logical CPUs" is what they measured.
+    env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
     cargo, versions, openssl = toolchain(env)
     result["toolchain"] = versions
     locked = locked_versions()
@@ -708,6 +713,8 @@ NAMES = {
     "rustls-full-handshake-key/ed25519": "full handshake, Ed25519 certificate",
     "rustls-full-handshake-key/rsa-2048": "full handshake, RSA-2048 certificate",
     "rustls-resumed-handshake/x25519": "resumed handshake, X25519",
+    "rustls-full-handshake-threads/x25519": "full handshake, X25519, every logical CPU",
+    "rustls-resumed-handshake-threads/x25519": "resumed handshake, X25519, every logical CPU",
     "rustls-bulk/aes128-gcm": "1 MB transfer, AES-128-GCM",
     "rustls-bulk/aes256-gcm": "1 MB transfer, AES-256-GCM",
     "rustls-bulk/chacha20poly1305": "1 MB transfer, ChaCha20-Poly1305",
@@ -1409,6 +1416,22 @@ def platform_of(entry):
     return " ".join(words)
 
 
+def scaling(host):
+    """How rind-rustls's handshake throughput scales from one thread to every
+    core on a host, as report lines. No threshold checks it: a refresh that
+    sees it fall opens a quest."""
+    t = times(host)
+    parts = []
+    for kind, one in (("full", "rustls-full-handshake-group/x25519"), ("resumed", "rustls-resumed-handshake/x25519")):
+        rind_one = t.get(one, {}).get("rind")
+        rind_all = t.get(f"rustls-{kind}-handshake-threads/x25519", {}).get("rind")
+        if rind_one and rind_all:
+            parts.append(f"{kind} handshakes at {rind_one / rind_all:.1f} times")
+    if not parts:
+        return []
+    return [f"rind-rustls on all {host['cpu']['logical_cpus']} logical CPUs runs {and_list(parts)} its one-thread rate.", ""]
+
+
 def host_table(host, verified):
     host_times = times(host)
     libs_shown = columns(host)
@@ -1502,6 +1525,14 @@ def report(hosts, tiers, verified, gaps):
             "the tables below each host give them all. A library with no square doesn't offer the operation, or "
             "the host didn't time it, as its section says.",
             "",
+            "The rustls rows run both peers in one process. The every-logical-CPU rows run one handshake per "
+            "thread on all of the host's logical CPUs at once, each thread with its own client and server, and give the "
+            "machine's time per handshake; each host's text gives rind-rustls's throughput there over its "
+            "one-thread rate. A full handshake over rind-rustls's default provider, both peers, makes 245 heap "
+            "allocations with an ECDSA P-256 certificate on x86_64, which `rind-rustls/tests/allocations.rs` pins. "
+            "Over rustls's aws-lc-rs provider it makes 214 through Rust's allocator and about 90 more in AWS-LC's C "
+            "code, which only a process-wide count such as valgrind's sees (2026-11-13).",
+            "",
             *(
                 [
                     "rind (DIT held) times rind with `rind::cpu::Dit::hold()` held across the timed loop, as a "
@@ -1530,6 +1561,7 @@ def report(hosts, tiers, verified, gaps):
             "",
             *([HOSTS[name]["note"], ""] if "note" in HOSTS[name] else []),
             *([f"Not timed on `{name}`: {', '.join(untimed)}.", ""] if untimed else []),
+            *scaling(h),
             *(
                 f"{COLUMNS[lib]} isn't timed on `{name}`: it requires {and_list([f.upper() for f in missing])}, "
                 "which this CPU lacks."
