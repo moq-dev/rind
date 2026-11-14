@@ -289,7 +289,7 @@ diff --git a/rind/src/low/generic/aes_nohw.rs b/rind/src/low/generic/aes_nohw.rs
  context
 +added
 EOF
-    CARGO_ARGS="$argsfile" PATH="$bindir:$PATH" "$0" --in-diff "$sample" --list
+    PATH="$bindir:$PATH" "$0" --in-diff "$sample" --list
     if grep -q 'portable/\.\./generic/aes_nohw.rs' "$sample"; then
         echo "admin/mutants: --in-diff rewrote the caller's diff" >&2
         exit 1
