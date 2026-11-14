@@ -11,9 +11,12 @@ open Aeneas Aeneas.Std Result rind.spec
 Each axiom restates one of s2n-bignum's HOL Light theorems, at the revision
 rind transliterates (b4f17ee7), about the opaque Rust wrapper
 `admin/parse-asm` generates around that routine. rind's aarch64 X25519 runs
-the `_alt` sources under the plain names, and so does its Ed25519 for the
-scalar multiplications, decoding, and `bignum_madd_n25519`, and its P-384 for
-field multiplication and squaring and the point routines. The theorem's
+the `_byte_alt` sources under the plain names, whose 32 little-endian bytes
+are the `[u64; 4]`'s memory, as the theorems' `bytes` and the word routines'
+`bignum_from_memory` read the same number. Its Ed25519 runs the `_alt`
+sources under the plain names for the scalar multiplications, decoding, and
+`bignum_madd_n25519`, and so does its P-384 for field multiplication and
+squaring and the point routines. The theorem's
 preconditions hold for every call from safe Rust: the `&mut` result cannot overlap an input or
 the routine's code or table, the routine's stack lies below the caller's
 frame, and the ABI keeps the stack pointer 16-byte aligned. Its total correctness
@@ -27,16 +30,16 @@ build emits, so only the wrapper's arguments are trusted there.
 
 namespace rind.aarch64
 
-/-- `CURVE25519_X25519_ALT_SUBROUTINE_CORRECT`,
-https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/curve25519_x25519_alt.ml#L5349 -/
+/-- `CURVE25519_X25519_BYTE_ALT_SUBROUTINE_CORRECT`,
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/curve25519_x25519_byte_alt.ml#L5572 -/
 @[step]
 axiom curve25519_x25519_spec (res scalar point : Std.Array U64 4#usize) :
     low.aarch64.curve25519_x25519.curve25519_x25519 res scalar point ⦃ r =>
       wordsNat r.val = rfcx25519 (wordsNat scalar.val) (wordsNat point.val) ⦄
 
-/-- `CURVE25519_X25519BASE_ALT_SUBROUTINE_CORRECT`, whose `tables`
+/-- `CURVE25519_X25519BASE_BYTE_ALT_SUBROUTINE_CORRECT`, whose `tables`
 precondition holds because rind's copy of the constant table is s2n-bignum's,
-https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/curve25519_x25519base_alt.ml#L3700 -/
+https://github.com/awslabs/s2n-bignum/blob/b4f17ee743ebc9b53a26c3cd1908f50f0658314f/arm/proofs/curve25519_x25519base_byte_alt.ml#L3868 -/
 @[step]
 axiom curve25519_x25519base_spec (res scalar : Std.Array U64 4#usize) :
     low.aarch64.curve25519_x25519base.curve25519_x25519base res scalar ⦃ r =>

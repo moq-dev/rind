@@ -59,6 +59,11 @@ The admin bypass of `main`'s ruleset is for emergencies.
 AI-assisted issues, pull requests, reviews, and comments are welcome.
 Prefer a quest for work needing durable scope or coordination.
 
+# Vulnerabilities
+
+Report a vulnerability privately, as [SECURITY.md](SECURITY.md) says, never in
+an issue, pull request, or quest.
+
 # Reviews
 
 A release-plz PR, which only bumps versions and changelogs, needs no review beyond the maintainer's approval to merge it.
