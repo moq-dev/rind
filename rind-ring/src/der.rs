@@ -1,7 +1,7 @@
 //! The little DER that ring's API needs rind-ring to read itself: an RSA
-//! public key's fields, an ECDSA PKCS#8 document's public key, and an
-//! Ed25519 PKCS#8 document's structure, whose secret seed it slices out but
-//! never branches on.
+//! public key's fields, a PKCS#8 document's version, an ECDSA PKCS#8
+//! document's public key, and an Ed25519 PKCS#8 document's structure, whose
+//! secret seed it slices out but never branches on.
 
 use crate::error::{self, KeyRejected};
 
@@ -57,6 +57,19 @@ pub(crate) fn rsa_public_key(der: &[u8]) -> Result<(&[u8], &[u8]), error::Unspec
             Ok((positive_integer(input)?, positive_integer(input)?))
         })
     })
+}
+
+/// Refuses a PKCS#8 v2 document, as ring's ECDSA and RSA loaders do, where
+/// rind follows aws-lc-rs in taking one without its public key.
+pub(crate) fn pkcs8_v1_only(der: &[u8]) -> Result<(), KeyRejected> {
+    let mut outer = untrusted::Reader::new(untrusted::Input::from(der));
+    let version = read(&mut outer, SEQUENCE)
+        .and_then(|body| read(&mut untrusted::Reader::new(body), INTEGER));
+    match version.map(|version| version.as_slice_less_safe()) {
+        Ok([1]) => Err(KeyRejected::version_not_supported()),
+        // rind refuses anything else that is not version 1.
+        _ => Ok(()),
+    }
 }
 
 /// The public key in an ECDSA PKCS#8 document's `ECPrivateKey`, if it has one.

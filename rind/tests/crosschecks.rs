@@ -2447,6 +2447,54 @@ mod pkcs8_attributes {
         }
     }
 
+    /// `pkcs8`, a v1 document, as version 2 without a public key.
+    fn as_v2(pkcs8: &[u8]) -> Vec<u8> {
+        let mut v2 = pkcs8.to_vec();
+        let (header, _) = element(&v2);
+        assert_eq!(v2[header..header + 3], [0x02, 0x01, 0x00]);
+        v2[header + 2] = 0x01;
+        v2
+    }
+
+    /// RFC 5958 makes a v2 document's public key optional, and both sides
+    /// take one without it, for every key type.
+    #[test]
+    fn v2_without_public_key() {
+        use aws_lc_rs::signature::{ML_DSA_44_SIGNING, PqdsaKeyPair};
+        use rind::signature::sign::{MlDsa44, MlDsaKeyPair};
+
+        for key in keys() {
+            let v1 = match key.v2 {
+                // Drop the Ed25519 document's trailing 32-byte public key.
+                true => {
+                    let mut body = key.pkcs8[2..key.pkcs8.len() - 35].to_vec();
+                    body[2] = 0x00;
+                    [&[0x30, body.len() as u8][..], &body].concat()
+                }
+                false => key.pkcs8.clone(),
+            };
+            let public = (key.ours)(&v1).unwrap();
+            let v2 = as_v2(&v1);
+            assert_eq!((key.ours)(&v2).as_deref(), Some(&public[..]), "{v2:02x?}");
+            assert_eq!((key.theirs)(&v2).as_deref(), Some(&public[..]), "{v2:02x?}");
+        }
+
+        let ours = MlDsaKeyPair::<MlDsa44>::from_seed(&[7; 32]).unwrap();
+        let v2 = as_v2(ours.to_pkcs8().as_ref());
+        let theirs = PqdsaKeyPair::from_pkcs8(&ML_DSA_44_SIGNING, &v2).unwrap();
+        let ours = MlDsaKeyPair::<MlDsa44>::from_pkcs8(&v2).unwrap();
+        assert_eq!(ours.public_key().as_ref(), theirs.public_key().as_ref());
+
+        let private = [9; 32];
+        let ours =
+            rind::agreement::PrivateKey::from_scalar(&rind::agreement::X25519, &private).unwrap();
+        let v2 = as_v2(ours.to_pkcs8().as_ref());
+        assert_eq!(crate::ecdh_scalars::aws_lc_x25519_from_pkcs8(&v2), private);
+        let loaded =
+            rind::agreement::PrivateKey::from_pkcs8(&rind::agreement::X25519, &v2).unwrap();
+        assert_eq!(loaded.public_key().as_ref(), ours.public_key().as_ref());
+    }
+
     #[test]
     fn attributes() {
         // RFC 8410's example, and contents that are not DER at all.
@@ -2652,7 +2700,7 @@ mod ecdh_scalars {
     }
 
     /// The X25519 key aws-lc parses from PKCS#8 `der`.
-    fn aws_lc_x25519_from_pkcs8(der: &[u8]) -> [u8; 32] {
+    pub(crate) fn aws_lc_x25519_from_pkcs8(der: &[u8]) -> [u8; 32] {
         use aws_lc_sys::*;
         // SAFETY: as `aws_lc_x25519_pkcs8`.
         unsafe {
