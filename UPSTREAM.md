@@ -205,13 +205,6 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** aws-lc-sys builds for the deployment target rustc uses.
 
-### nixpkgs' Rust crashes cargo-llvm-cov's tests
-
-- **Breaks:** cargo-llvm-cov's tests build with nixpkgs' rustc, whose instrumented binaries crash on exit, so cache.nixos.org has no build of it.
-- **Workaround:** `flake.nix`'s `coverage` shell overrides cargo-llvm-cov with `doCheck = false`; rind's coverage builds with the pinned toolchain, not nixpkgs'.
-- **Reported:** no.
-- **Goes when:** nixpkgs builds cargo-llvm-cov.
-
 ### nixpkgs' Lean cannot read Mathlib's cache
 
 - **Breaks:** Mathlib's prebuilt cache is read by the `leantar` bundled with the Lean toolchain, which nixpkgs' Lean lacks.

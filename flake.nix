@@ -556,12 +556,7 @@
             coverage = pkgs.mkShell {
               packages = [
                 (rust-stable.minimal.override { extensions = [ "llvm-tools" ]; })
-                # Its tests build with nixpkgs' rustc, whose instrumented
-                # binaries crash on exit, so the cache has no build. rind's
-                # coverage builds with the toolchain above instead.
-                # See UPSTREAM.md, "nixpkgs' Rust crashes cargo-llvm-cov's
-                # tests".
-                (pkgs.cargo-llvm-cov.overrideAttrs { doCheck = false; })
+                pkgs.cargo-llvm-cov
                 # aws-lc-rs builds C.
                 pkgs.cmake
                 pkgs.pkg-config
