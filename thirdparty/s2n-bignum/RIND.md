@@ -71,8 +71,9 @@ rind's decoders below refuse it.
 What aws-lc's x86_64 ChaCha20-Poly1305 and ChaCha20 routines need,
 `chacha20_poly1305_{seal,open}`, `poly_hash_ad_internal`, and
 `ChaCha20_ctr32_ssse3_4x` (maintainer, 2026-11-11, on
-[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)). With them
-every instruction of those routines, as rind's release build emits them,
+[kixel-ai/rind#627](https://github.com/kixel-ai/rind/pull/627)), and its
+AES-CTR and AES-CBC routines, `aes_hw_ctr32_encrypt_blocks` and
+`aes_hw_cbc_encrypt`. With them every instruction of those routines, as rind's release build emits them,
 decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 ([kixel-ai/rind#448](https://github.com/kixel-ai/rind/pull/448)).
 
@@ -91,9 +92,12 @@ decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 | `PUNPCKHDQ xmm, xmm/m128` | 66 0F 6A /r | |
 | `VBROADCASTI128 ymm, m128` | VEX.256.66.0F38.W0 5A /r | |
 | `RET` with the F3 prefix | F3 C3 | aws-lc's `rep ret`, which every CPU runs as `RET` |
+| `XORPS xmm, xmm/m128` | 0F 57 /r | decoded as `PXOR`, the same bitwise XOR of the low 128 bits |
+| `PREFETCHT0 m8` | 0F 18 /1 | decoded as `NOP_N`: a prefetch changes no architectural state |
+| `STOSB`, `REP STOSB` | AA, F3 AA | allows every next state, a sound over-approximation: it decodes so the code after it can be stepped, and a proof that reaches it proves nothing |
 
 The legacy SSE forms write only the low 128 bits of their register, as the
 model's other legacy SSE instructions do, and decode only with the 66 prefix
 and no other, where #439 also takes the MMX form without it.
 `OPERAND_SIZE_CASES` gains the 32-or-8-bit operand case `PINSRB` and
-`PEXTRB` dispatch on. `rind_cosim.ml` checks every row but the last.
+`PEXTRB` dispatch on. `rind_cosim.ml` checks every row but `RET` and `STOSB`.

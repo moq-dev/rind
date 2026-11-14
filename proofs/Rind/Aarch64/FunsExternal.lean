@@ -358,6 +358,27 @@ opaque low.aarch64.vpaes_armv8.VpaesDecKey.new
 opaque low.aarch64.vpaes_armv8.VpaesDecKey.decrypt_block
   : low.aarch64.vpaes_armv8.VpaesDecKey → Array Std.U8 16#usize → Result (Array Std.U8 16#usize)
 
+opaque low.aarch64.vpaes_armv8.VpaesKey.ctr32
+  : low.aarch64.vpaes_armv8.VpaesKey → Array Std.U8 16#usize → Slice (Array Std.U8 16#usize) →
+    Result (Slice (Array Std.U8 16#usize))
+
+opaque low.aarch64.vpaes_armv8.VpaesKey.cbc_encrypt
+  : low.aarch64.vpaes_armv8.VpaesKey → Array Std.U8 16#usize → Slice (Array Std.U8 16#usize) →
+    Result (Slice (Array Std.U8 16#usize))
+
+opaque low.aarch64.vpaes_armv8.VpaesDecKey.cbc_decrypt
+  : low.aarch64.vpaes_armv8.VpaesDecKey → Array Std.U8 16#usize → Slice (Array Std.U8 16#usize) →
+    Result (Slice (Array Std.U8 16#usize))
+
+/-! AES-CBC's chained `AESE`, in inline assembly so that its destination is
+the chaining register: modelled by hand as `vaeseq_u8` of its operands, the
+`AESE` it runs, which `Rind.Aarch64.Neon` models and `admin/neon-vectors.rs`
+tests. -/
+
+def low.aarch64.aes_cbc.aese_chained (y b : core.core_arch.arm_shared.neon.uint8x16_t) :
+    Result core.core_arch.arm_shared.neon.uint8x16_t :=
+  core.core_arch.arm_shared.neon.generated.vaeseq_u8 y b
+
 /-! MD5, which no proof covers. -/
 
 opaque mid.md5.Md5State.new : Result mid.md5.Md5State

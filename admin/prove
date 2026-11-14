@@ -311,6 +311,7 @@ hol_light_proofs=(
     "x86_64 ct_compare_bytes.bin rind::low::x86_64::cpu::ct_compare_bytes"
     "x86_64 ct_compare_16.bin rind::low::x86_64::cpu::ct_compare_16"
     "x86_64 bn_mul_mont_nohw.o rind::low::x86_64::mont::bn_mul_mont_nohw"
+    "x86_64 aes_hw_cbc_encrypt.o rind::low::x86_64::aes_cbc::aes_hw_cbc_encrypt"
     "x86_64 sha256_compress_blocks_shaext.bin rind::low::x86_64::sha256::sha256_compress_blocks_shaext"
     "x86_64 sha256_finish_shaext.bin rind::low::x86_64::sha256::sha256_finish_shaext"
 )
@@ -922,6 +923,15 @@ extract() {
         --start-from crate::mid::chacha20::ChaCha20::new \
         --start-from crate::mid::aes::Aes::new \
         --start-from crate::mid::aes::Aes::encrypt_block \
+        --start-from crate::mid::aes::AesCtr::new \
+        --start-from crate::mid::aes::AesCtr::apply_keystream \
+        --start-from crate::mid::aes_cbc::AesCbcEncryptingKey::new \
+        --start-from crate::mid::aes_cbc::AesCbcEncryptingKey::encrypt \
+        --start-from crate::mid::aes_cbc::AesCbcEncryptingKey::encrypt_blocks \
+        --start-from crate::mid::aes_cbc::AesCbcDecryptingKey::new \
+        --start-from crate::mid::aes_cbc::AesCbcDecryptingKey::decrypt \
+        --start-from crate::mid::aes_cbc::AesCbcDecryptingKey::decrypt_blocks \
+        --start-from 'crate::mid::aes_kw::AesKek::_' \
         --start-from 'crate::high::hmac::HmacKey::_' \
         --start-from 'crate::high::hmac::Hmac::_' \
         --start-from crate::low::generic::ct_equal::ct_equal \
@@ -1120,6 +1130,15 @@ extract x86_64 X86_64 \
     --include crate::low::x86_64::aes \
     --start-from crate::low::x86_64::aes::AesDecKey::new \
     --start-from crate::low::x86_64::aes::AesDecKey::decrypt_block \
+    --include crate::low::generic::ctr \
+    --include crate::low::x86_64::aes_ctr \
+    --opaque crate::low::x86_64::aes_ctr::hw_ctr32 \
+    --opaque crate::low::x86_64::aes_ctr::aes_hw_ctr32_encrypt_blocks \
+    --include crate::low::x86_64::aes_cbc \
+    --opaque crate::low::x86_64::aes_cbc::hw_encrypt \
+    --opaque crate::low::x86_64::aes_cbc::hw_decrypt \
+    --opaque crate::low::x86_64::aes_cbc::hw_cbc \
+    --opaque crate::low::x86_64::aes_cbc::aes_hw_cbc_encrypt \
     --opaque crate::low::x86_64::aes::HwKey::round_keys_512 \
     --opaque crate::low::x86_64::aes::RoundKeys512 \
     --include crate::low::x86_64::ghash \
@@ -1195,9 +1214,13 @@ extract aarch64 Aarch64 \
     --include crate::low::aarch64::aes \
     --start-from crate::low::aarch64::aes::AesDecKey::new \
     --start-from crate::low::aarch64::aes::AesDecKey::decrypt_block \
-    --opaque crate::low::aarch64::aes::_aes128_8_blocks \
-    --opaque crate::low::aarch64::aes::_aes256_8_blocks \
-    --opaque crate::low::aarch64::aes::_aes_8_blocks \
+    --include crate::low::aarch64::aes_ctr \
+    --include crate::low::generic::ctr \
+    --start-from crate::low::aarch64::aes_ctr::apply \
+    --include crate::low::aarch64::aes_cbc \
+    --start-from crate::low::aarch64::aes_cbc::encrypt \
+    --start-from crate::low::aarch64::aes_cbc::decrypt \
+    --opaque crate::low::aarch64::aes_cbc::aese_chained \
     --start-from crate::high::digest::Digest::ct_equal
 
 # The AEAD key's conversion is x86_64's alone: the AEAD API's model and proofs
@@ -1227,7 +1250,7 @@ mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch P256Dispatch P256Agree P384Dispatch X25519 P384 P384Table P384Keygen DigestAlgorithm \
     DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
-    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes P256 EcdsaDispatch P256Ecdsa P256Signature; do
+    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes AesModesApi AesKw P256 EcdsaDispatch P256Ecdsa P256Signature; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.

@@ -13,6 +13,7 @@ import Rind.X86_64.GcmKey
 import Rind.X86_64.Ed25519
 import Rind.X86_64.RsaDispatch
 import Rind.X86_64.Sha3
+import Rind.X86_64.AesKw
 import Rind.X86_64.P256Signature
 import Rind.X86_64.PointSelect
 open rind.x86_64
@@ -27,7 +28,8 @@ cover SHA-384 and SHA-512, and for Ed25519's hashes, Vale's in
 `Rind.X86_64.ValeAesGcm` for AES-GCM, rind's HOL Light proofs of its
 constant-time compares in `Rind.X86_64.CtEqual` for HMAC's and PBKDF2's
 `verify`, AES-GCM's tag check, ChaCha20-Poly1305's and XChaCha20-Poly1305's
-tag checks, and RSASSA-PSS's hash compare, and nothing else.
+tag checks, RSASSA-PSS's hash compare, and key wrap's `unwrap` and
+`unwrap_padded` checks, and nothing else.
 ChaCha20-Poly1305's theorems also take aws-lc's one-pass routines as the
 hypothesis `RunsChaCha20Poly1305`, and P-384's key generation its table
 select as `AffSelect`, which no axiom states. P-256's generator table selects
@@ -742,6 +744,34 @@ change to the trust base.
  sha3_keccak_f1600_spec] -/
 #guard_msgs in
 #print axioms shake256_batch_spec
+
+/-- info: 'rind.x86_64.kek_new_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms kek_new_spec
+
+/-- info: 'rind.x86_64.kek_wrap_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms kek_wrap_spec
+
+/-- info: 'rind.x86_64.kek_unwrap_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec] -/
+#guard_msgs in
+#print axioms kek_unwrap_spec
+
+/-- info: 'rind.x86_64.kek_wrap_padded_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms kek_wrap_padded_spec
+
+/-- info: 'rind.x86_64.kek_unwrap_padded_spec' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ ct_compare_16_spec,
+ ct_compare_bytes_spec] -/
+#guard_msgs in
+#print axioms kek_unwrap_padded_spec
 
 /-- info: 'rind.x86_64.bignum_aff_point_select_p256_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

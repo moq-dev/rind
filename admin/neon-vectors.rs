@@ -52,6 +52,11 @@ fn dup_lane<const N: i32>(a: uint8x16_t) -> uint8x16_t {
     vreinterpretq_u8_u32(vdupq_laneq_u32::<N>(vreinterpretq_u32_u8(a)))
 }
 
+#[target_feature(enable = "neon")]
+fn set_lane<const N: i32>(w: u32, a: uint8x16_t) -> uint8x16_t {
+    vreinterpretq_u8_u32(vsetq_lane_u32::<N>(w, vreinterpretq_u32_u8(a)))
+}
+
 const ARM: &str = "core.core_arch.arm_shared.neon.generated";
 const AARCH64: &str = "core.core_arch.aarch64.neon.generated";
 const RANDOM: usize = 16;
@@ -153,6 +158,15 @@ fn main() {
             format!("((·.bv) <$> {ARM}.vreinterpretq_p128_u8 {})", q(v(a))),
             format!("{r:#x}#128"),
         );
+    }
+
+    type SetLane = unsafe fn(u32, uint8x16_t) -> uint8x16_t;
+    let sets: [SetLane; 4] = [set_lane::<0>, set_lane::<1>, set_lane::<2>, set_lane::<3>];
+    for (imm, f) in sets.iter().enumerate() {
+        for (w, a) in [(0, u128::MAX), (u32::MAX, 0), (rng.u64() as u32, rng.u128())] {
+            let r = unsafe { f(w, v(a)) };
+            guard(format!("{ARM}.vsetq_lane_u32 ⟨{imm}#32⟩ ⟨{w}#32⟩ {}", q(v(a))), q(r));
+        }
     }
     print!("{out}");
 }

@@ -522,3 +522,15 @@ open Aeneas Aeneas.Std Result
 #guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vdupq_n_u32 ⟨1454150490#32⟩ ) 0x56ac935a56ac935a56ac935a56ac935a#128
 #guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vreinterpretq_u8_p128 ⟨0x40a8f0a919a04315259b17a356ac935a#128⟩ ) 0x40a8f0a919a04315259b17a356ac935a#128
 #guard reducesTo (R := BitVec _) ( ((·.bv) <$> core.core_arch.arm_shared.neon.generated.vreinterpretq_p128_u8 0x40a8f0a919a04315259b17a356ac935a#128) ) 0x40a8f0a919a04315259b17a356ac935a#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨0#32⟩ ⟨0#32⟩ 0xffffffffffffffffffffffffffffffff#128 ) 0xffffffffffffffffffffffff00000000#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨0#32⟩ ⟨4294967295#32⟩ 0x00000000000000000000000000000000#128 ) 0x000000000000000000000000ffffffff#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨0#32⟩ ⟨4112960445#32⟩ 0xd560930c4c1d87f77b2ee5696146f167#128 ) 0xd560930c4c1d87f77b2ee569f526cbbd#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨1#32⟩ ⟨0#32⟩ 0xffffffffffffffffffffffffffffffff#128 ) 0xffffffffffffffff00000000ffffffff#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨1#32⟩ ⟨4294967295#32⟩ 0x00000000000000000000000000000000#128 ) 0x0000000000000000ffffffff00000000#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨1#32⟩ ⟨1731534678#32⟩ 0x2124b56e7098dec92d0285e01800c6a5#128 ) 0x2124b56e7098dec967351f561800c6a5#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨2#32⟩ ⟨0#32⟩ 0xffffffffffffffffffffffffffffffff#128 ) 0xffffffff00000000ffffffffffffffff#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨2#32⟩ ⟨4294967295#32⟩ 0x00000000000000000000000000000000#128 ) 0x00000000ffffffff0000000000000000#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨2#32⟩ ⟨1458307726#32⟩ 0xaf9e35a420cb023a61f14aba3afe1553#128 ) 0xaf9e35a456ec028e61f14aba3afe1553#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨3#32⟩ ⟨0#32⟩ 0xffffffffffffffffffffffffffffffff#128 ) 0x00000000ffffffffffffffffffffffff#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨3#32⟩ ⟨4294967295#32⟩ 0x00000000000000000000000000000000#128 ) 0xffffffff000000000000000000000000#128
+#guard reducesTo (R := BitVec _) ( core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 ⟨3#32⟩ ⟨3954838076#32⟩ 0xfbd24ec870e53f360bbf4ed7ccb05b02#128 ) 0xebba0a3c70e53f360bbf4ed7ccb05b02#128

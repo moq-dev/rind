@@ -112,6 +112,48 @@ opaque low.x86_64.aes_nohw.NohwKey.decrypt_block
 opaque low.x86_64.aes_nohw.NohwKey.encrypt_block
   : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Result (Std.Array Std.U8 16#usize)
 
+opaque low.x86_64.aes_nohw.NohwKey.ctr32
+  : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.aes_nohw.NohwKey.cbc_encrypt
+  : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.aes_nohw.NohwKey.cbc_decrypt
+  : low.x86_64.aes_nohw.NohwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.vpaes_x86_64.VpaesKey.ctr32
+  : low.x86_64.vpaes_x86_64.VpaesKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.vpaes_x86_64.VpaesKey.cbc_encrypt
+  : low.x86_64.vpaes_x86_64.VpaesKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+opaque low.x86_64.vpaes_x86_64.VpaesDecKey.cbc_decrypt
+  : low.x86_64.vpaes_x86_64.VpaesDecKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+/-- aws-lc's AES-NI CTR32 routine on whole blocks; `Rind.X86_64.AesModesLow`
+assumes its pending HOL Light theorem. -/
+opaque low.x86_64.aes_ctr.hw_ctr32
+  : low.x86_64.aes.HwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+/-- aws-lc's AES-NI CBC routine, encrypting; `Rind.X86_64.AesModesLow` restates
+its HOL Light theorem. -/
+opaque low.x86_64.aes_cbc.hw_encrypt
+  : low.x86_64.aes.HwKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
+/-- aws-lc's AES-NI CBC routine, decrypting; `Rind.X86_64.AesModesLow` assumes
+its pending HOL Light theorem. -/
+opaque low.x86_64.aes_cbc.hw_decrypt
+  : low.x86_64.aes.HwDecKey → Std.Array Std.U8 16#usize → Slice (Std.Array Std.U8 16#usize) →
+    Result (Slice (Std.Array Std.U8 16#usize))
+
 opaque low.x86_64.ghash_ssse3_x86_64.Ssse3Table.new
   : Std.Array Std.U8 16#usize → low.x86_64.cpu.HaveSsse3 → Result low.x86_64.ghash_ssse3_x86_64.Ssse3Table
 

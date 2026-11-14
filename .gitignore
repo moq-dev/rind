@@ -35,6 +35,8 @@ proofs/Rind/Aarch64/DigestApi.lean
 proofs/Rind/Aarch64/Hkdf.lean
 proofs/Rind/Aarch64/AesCipher.lean
 proofs/Rind/Aarch64/HkdfAes.lean
+proofs/Rind/Aarch64/AesModesApi.lean
+proofs/Rind/Aarch64/AesKw.lean
 proofs/Rind/Aarch64/Pbkdf2.lean
 proofs/Rind/Aarch64/Sha3.lean
 proofs/Rind/Aarch64/P256.lean

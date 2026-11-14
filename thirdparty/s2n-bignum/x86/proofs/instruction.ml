@@ -285,6 +285,7 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | MOVD operand operand
    | MOVQ operand operand
    | MOVSB bool operand operand operand
+   | STOSB bool
    | MOVSX operand operand
    | MOVZX operand operand
    | MOVAPS operand operand

@@ -63,6 +63,12 @@ def core.core_arch.arm_shared.neon.generated.veorq_u8 (a b : core.core_arch.arm_
     Result core.core_arch.arm_shared.neon.uint8x16_t :=
   ok (a ^^^ b)
 
+/-- `vsetq_lane_u32::<LANE>`, `INS` (general): `v` with word lane `LANE` set
+to `a`, of the two bits of `LANE` the instruction reads. -/
+def core.core_arch.arm_shared.neon.generated.vsetq_lane_u32 (LANE : Std.I32) (a : Std.U32)
+    (v : core.core_arch.arm_shared.neon.uint32x4_t) : Result core.core_arch.arm_shared.neon.uint32x4_t :=
+  ok (ofLanes32 fun i => if i = LANE.bv.toNat % 4 then a.bv else lane32 v i)
+
 /-- `vextq_u8::<N>`, `EXT`: the 16 bytes from byte `N` of `b`:`a`, `a` lowest,
 of the four bits of `N` the instruction reads. -/
 def core.core_arch.arm_shared.neon.generated.vextq_u8 (N : Std.I32)

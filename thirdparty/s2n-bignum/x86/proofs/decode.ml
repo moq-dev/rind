@@ -336,6 +336,9 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
       let rm = simd_of_RM sz rm in
       let dest,src = if d then rm,reg else reg,rm in
       SOME (MOVUPS dest src, l)
+    | [0x18:8] -> if has_pfxs pfxs then NONE else
+      read_opcode_ModRM_operand rex Lower_32 l >>= \((opc,rm),l).
+      if opc = word 1 then SOME (NOP_N rm,l) else NONE
     | [0x1e:8] ->
         read_byte l >>= \(b,l).
         (bitmatch b with
@@ -366,6 +369,10 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
       let rm = simd_of_RM sz rm in
       let dest,src = if d then rm,reg else reg,rm in
       SOME (MOVAPS dest src, l)
+    | [0x57:8] -> if has_pfxs pfxs then NONE else
+      let sz = Lower_128 in
+      read_ModRM rex l >>= \((reg,rm),l).
+      SOME (PXOR (mmreg reg sz) (simd_of_RM sz rm), l)
     | [0x38:8] -> read_byte l >>= \(b,l).
       (bitmatch b with
       | [0x00:8] -> if has_unhandled_pfxs pfxs then NONE else
@@ -746,6 +753,11 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
      | (F, Rep0, SG0) -> SOME (MOVSB F (%rdi) (%rsi) (Imm8(word 1)),l)
      | (F, RepZ, SG0) -> SOME (MOVSB T (%rdi) (%rsi) (%rcx),l)
      | (F, RepNZ, SG0) -> SOME (MOVSB T (%rdi) (%rsi) (%rcx),l)
+     | _ -> NONE)
+  | [0xaa:8] ->
+    (match pfxs with
+     | (F, Rep0, SG0) -> SOME (STOSB F,l)
+     | (F, RepZ, SG0) -> SOME (STOSB T,l)
      | _ -> NONE)
   | [0b1010100:7; v] -> if has_pfxs pfxs then NONE else
     let sz = op_size T (rex_W rex) v pfxs in

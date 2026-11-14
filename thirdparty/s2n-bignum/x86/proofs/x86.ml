@@ -3292,6 +3292,8 @@ let x86_execute = define
           (64,128) -> x86_VMOVHPD (OPERAND64 dest s) (OPERAND128 src s)) s)) s
     | MOVSB rept dest src size ->
         (\s. x86_MOVSB rept (OPERAND64 dest s) (OPERAND64 src s) (OPERAND64 size s) s) s
+    | STOSB rept ->
+        (\s':x86state. T)
     | MOVSX dest src ->
         (add_load_event src s ,,
          add_store_event dest s ,,
