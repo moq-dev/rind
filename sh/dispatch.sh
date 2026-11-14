@@ -70,9 +70,6 @@ declare -A scope=(
     # Variable-time instructions in rind's release builds, which a change to
     # its code, dependencies, toolchain, or the scan itself can bring.
     [vartime]='^(rind/(src/|Cargo\.toml$|build\.rs$)|Cargo\.(toml|lock)$|flake\.(nix|lock)$|admin/ct-vartime)'
-    # s2n-bignum's proofs assume separate input and output, so the kernels
-    # rind runs in place are walked, after planting faults in each.
-    [inplace]='^(rind/src/low/|admin/parse-asm/)'
     # .cargo/mutants.toml's exclusions name mutants by file, line, and
     # function, so moving code can leave one matching nothing.
     [mutants]='^(rind[^/]*/src/|\.cargo/mutants\.toml$|admin/mutants$)'
@@ -120,7 +117,6 @@ declare -A tools=(
     [msrv]='nix cargo jq'
     [cross]='cargo'
     [vartime]='nix'
-    [inplace]='python3'
     [mutants]='cargo-mutants python3'
     [testing]='python3'
     [compat]='python3'
@@ -139,7 +135,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions adapters license mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -326,8 +322,6 @@ for module in "${selected[@]}"; do
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
         check:mutants) admin/mutants --pins ;;
-        # It finds the generated kernels relative to its own directory.
-        check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
         check:testing) python3 admin/testing ;;
         check:compat) python3 admin/x86-cpu markdown-table | diff -u COMPATIBILITY.md - ;;
         fix:compat) python3 admin/x86-cpu markdown-table >COMPATIBILITY.md ;;

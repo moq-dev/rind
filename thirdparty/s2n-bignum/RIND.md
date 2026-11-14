@@ -5,7 +5,7 @@ This directory is rind's fork of
 proofs build, from which `admin/parse-asm` transliterates rind's s2n-bignum
 routines, and whose proofs `admin/prove bytes` checks rind's code against.
 
-Base: `b4f17ee743ebc9b53a26c3cd1908f50f0658314f`
+Base: `3f01260ff1bd2577abf0117ce45aa008bc243a80`
 
 Every file here is upstream's at that commit, unchanged, except this one and
 those listed under "Changed files", so each change can be offered upstream.
@@ -56,15 +56,18 @@ Each bullet names one file.
 ### Instructions from awslabs/s2n-bignum#450
 
 #450's changes to the three model files at
-`7ef212f3f517635c57174475f413c74013ae79a5`, merged onto the base with every
-line it adds or removes unchanged but two lines of `x86.ml`'s instruction
-list, which also name rind's instructions, since its files branch from `7948ca13` and
-would otherwise revert three later upstream commits to them (#429, #438, and
-#452). They add `SHA256RNDS2`, `SHA256MSG1`, `SHA256MSG2`, and the legacy SSE
-`PALIGNR`, `PUNPCKLQDQ`, and `PUNPCKHQDQ`, which x86_64's SHA-NI SHA-256
-blocks run. #450's decoders of its three legacy SSE instructions also take
-the MMX form without the 66 prefix, which no proven routine runs, where
-rind's decoders below refuse it.
+`7ef212f3f517635c57174475f413c74013ae79a5`, merged onto the base, since its
+files branch from `7948ca13` and would otherwise revert later upstream
+commits to them. They add `SHA256RNDS2`, `SHA256MSG1`, `SHA256MSG2`, and the
+legacy SSE `PALIGNR`, `PUNPCKLQDQ`, and `PUNPCKHQDQ`, which x86_64's SHA-NI
+SHA-256 blocks run. Every line #450 adds or removes is unchanged but these,
+which follow upstream commits since #450 branched: `x86.ml`'s instruction
+list, which also names rind's instructions and the `_ALT` shift theorems of
+upstream's `3888c57`; its decoders, which match the prefixes exactly, as
+upstream's `caeca8c` does its own, so the three SHA instructions decode only
+without a prefix and the three legacy SSE ones only with 66, where #450's
+also take the MMX form; and their execution, which as upstream's `64e533b`
+requires a 16-byte memory source to be aligned.
 
 ### rind's instructions
 
@@ -93,7 +96,8 @@ decodes. Posting them to awslabs/s2n-bignum needs the maintainer's approval
 | `RET` with the F3 prefix | F3 C3 | aws-lc's `rep ret`, which every CPU runs as `RET` |
 
 The legacy SSE forms write only the low 128 bits of their register, as the
-model's other legacy SSE instructions do, and decode only with the 66 prefix
-and no other, where #439 also takes the MMX form without it.
+model's other legacy SSE instructions do, decode only with the 66 prefix
+and no other, where #439 also takes the MMX form without it, and, as
+upstream's own since `64e533b`, take a 16-byte memory source only aligned.
 `OPERAND_SIZE_CASES` gains the 32-or-8-bit operand case `PINSRB` and
 `PEXTRB` dispatch on. `rind_cosim.ml` checks every row but the last.
