@@ -27,6 +27,7 @@ fi
 # and the native runs keep these.
 slow=(
     aead::gcm::tests::cavp
+    aead::tests::from_sequence_rfc9180
     high::agreement::tests::agrees
     high::agreement::tests::cavp_ecdh
     high::agreement::tests::decompresses_points
