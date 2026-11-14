@@ -14,7 +14,3 @@ Decided with the maintainer on 2026-11-12 ([the epic](/quest/m0/ci-speed/README.
 - Stagger the weekly schedules so they don't all start at once and fill the 60-job cap for PRs.
 - `alert.yml` keeps watching every scheduled workflow; check its expectations follow the new schedules.
 - Fix every doc that says these run nightly, such as TESTING.md and the workflows' header comments.
-
-## Related
-
-- [Mutation testing runs weekly on native runners](/quest/m0/ci-speed/mutants-slim.md) - moves mutants to the same weekly cadence

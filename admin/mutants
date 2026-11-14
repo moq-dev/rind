@@ -22,8 +22,9 @@
 #
 # No campaign runs armv7's own code or the AVX-512 paths: no runner takes
 # them natively, and under qemu or Intel SDE a campaign took too long for
-# what it found. The x86_64 campaign skips the files only AVX-512 runs, and
-# .cargo/mutants.toml excludes the rest of both.
+# what it found. Nor does one run the DIT code only Apple's cores run, which
+# .cargo/mutants.toml excludes. The x86_64 campaign skips the files only
+# AVX-512 runs, and .cargo/mutants.toml excludes the rest of both.
 #
 # cargo-mutants mutates code whatever its `cfg`, so a function only another
 # architecture compiles is missed here. `admin/mutants --survivors DIR...`
@@ -109,7 +110,6 @@ done
 case $(uname -sm) in
     "Linux x86_64") host=x86_64-unknown-linux-gnu ;;
     "Linux aarch64") host=aarch64-unknown-linux-gnu ;;
-    "Darwin arm64") host=aarch64-apple-darwin ;;
     *) host="$(uname -sm)" ;;
 esac
 
@@ -118,9 +118,6 @@ portable=(
     'rind/src/low/portable/**' 'rind/src/mid/portable/**'
     rind/src/low/generic/order.rs
 )
-# Darwin runs only the DIT code, which compiles for Apple's platforms alone;
-# the Linux runs cover the rest.
-only=()
 campaign=${target:-$host}
 if [ -n "$portable_backend" ]; then
     [ -z "$target" ] && [ "$campaign" = x86_64-unknown-linux-gnu ] || {
@@ -130,16 +127,6 @@ if [ -n "$portable_backend" ]; then
     campaign=portable
 fi
 case $campaign in
-    aarch64-apple-darwin)
-        triple=AARCH64_APPLE_DARWIN
-        skip=()
-        only=(
-            --file rind/src/low/cpu.rs --file rind/src/low/aarch64/cpu.rs
-            --file rind/src/low/entry.rs
-            --re '(\bDit\b|enter_cpu_state|leave_cpu_state|\bdit::|<impl Drop for Entry>::drop with \(\))'
-        )
-        rows=("dit")
-        ;;
     x86_64-unknown-linux-gnu)
         triple=X86_64_UNKNOWN_LINUX_GNU
         skip=(
@@ -217,9 +204,8 @@ if [ "${1:-}" = --run ]; then
     exit 0
 fi
 
-# A diff, named files, or a listing runs anywhere, as does the Darwin
-# campaign, which names its files itself.
-if [ -z "$listing$scoped" ] && [ ${#only[@]} -eq 0 ] && [ "${RUNNER_ENVIRONMENT:-}" != github-hosted ]; then
+# A diff, named files, or a listing runs anywhere.
+if [ -z "$listing$scoped" ] && [ "${RUNNER_ENVIRONMENT:-}" != github-hosted ]; then
     name=${campaign%%-*}
     [ -z "$portable_backend" ] || name=portable
     branch=$(git -C "$here" branch --show-current)
@@ -230,7 +216,7 @@ if [ -z "$listing$scoped" ] && [ ${#only[@]} -eq 0 ] && [ "${RUNNER_ENVIRONMENT:
 fi
 
 cd "$here"
-args=(${only[@]+"${only[@]}"})
+args=()
 for glob in ${skip[@]+"${skip[@]}"}; do
     args+=(--exclude "$glob")
 done
