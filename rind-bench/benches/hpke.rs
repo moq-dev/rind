@@ -128,8 +128,9 @@ fn setup_recipient(c: &mut Criterion) {
     });
 }
 
-// Seal the next message of an established context. rind seals in place into
-// a reused buffer; the others' APIs return a new one.
+// Seal the next message of an established context. rind and `hpke` seal in
+// place into a reused buffer; aws-lc-rs (through rustls) and hpke-rs only
+// return a new one.
 fn seal(c: &mut Criterion) {
     let mut group = c.benchmark_group("hpke-x25519-aes128-gcm-seal");
     group.throughput(Throughput::Bytes(MESSAGE.len() as u64));
@@ -156,11 +157,20 @@ fn seal(c: &mut Criterion) {
     });
 
     group.bench_function("rustcrypto/1350B", |b| {
-        use hpke::{Kem, OpModeS};
+        use hpke::{Kem, OpModeS, Serializable};
         let (_, public_key) = RcKem::gen_keypair();
         let (_, mut sender) =
             hpke::setup_sender::<RcAead, RcKdf, RcKem>(&OpModeS::Base, &public_key, INFO).unwrap();
-        b.iter(|| black_box(sender.seal(&MESSAGE, AAD).unwrap()));
+        let mut buffer = Vec::with_capacity(MESSAGE.len() + 16);
+        b.iter(|| {
+            buffer.clear();
+            buffer.extend_from_slice(&MESSAGE);
+            let tag = sender
+                .seal_inout_detached(buffer.as_mut_slice().into(), AAD)
+                .unwrap();
+            buffer.extend_from_slice(&tag.to_bytes());
+            black_box(&buffer);
+        });
     });
 
     group.bench_function("libcrux/1350B", |b| {
@@ -216,14 +226,19 @@ fn open(c: &mut Criterion) {
     });
 
     group.bench_function("rustcrypto/1350B", |b| {
-        use hpke::{Kem, OpModeR, OpModeS};
+        use hpke::{Deserializable, Kem, OpModeR, OpModeS, Serializable};
         let (private_key, public_key) = RcKem::gen_keypair();
         b.iter_batched_ref(
             || {
                 let (enc, mut sender) =
                     hpke::setup_sender::<RcAead, RcKdf, RcKem>(&OpModeS::Base, &public_key, INFO)
                         .unwrap();
-                let ciphertext = sender.seal(&MESSAGE, AAD).unwrap();
+                // Sealed the way the seal row does, so a wrong tag there fails here.
+                let mut ciphertext = MESSAGE.to_vec();
+                let tag = sender
+                    .seal_inout_detached(ciphertext.as_mut_slice().into(), AAD)
+                    .unwrap();
+                ciphertext.extend_from_slice(&tag.to_bytes());
                 let recipient = hpke::setup_receiver::<RcAead, RcKdf, RcKem>(
                     &OpModeR::Base,
                     &private_key,
@@ -233,7 +248,14 @@ fn open(c: &mut Criterion) {
                 .unwrap();
                 (recipient, ciphertext)
             },
-            |(recipient, ciphertext)| black_box(recipient.open(ciphertext, AAD).unwrap()),
+            |(recipient, ciphertext)| {
+                let (message, tag) = ciphertext.split_at_mut(MESSAGE.len());
+                let tag = hpke::aead::AeadTag::<RcAead>::from_bytes(tag).unwrap();
+                recipient
+                    .open_inout_detached(message.into(), AAD, &tag)
+                    .unwrap();
+                black_box(&ciphertext);
+            },
             BatchSize::SmallInput,
         );
     });
