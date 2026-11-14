@@ -325,7 +325,7 @@ for module in "${selected[@]}"; do
             ;;
         check:quest) quest check ;;
         check:license) bash admin/scan-license ;;
-        check:mutants) admin/mutants --pins ;;
+        check:mutants) admin/mutants --pins && admin/mutants --expand-diff-self-test ;;
         # It finds the generated kernels relative to its own directory.
         check:inplace) (cd admin/parse-asm && python3 inplace.py) ;;
         check:testing) python3 admin/testing ;;

@@ -14,6 +14,11 @@ name: mutants
 # Like fuzzing, it never runs on pull requests: a large diff's mutants take
 # hours of every architecture's runners.
 #
+# `admin/mutants` copies the diff onto the `..` names cargo-mutants 27.1.0
+# records for a `#[path]`; without that, a change to a shared generic source
+# selects nothing and the campaign passes. See UPSTREAM.md, "cargo-mutants
+# matches `#[path]` with `..` literally".
+#
 # `shards` lists each campaign's mutants and splits them into jobs of about
 # `SHARD_SECONDS` each, by the seconds a mutant took on that campaign's runner.
 

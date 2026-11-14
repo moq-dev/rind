@@ -173,6 +173,14 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** no.
 - **Goes when:** cargo-mutants treats any `cfg` that requires `test` as test-only.
 
+### cargo-mutants matches `#[path]` with `..` literally
+
+- **Breaks:** cargo-mutants 27.1.0, the version nixpkgs pins in `flake.lock`, records a module included by `#[path = "../generic/aes_nohw.rs"]` as `rind/src/low/portable/../generic/aes_nohw.rs` (and the `x86_64` twin). `--in-diff` compares that string to the Git path, which has no `..`. Nothing matches, and a diff that selects no mutants exits 0, so the portable campaign reports success without testing the change. The same gap hits every campaign, because `x86_64` includes that file through the same kind of path.
+- **Reproduce:** `cargo mutants --list -p rind | grep /\.\./` prints the names, and `cargo mutants --list -p rind --in-diff` over a diff of `rind/src/low/generic/aes_nohw.rs` lists none of them; `admin/mutants --expand-diff-self-test` checks the rewrite. `SourceFile::load` in cargo-mutants 27.1.0 `src/source.rs` keeps a path whose `..` never climbs out of the tree, and `diff_filter` in `src/in_diff.rs` matches it with no normalization; `NoMutants` uses the success exit code.
+- **Workaround:** `admin/mutants` copies each diff section onto those un-normalized names before passing `--in-diff`. Survivor aggregation still strips one `/<dir>/../` when it joins outcomes.
+- **Reported:** no.
+- **Goes when:** cargo-mutants normalizes `..` before matching a diff.
+
 ## Emulators
 
 ### cross's i686 Android image cannot run its binaries natively
