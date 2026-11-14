@@ -147,7 +147,7 @@ exclude_re = [
   'rind/src/low/x86_64/sha1\.rs:468:\d+: replace < with <= in Expander<\x27a>::step$',
   'rind/src/low/x86_64/sha1\.rs:\d+:\d+: replace match guard i == pairs\.len\(\) with true in sha1_avx2$',
   'rind/src/mid/aes\.rs:\d+:\d+: replace < with <= in AesCtr::apply_keystream$',
-  'rind/src/mid/aes_kw\.rs:187:\d+: replace - with / in AesKek::unwrap_padded$',
+  'rind/src/mid/aes_kw\.rs:190:\d+: replace - with / in AesKek::unwrap_padded$',
   'rind/src/mid/mldsa\.rs:841:\d+: replace < with <= in expand_s$',
   'rind/src/mid/mlkem768\.rs:487:\d+: replace \+ with \* in Coeffs<\{K \*K \*N\}, Ntt>::transpose$',
   'rind/src/mid/p256\.rs:\d+:\d+: replace < with <= in (JacobianMontPoint::public_twin_multiply|public_below_p)$',
