@@ -95,6 +95,12 @@ function check(from: string, url: string, resource: boolean) {
 	}
 }
 
+// Stylesheets, inline or built, load through url() and a quoted @import.
+function css(file: string, body: string) {
+	for (const m of body.matchAll(/url\(\s*['"]?([^'")]+)/g)) check(file, m[1], true);
+	for (const m of body.matchAll(/@import\s+['"]([^'"]+)/g)) check(file, m[1], true);
+}
+
 for (const file of files) {
 	if (file.endsWith(".html")) {
 		const html = text(file);
@@ -104,10 +110,9 @@ for (const file of files) {
 		for (const m of html.matchAll(/\ssrcset="([^"]*)"/g)) {
 			for (const candidate of m[1].split(",")) check(file, candidate.trim().split(/\s+/)[0], true);
 		}
-		for (const m of html.matchAll(/url\(\s*['"]?([^'")]+)/g)) check(file, m[1], true);
-		for (const m of html.matchAll(/@import\s+['"]([^'"]+)/g)) check(file, m[1], true);
+		css(file, html);
 	} else if (file.endsWith(".css")) {
-		for (const m of text(file).matchAll(/url\(\s*['"]?([^'")]+)/g)) check(file, m[1], true);
+		css(file, text(file));
 	} else if (file.endsWith(".js")) {
 		for (const m of text(file).matchAll(/\bimport\s*\(?\s*["'](https?:[^"']+)/g)) check(file, m[1], true);
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
