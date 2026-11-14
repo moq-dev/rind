@@ -575,8 +575,8 @@ rind's NEON CTR by 8 and CBC on the AES instructions, in
 - `aes_cbc_encrypt_blocks_spec` and `aes_cbc_decrypt_blocks_spec`: a buffer
   that is not whole blocks is refused, and otherwise becomes SP 800-38A's CBC
   encryption or decryption of it;
-- `aes_cbc_encrypt_vec_spec`: a message becomes the CBC encryption of its
-  PKCS#7 padding;
+- `aes_cbc_encrypt_vec_spec`: a `Vec` message always succeeds and becomes
+  the CBC encryption of its PKCS#7 padding;
 - `aes_cbc_decrypting_key_decrypt_spec`: whole blocks decrypt, and the message
   is returned if the PKCS#7 padding is good; otherwise decryption fails with
   the buffer zeroed, and a buffer of no or partial blocks fails unchanged.

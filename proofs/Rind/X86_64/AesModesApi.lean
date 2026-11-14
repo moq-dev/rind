@@ -676,17 +676,17 @@ theorem cbc_vec_extend_spec (v : alloc.vec.Vec U8) (s : Slice U8) (h : v.val.len
   rw [dite_eq_left (by simpa [Slice.length, alloc.vec.Vec.length] using h)]
   simp [WP.spec_ok]
 
-/-- CBC encryption of a `Vec<u8>`: PKCS#7 padding, then SP 800-38A's CBC
-encryption of the padded message, which the vector becomes. -/
+/-- CBC encryption of a `Vec<u8>`: it always succeeds, since padding grows a
+vector to whole blocks, and the vector becomes SP 800-38A's CBC encryption
+of its PKCS#7 padding. -/
 theorem aes_cbc_encrypt_vec_spec (h : RunsAesHw) (alg : Algorithm) (key : List (BitVec 8))
     (k : mid.aes_cbc.AesCbcEncryptingKey) (hk : ModeKeyIs alg key k.key) (iv : mid.aes_cbc.CbcIv)
     (in_out : alloc.vec.Vec U8) (hroom : in_out.val.length + 16 ≤ Usize.max) :
     k.encrypt (alloc.vec.Vec.Insts.CoreConvertAsMutSlice U8 alloc.alloc.Global)
       (alloc.vec.Vec.Insts.CoreIterTraitsCollectExtendSharedAT alloc.alloc.Global core.marker.CopyU8) iv in_out
-      ⦃ r => bvs r.val = cbcEncrypt alg key (bvs iv.val) (pkcs7Pad (bvs in_out.val)) ⦄ := by
-  obtain ⟨e, he⟩ := h.1
+      ⦃ r => r.1 = .Ok () ∧ bvs r.2.val = cbcEncrypt alg key (bvs iv.val) (pkcs7Pad (bvs in_out.val)) ⦄ := by
   unfold mid.aes_cbc.AesCbcEncryptingKey.encrypt
-  simp only [he, bind_ok, alloc.vec.Vec.Insts.CoreConvertAsMutSlice.as_mut, alloc.vec.Vec.deref_mut]
+  simp only [bind_ok, alloc.vec.Vec.Insts.CoreConvertAsMutSlice.as_mut, alloc.vec.Vec.deref_mut]
   have h16 : (16#usize : Usize).val = 16 := rfl
   apply WP.spec_bind (Usize.rem_spec (Slice.len in_out.slice) (y := 16#usize) (by rw [h16]; omega))
   intro i1 hi1
@@ -714,30 +714,19 @@ theorem aes_cbc_encrypt_vec_spec (h : RunsAesHw) (alg : Algorithm) (key : List (
   have hwl : w.slice.val.length = in_out.val.length + (16 - in_out.val.length % 16) := by
     rw [hwv, List.length_append, List.length_replicate, hpad']
   have hw16 : w.slice.val.length % 16 = 0 := by rw [hwl]; omega
-  refine spec_bind3 (as_chunks16 _ (by rfl) w.slice) ?_
-  rintro blocks rest back ⟨hl, hf, hrl, hid, hback⟩
-  have hl' : blocks.val.length = w.slice.val.length / 16 := hl
-  have hrl' : rest.val.length = w.slice.val.length % 16 := hrl
-  have hf' : blocks.val.flatMap (fun b => b.val) = w.slice.val.take (w.slice.val.length / 16 * 16) := hf
-  have hid' : back (blocks, rest) = w.slice := hid
-  simp only [bind_ok, mid.aes_cbc.AesCbcEncryptingKey.encrypt_in_place, low.ct.secret_slice,
-    low.ct.public_slice, bind_assoc_eq]
-  have hwmax := Slice.length_ineq w.slice
-  refine WP.spec_bind (WP.spec_bind (cbc_encrypt_low alg key k.key hk iv blocks
-    (by show 16 * blocks.val.length ≤ Usize.max; omega)) (fun b hb => (WP.spec_ok _).2 hb)) ?_
-  rintro blocks1 ⟨hl1, henc⟩
-  have hl1' : blocks1.val.length = blocks.val.length := hl1
-  refine (WP.spec_ok _).2 ?_
-  show bvs (back (blocks1, rest)).val = _
-  have hrn : rest.val = [] := List.length_eq_zero_iff.mp (by omega)
+  apply WP.spec_bind (aes_cbc_encrypt_blocks_spec h alg key k hk iv w.slice)
+  rintro ⟨r, s3⟩ hr
+  have hw16' : w.slice.length % 16 = 0 := hw16
+  simp only [hw16', ↓reduceIte] at hr
+  obtain ⟨hok, henc⟩ := hr
+  refine (WP.spec_ok _).2 ⟨hok, ?_⟩
   have hcast : (UScalar.cast .U8 pad).bv = BitVec.ofNat 8 (16 - in_out.val.length % 16) := by
     apply BitVec.eq_of_toNat_eq
     rw [show (UScalar.cast .U8 pad).bv.toNat = (UScalar.cast .U8 pad).val from rfl, UScalar.cast_val_eq,
       hpad']
     simp only [BitVec.toNat_ofNat, UScalarTy.numBits]
-    all_goals rfl
-  rw [hback _ _ (by rw [List.length_append, length_flatMap16, hrn, List.length_nil]; omega), hrn,
-    List.append_nil, henc, hf', List.take_of_length_le (by omega), hwv]
+  show bvs s3.val = _
+  rw [henc, hwv]
   simp only [bvs, List.map_append, List.map_replicate, hcast, pkcs7Pad, List.length_map, hpad']
 
 /-! ## CTR's counter arithmetic -/
