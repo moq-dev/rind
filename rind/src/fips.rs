@@ -222,8 +222,8 @@ impl DrbgHold {
 }
 
 /// The name of the first CPU feature the module requires that this CPU
-/// lacks. The module runs only on x86_64 and aarch64.
-#[cfg(rind_fips)]
+/// lacks. The module builds only on the x86_64 and aarch64 backends.
+#[cfg(all(rind_fips, any(rind_backend = "x86_64", rind_backend = "aarch64")))]
 pub fn missing_cpu_feature() -> Option<&'static str> {
     crate::low::missing_cpu_feature()
 }
