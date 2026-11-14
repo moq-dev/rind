@@ -801,9 +801,6 @@ fn random_nonce() -> Result<[u8; NONCE_LEN], error::Unspecified> {
     Ok(nonce)
 }
 
-/// Refuses scatter buffers whose lengths do not match, before a sealing key
-/// takes the nonce: `out_ciphertext` as long as `in_plaintext`, and
-/// `extra_out_and_tag` as `extra_in` and the tag.
 // Appends zeroed room for the tag and splits `in_out` into the plaintext and
 // that room. `Extend` need not grow `in_out`, so a buffer that is not then
 // exactly one tag longer fails before any key sees the nonce, leaving the
@@ -821,6 +818,9 @@ where
     Ok(in_out.split_at_mut(plaintext_len))
 }
 
+/// Refuses scatter buffers whose lengths do not match, before a sealing key
+/// takes the nonce: `out_ciphertext` as long as `in_plaintext`, and
+/// `extra_out_and_tag` as `extra_in` and the tag.
 pub(crate) fn check_scatter(
     in_plaintext: &[u8],
     out_ciphertext: &[u8],
