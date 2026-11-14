@@ -2,7 +2,7 @@
 // line in llms.txt, and a sitemap entry; scripts/check.ts fails a built page
 // that is missing from here.
 import * as landing from "./landing";
-import { inline, markdown } from "./markdown";
+import { inline, link, markdown } from "./markdown";
 
 export const origin = "https://rind.kixel.ai";
 
@@ -27,7 +27,7 @@ export const home: Page = {
 		[
 			"# rind",
 			`**${landing.headline}**\n${landing.subline}`,
-			...landing.claims.map((c) => `## ${c.icon} [${c.title}](${c.proof})\n\n${inline(c.body).trim()}`),
+			...landing.claims.map((c) => `## ${c.icon} ${link(c.title, c.proof)}\n\n${inline(c.body).trim()}`),
 			"## Switch with an agent",
 			markdown(landing.agentLead),
 			"```text\n" + landing.prompt + "\n```",
@@ -35,8 +35,8 @@ export const home: Page = {
 			`## ${landing.candorTitle}`,
 			markdown(landing.candor),
 			"## Links",
-			landing.footer.map((l) => `- [${l.label}](${l.href})`).join("\n"),
-			`Built by [${landing.builtBy.label}](${landing.builtBy.href}).`,
+			landing.footer.map((l) => `- ${link(l.label, l.href)}`).join("\n"),
+			`Built by ${link(landing.builtBy.label, landing.builtBy.href)}.`,
 		].join("\n\n") + "\n",
 };
 

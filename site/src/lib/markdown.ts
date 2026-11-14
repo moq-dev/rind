@@ -59,7 +59,7 @@ export function inline(tokens: Token[]): string {
 				case "em":
 					return `*${inline(t.tokens ?? [])}*`;
 				case "link":
-					return `[${inline(t.tokens ?? [])}](${t.href})`;
+					return link(inline(t.tokens ?? []), t.href, t.title);
 				case "codespan":
 				case "escape":
 				case "br":
@@ -69,6 +69,13 @@ export function inline(tokens: Token[]): string {
 			}
 		})
 		.join("");
+}
+
+// A Markdown link to `href`, which may hold any character: one with spaces,
+// parentheses, or angle brackets goes between escaped angle brackets.
+export function link(label: string, href: string, title?: string | null): string {
+	const dest = /[\s()<>\\]/.test(href) ? `<${href.replace(/[<>\\]/g, "\\$&")}>` : href;
+	return `[${label}](${dest}${title ? ` "${title.replace(/["\\]/g, "\\$&")}"` : ""})`;
 }
 
 // Every link target in some tokens, nested ones included.

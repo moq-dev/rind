@@ -6,6 +6,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { Lexer, type Token } from "marked";
+import { hrefs, lex } from "../src/lib/markdown";
 import { origin, pages, twinPath } from "../src/lib/pages";
 import { repoUrl, root, sources } from "../src/lib/repo";
 
@@ -70,24 +71,33 @@ const repoFiles = new Set<string>(sources);
 const blob = new RegExp(`^${repoUrl}/(?:blob|tree)/main/([^#?]+)`);
 const raw = /^https:\/\/raw\.githubusercontent\.com\/kixel-ai\/rind\/main\/([^#?]+)/;
 
-// Check one URL found in `from`. A resource is fetched by the page itself, so
-// it must be served from the site; a link the reader follows may go anywhere.
+// Check one URL found in `from`, resolved against it as a browser would. A
+// resource is fetched by the page itself, so it must be served from the site;
+// a link the reader follows may go anywhere.
 function check(from: string, url: string, resource: boolean) {
-	if (url.startsWith("data:")) return;
-	if (url.startsWith(origin)) url = url.slice(origin.length) || "/";
-	const [target, fragment] = url.split("#", 2);
-	if (url.startsWith("/") || url.startsWith("#")) {
-		const file = target === "" ? from : target.endsWith("/") ? `${target}index.html` : target;
+	let u: URL;
+	let fragment: string;
+	try {
+		u = new URL(url, `${origin}${from}`);
+		fragment = decodeURIComponent(u.hash.slice(1));
+	} catch {
+		return fail(`${from}: ${url} is not a valid URL`);
+	}
+	if (u.protocol === "data:") return;
+	if (u.origin === origin) {
+		const target = decodeURIComponent(u.pathname);
+		const file = target.endsWith("/") ? `${target}index.html` : target;
 		const found = [file, `${file}.html`].find((f) => files.includes(f));
 		if (!found) return fail(`${from}: ${url} is not in the build`);
 		if (fragment && !ids(found).has(fragment)) fail(`${from}: ${found} has no id "${fragment}"`);
 		return;
 	}
-	if (!url.startsWith("https://")) return fail(`${from}: ${url} is neither on this site nor https`);
+	if (u.protocol !== "https:") return fail(`${from}: ${url} is neither on this site nor https`);
 	if (resource) return fail(`${from}: ${url} loads from a third party`);
-	const repoPath = url.match(blob)?.[1] ?? url.match(raw)?.[1];
+	const located = `${u.origin}${u.pathname}`;
+	const repoPath = located.match(blob)?.[1] ?? located.match(raw)?.[1];
 	if (repoPath === undefined) return;
-	const file = repoPath.replace(/\/$/, "");
+	const file = decodeURIComponent(repoPath).replace(/\/$/, "");
 	repoFiles.add(file);
 	if (!existsSync(path.join(root, file))) return fail(`${from}: ${url} names ${file}, which the repository lacks`);
 	if (fragment && !(file.endsWith(".md") && anchors(file).has(fragment))) {
@@ -114,12 +124,13 @@ for (const file of files) {
 	} else if (file.endsWith(".css")) {
 		css(file, text(file));
 	} else if (file.endsWith(".js")) {
-		// `import "x"`, `import("x")`, and the `from "x"` of named imports and re-exports, minified or not.
-		for (const m of text(file).matchAll(/\b(?:import|from)\s*\(?\s*["'](https?:[^"']+)/g)) check(file, m[1], true);
+		// Every module specifier, local ones included: `import "x"`, `import("x")`,
+		// and the `from "x"` of named imports and re-exports, minified or not.
+		for (const m of text(file).matchAll(/\b(?:import\s*\(?|from)\s*["']([^"']+)["']/g)) check(file, m[1], true);
 	} else if (file.endsWith(".md") || file.endsWith(".txt")) {
 		// Links, and URLs quoted as text, such as the prompt's.
 		const body = text(file);
-		for (const m of body.matchAll(/\]\(([^)\s]+)\)/g)) check(file, m[1], false);
+		for (const href of hrefs(lex(body))) check(file, href, false);
 		for (const m of body.matchAll(/https?:\/\/[^\s)<>"'`\]]+/g)) check(file, m[0], false);
 	}
 }
