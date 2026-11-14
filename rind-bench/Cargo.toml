@@ -17,6 +17,7 @@ aws-lc-sys = { version = "0.47", default-features = false }
 chacha20poly1305 = "0.11"
 criterion = "0.8"
 ed25519-dalek = { version = "3", features = ["alloc", "pkcs8", "rand_core"] }
+fips205 = "0.5"
 getrandom = { version = "0.4", features = ["sys_rng"] }
 hkdf = "0.13"
 hex = { version = "0.4", features = ["serde"] }
@@ -51,6 +52,7 @@ serde_json = "1"
 sha1 = "0.11"
 sha2 = "0.11"
 sha3 = "0.12"
+slh-dsa = "=0.2.0-rc.5"
 x25519-dalek = { version = "3", features = ["getrandom"] }
 
 # Graviola supports only these.
@@ -130,6 +132,10 @@ harness = false
 
 [[bench]]
 name = "mldsa"
+harness = false
+
+[[bench]]
+name = "slhdsa"
 harness = false
 
 [[bench]]

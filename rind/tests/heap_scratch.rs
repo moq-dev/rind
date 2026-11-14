@@ -237,6 +237,32 @@ fn ml_dsa_set<P: rind::signature::sign::MlDsaParameterSet>() {
     }
 }
 
+#[test]
+fn slh_dsa() {
+    use rind::signature::sign::{SlhDsaSha2_128f, SlhDsaShake128f};
+    slh_dsa_set::<SlhDsaSha2_128f>();
+    slh_dsa_set::<SlhDsaShake128f>();
+}
+
+fn slh_dsa_set<P: rind::signature::sign::SlhDsaParameterSet>() {
+    use rind::signature::sign::SlhDsaKeyPair;
+    zeroed("SLH-DSA key generation", || {
+        SlhDsaKeyPair::<P>::generate().unwrap()
+    });
+    let keys = [(); 2].map(|()| SlhDsaKeyPair::<P>::generate().unwrap());
+    independent("SLH-DSA export", keys.each_ref(), |key| key.to_pkcs8());
+    let pkcs8 = keys.each_ref().map(|key| key.to_pkcs8().as_ref().to_vec());
+    // Loading checks the key by making it again.
+    independent("SLH-DSA load", pkcs8, |der| {
+        SlhDsaKeyPair::<P>::from_pkcs8(der).unwrap()
+    });
+    // Signing is randomized, so even under one key it varies: every block
+    // it frees must be wiped.
+    for key in &keys {
+        zeroed("SLH-DSA signing", || key.sign(b"message").unwrap());
+    }
+}
+
 /// The expanded form, whose load checks the key.
 #[cfg(not(any(miri, target_family = "wasm")))]
 fn ml_dsa_expanded_set<P: rind::signature::sign::MlDsaParameterSet>(

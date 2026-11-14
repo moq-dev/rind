@@ -2979,6 +2979,209 @@ mod ml_dsa_87 {
     ml_dsa_crosschecks!(MlDsa87, ML_DSA_87_SIGNING, ML_DSA_87);
 }
 
+// aws-lc-rs has no SLH-DSA, so RustCrypto's and integritychain's `fips205`
+// stand in for it. Signing is randomized, so each verifies the others'
+// signatures rather than matching their bytes; the ACVP vectors match bytes.
+macro_rules! slh_dsa_crosschecks {
+    ($set:ident, $verify:ident, $rustcrypto:ident, $fips205:ident, $n:literal) => {
+        use fips205::traits::{KeyGen, SerDes, Signer as _, Verifier as _};
+        use pkcs8::{EncodePrivateKey, EncodePublicKey};
+        use proptest::collection::vec;
+        use proptest::prelude::*;
+        use proptest::sample::Index;
+        use rind::signature::sign::{SlhDsaKeyPair, $set};
+        use rind::signature::{PublicKey, verify};
+        use slh_dsa::signature::Verifier;
+
+        type Theirs = slh_dsa::SigningKey<slh_dsa::$rustcrypto>;
+
+        // RustCrypto's is generic, so it compiles into this test at the
+        // test's own optimisation level, and unoptimised it signs for
+        // minutes. The release run, which every tier makes, takes these.
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(4))]
+
+            #[test]
+            #[cfg_attr(debug_assertions, ignore = "RustCrypto signs for minutes unoptimised")]
+            fn sign_verify(
+                seeds in any::<[[u8; $n]; 3]>(),
+                addrnd in any::<[u8; $n]>(),
+                message in vec(any::<u8>(), 0..300),
+                flip in any::<Option<Index>>(),
+            ) {
+                // The same seeds give all three the same key and encodings.
+                let [sk_seed, sk_prf, pk_seed] = seeds;
+                let theirs = Theirs::slh_keygen_internal(&sk_seed, &sk_prf, &pk_seed);
+                let (fips_public, fips_private) =
+                    fips205::$fips205::KG::keygen_from_seed(&sk_seed, &sk_prf, &pk_seed);
+                prop_assert_eq!(
+                    &fips_private.clone().into_bytes()[..],
+                    &theirs.to_bytes()[..]
+                );
+                let pkcs8 = theirs.to_pkcs8_der().unwrap();
+                let ours = SlhDsaKeyPair::<$set>::from_pkcs8(pkcs8.as_bytes()).unwrap();
+                let ours_pkcs8 = ours.to_pkcs8();
+                prop_assert_eq!(ours_pkcs8.as_ref(), pkcs8.as_bytes());
+                let spki = theirs.as_ref().to_public_key_der().unwrap();
+                let ours_spki = ours.public_key().to_spki();
+                prop_assert_eq!(ours_spki.as_ref(), spki.as_bytes());
+
+                // Each verifies the others' signatures.
+                let ours_signature = ours.sign(&message).unwrap();
+                let parsed = slh_dsa::Signature::try_from(ours_signature.as_ref()).unwrap();
+                theirs.as_ref().verify(&message, &parsed).unwrap();
+                prop_assert!(fips_public.verify(
+                    &message,
+                    ours_signature.as_ref().try_into().unwrap(),
+                    b""
+                ));
+                let verifier = PublicKey::from_spki(&verify::$verify, spki.as_bytes()).unwrap();
+                let mut signature = theirs
+                    .try_sign_with_context(&message, b"", Some(&addrnd))
+                    .unwrap()
+                    .to_vec();
+                verifier.verify(&message, &signature).unwrap();
+                let fips_signature = fips_private.try_sign(&message, b"", true).unwrap();
+                verifier.verify(&message, &fips_signature).unwrap();
+
+                // All refuse it with any one bit flipped.
+                if let Some(flip) = flip {
+                    let bit = flip.index(signature.len() * 8);
+                    signature[bit / 8] ^= 1 << (bit % 8);
+                    prop_assert!(verifier.verify(&message, &signature).is_err());
+                    let parsed = slh_dsa::Signature::try_from(signature.as_slice()).unwrap();
+                    prop_assert!(theirs.as_ref().verify(&message, &parsed).is_err());
+                    prop_assert!(!fips_public.verify(
+                        &message,
+                        signature.as_slice().try_into().unwrap(),
+                        b""
+                    ));
+                }
+            }
+        }
+    };
+}
+
+mod slh_dsa_sha2_128s {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_128s,
+        SLH_DSA_SHA2_128S,
+        Sha2_128s,
+        slh_dsa_sha2_128s,
+        16
+    );
+}
+
+mod slh_dsa_sha2_128f {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_128f,
+        SLH_DSA_SHA2_128F,
+        Sha2_128f,
+        slh_dsa_sha2_128f,
+        16
+    );
+}
+
+mod slh_dsa_sha2_192s {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_192s,
+        SLH_DSA_SHA2_192S,
+        Sha2_192s,
+        slh_dsa_sha2_192s,
+        24
+    );
+}
+
+mod slh_dsa_sha2_192f {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_192f,
+        SLH_DSA_SHA2_192F,
+        Sha2_192f,
+        slh_dsa_sha2_192f,
+        24
+    );
+}
+
+mod slh_dsa_sha2_256s {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_256s,
+        SLH_DSA_SHA2_256S,
+        Sha2_256s,
+        slh_dsa_sha2_256s,
+        32
+    );
+}
+
+mod slh_dsa_sha2_256f {
+    slh_dsa_crosschecks!(
+        SlhDsaSha2_256f,
+        SLH_DSA_SHA2_256F,
+        Sha2_256f,
+        slh_dsa_sha2_256f,
+        32
+    );
+}
+
+mod slh_dsa_shake_128s {
+    slh_dsa_crosschecks!(
+        SlhDsaShake128s,
+        SLH_DSA_SHAKE_128S,
+        Shake128s,
+        slh_dsa_shake_128s,
+        16
+    );
+}
+
+mod slh_dsa_shake_128f {
+    slh_dsa_crosschecks!(
+        SlhDsaShake128f,
+        SLH_DSA_SHAKE_128F,
+        Shake128f,
+        slh_dsa_shake_128f,
+        16
+    );
+}
+
+mod slh_dsa_shake_192s {
+    slh_dsa_crosschecks!(
+        SlhDsaShake192s,
+        SLH_DSA_SHAKE_192S,
+        Shake192s,
+        slh_dsa_shake_192s,
+        24
+    );
+}
+
+mod slh_dsa_shake_192f {
+    slh_dsa_crosschecks!(
+        SlhDsaShake192f,
+        SLH_DSA_SHAKE_192F,
+        Shake192f,
+        slh_dsa_shake_192f,
+        24
+    );
+}
+
+mod slh_dsa_shake_256s {
+    slh_dsa_crosschecks!(
+        SlhDsaShake256s,
+        SLH_DSA_SHAKE_256S,
+        Shake256s,
+        slh_dsa_shake_256s,
+        32
+    );
+}
+
+mod slh_dsa_shake_256f {
+    slh_dsa_crosschecks!(
+        SlhDsaShake256f,
+        SLH_DSA_SHAKE_256F,
+        Shake256f,
+        slh_dsa_shake_256f,
+        32
+    );
+}
+
 /// Each side of RFC 9474's protocol against blind-rsa-signatures' other
 /// side, for each variant.
 mod blind_rsa {

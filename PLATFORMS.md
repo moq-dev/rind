@@ -41,7 +41,10 @@ qemu. iOS devices' code is only built.
   and [aws-lc]'s Montgomery multiplication replaces its Karatsuba routines
   for RSA; with `avx2` there, as on Haswell, RSA-2048 signing runs aws-lc's
   RSAZ exponentiation, and Ed25519 verification a port of
-  [curve25519-dalek]'s AVX2 backend. With `avx512ifma`, as on Ice Lake,
+  [curve25519-dalek]'s AVX2 backend. With `avx2` but without `sha`, as on
+  Intel's cores before Ice Lake and AMD's before Zen, SLH-DSA's SHA-2
+  parameter sets hash eight SHA-256 inputs at once with a port of the
+  SPHINCS+ team's AVX2 code. With `avx512ifma`, as on Ice Lake,
   Sapphire Rapids, and AMD's Zen 4 and 5, RSA-2048, 3072, and 4096 signing
   runs aws-lc's dual AVX-512 RSAZ.
 - 32-bit `arm` from ARMv7 on (tested on `armv7-unknown-linux-gnueabihf` and

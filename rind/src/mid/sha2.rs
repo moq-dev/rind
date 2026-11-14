@@ -43,6 +43,15 @@ impl Sha256State {
         crate::low::sha256_finish(&self.h, message, length)
     }
 
+    /// The hashes of the input so far followed by each of `messages`, one to
+    /// eight of equal length, as [`Self::finish_with`] gives them; those past
+    /// `messages` are unspecified. AVX2 runs eight at once.
+    pub(crate) fn finish_x8(&self, messages: &[&[u8]]) -> [[u8; Sha256Context::OUTPUT_SZ]; 8] {
+        let length = self.length(messages[0].len());
+        Entry::assert_held();
+        crate::low::sha256_finish_x8(&self.h, messages, length)
+    }
+
     /// The padding's length field for the input so far followed by `more` bytes.
     fn length(&self, more: usize) -> [u8; 8] {
         const BLOCK_SZ: usize = Sha256Context::BLOCK_SZ;

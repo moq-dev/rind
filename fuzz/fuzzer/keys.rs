@@ -1,9 +1,10 @@
 #![no_main]
 
-//! Every public key loader against aws-lc-rs's: the first byte picks the
-//! loader and the rest is its input. Both must accept and refuse alike, except
-//! where an [`Expect`] names a difference by design, and every key rind loads
-//! must re-encode to input both load again as the same key.
+//! Every public key loader against aws-lc-rs's, or RustCrypto's for SLH-DSA,
+//! which aws-lc lacks: the first byte picks the loader and the rest is its
+//! input. Both must accept and refuse alike, except where an [`Expect`] names
+//! a difference by design, and every key rind loads must re-encode to input
+//! both load again as the same key.
 
 use aws_lc_rs::agreement::ParsedPublicKeyFormat as Format;
 use aws_lc_rs::encoding::{AsBigEndian, AsDer};
@@ -93,6 +94,14 @@ fuzz_target!(|data: &[u8]| {
         52 => ml_dsa_spki(&MLDSA_44, input),
         53 => ml_dsa_spki(&MLDSA_65, input),
         54 => ml_dsa_spki(&MLDSA_87, input),
+        // The SLH-DSA sets of n = 16, the one whose loading costs least
+        // and the one RFC 9909's examples use.
+        55 => slh_dsa_pkcs8::<sign::SlhDsaSha2_128s, slh_dsa::Sha2_128s>(&SLHDSA_SHA2_128S, input),
+        56 => slh_dsa_pkcs8::<sign::SlhDsaShake128f, slh_dsa::Shake128f>(&SLHDSA_SHAKE_128F, input),
+        57 => slh_dsa_public::<slh_dsa::Sha2_128s>(&SLHDSA_SHA2_128S, input),
+        58 => slh_dsa_public::<slh_dsa::Shake128f>(&SLHDSA_SHAKE_128F, input),
+        59 => slh_dsa_spki::<slh_dsa::Sha2_128s>(&SLHDSA_SHA2_128S, input),
+        60 => slh_dsa_spki::<slh_dsa::Shake128f>(&SLHDSA_SHAKE_128F, input),
         _ => {}
     }
 });
@@ -218,6 +227,19 @@ const MLDSA_87: MlDsa = MlDsa {
     theirs: &theirs::ML_DSA_87_SIGNING,
     theirs_verify: &theirs::ML_DSA_87,
     public_key_len: 2592,
+};
+
+/// An SLH-DSA parameter set's verification algorithm in rind.
+struct SlhDsa {
+    ours: &'static ours::VerificationAlgorithm,
+}
+
+const SLHDSA_SHA2_128S: SlhDsa = SlhDsa {
+    ours: &verify::SLH_DSA_SHA2_128S,
+};
+
+const SLHDSA_SHAKE_128F: SlhDsa = SlhDsa {
+    ours: &verify::SLH_DSA_SHAKE_128F,
 };
 
 /// How rind's answer to an input may differ from aws-lc-rs's.
@@ -929,4 +951,71 @@ fn ml_dsa_spki(set: &MlDsa, input: &[u8]) {
     let again = ours::PublicKey::from_spki(set.ours, spki.as_ref()).unwrap();
     assert_eq!(again.as_ref(), ours.as_ref());
     ml_dsa_public(set, ours.as_ref());
+}
+
+fn slh_dsa_pkcs8<P: sign::SlhDsaParameterSet, R: slh_dsa::ParameterSet>(
+    set: &SlhDsa,
+    input: &[u8],
+) {
+    use pkcs8::{DecodePrivateKey, EncodePrivateKey};
+    use slh_dsa::signature::Verifier;
+    let ours = sign::SlhDsaKeyPair::<P>::from_pkcs8(input);
+    let theirs = slh_dsa::SigningKey::<R>::from_pkcs8_der(input);
+    // RustCrypto takes what rind refuses: a `PK.root` that the seeds do not
+    // make, a version 2 document's public key, and attributes.
+    agree(&ours, &theirs, Expect::Stricter);
+    let Ok(ours) = ours else {
+        return;
+    };
+    let theirs = theirs.unwrap();
+    let public = ours.public_key();
+    assert_eq!(public.as_ref(), theirs.as_ref().to_bytes().as_slice());
+
+    // Both write the same version 1 document, which loads again as the same
+    // key.
+    let pkcs8 = ours.to_pkcs8();
+    assert_eq!(pkcs8.as_ref(), theirs.to_pkcs8_der().unwrap().as_bytes());
+    let again = sign::SlhDsaKeyPair::<P>::from_pkcs8(pkcs8.as_ref()).unwrap();
+    assert_eq!(again.public_key().as_ref(), public.as_ref());
+
+    // Each verifies what the other signs.
+    let message = b"rind";
+    let signature = ours.sign(message).unwrap();
+    let signature = slh_dsa::Signature::<R>::try_from(signature.as_ref()).unwrap();
+    theirs.as_ref().verify(message, &signature).unwrap();
+    let signature = theirs.try_sign_with_context(message, b"", None).unwrap();
+    public.verify(message, &signature.to_bytes()).unwrap();
+
+    slh_dsa_public::<R>(set, public.as_ref());
+    slh_dsa_spki::<R>(set, public.to_spki().as_ref());
+}
+
+fn slh_dsa_public<R: slh_dsa::ParameterSet>(set: &SlhDsa, input: &[u8]) {
+    use pkcs8::EncodePublicKey;
+    let ours = ours::PublicKey::new(set.ours, input);
+    let theirs = slh_dsa::VerifyingKey::<R>::try_from(input);
+    agree(&ours, &theirs, Expect::Agree);
+    let Ok(ours) = ours else {
+        return;
+    };
+    assert_eq!(ours.as_ref(), input);
+    let spki = theirs.unwrap().to_public_key_der().unwrap();
+    assert_eq!(ours.to_spki().as_ref(), spki.as_bytes());
+}
+
+fn slh_dsa_spki<R: slh_dsa::ParameterSet>(set: &SlhDsa, input: &[u8]) {
+    use pkcs8::DecodePublicKey;
+    let ours = ours::PublicKey::from_spki(set.ours, input);
+    let theirs = slh_dsa::VerifyingKey::<R>::from_public_key_der(input);
+    // RustCrypto checks only the OID, so it takes algorithm parameters RFC
+    // 9909 says are absent.
+    agree(&ours, &theirs, Expect::Stricter);
+    let Ok(ours) = ours else {
+        return;
+    };
+    let spki = ours.to_spki();
+    assert_eq!(spki.as_ref(), input);
+    let again = ours::PublicKey::from_spki(set.ours, spki.as_ref()).unwrap();
+    assert_eq!(again.as_ref(), ours.as_ref());
+    slh_dsa_public::<R>(set, ours.as_ref());
 }

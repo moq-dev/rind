@@ -57,6 +57,9 @@ The modules:
   ML-DSA-44, ML-DSA-65, and ML-DSA-87 (pure, with the empty context) verify
   through the same `PublicKey`, and sign with `sign::MlDsaKeyPair<P>`, whose
   parameter set is a type, so its signature is a fixed-size array.
+  SLH-DSA's twelve parameter sets (FIPS 205, pure, with the empty context)
+  verify through it too, and sign with `sign::SlhDsaKeyPair<P>`, whose
+  signatures, up to 49,856 bytes, live on the heap.
 - `digest`: MD5 and SHA-1 (legacy only), SHA-256, SHA-384, SHA-512,
   SHA-512/256, SHA3-256, SHA3-384, and SHA3-512.
 - `hmac`: HMAC over SHA-1 and SHA-2, keyed once and reused.

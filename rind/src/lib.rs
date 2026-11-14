@@ -401,8 +401,8 @@ pub mod signature {
         VerificationAlgorithm,
     };
 
-    /// Algorithms a key pair signs with, and ML-DSA's key pair, whose
-    /// parameter set is a type.
+    /// Algorithms a key pair signs with, and ML-DSA's and SLH-DSA's key
+    /// pairs, whose parameter set is a type.
     ///
     /// Each signs as the [`verify`] algorithm of the same name verifies:
     /// [`MlDsaKeyPair<MlDsa65>`] as [`verify::ML_DSA_65`].
@@ -425,9 +425,15 @@ pub mod signature {
             RSA_PSS_SHA512,
         };
         pub use crate::high::signature::{
-            MlDsaKeyPair, MlDsaParameterSet, MlDsaSeed, MlDsaSignature,
+            MlDsaKeyPair, MlDsaParameterSet, MlDsaSeed, MlDsaSignature, SlhDsaKeyPair,
+            SlhDsaParameterSet, SlhDsaSignature,
         };
         pub use crate::mid::mldsa::{MlDsa44, MlDsa65, MlDsa87};
+        pub use crate::mid::slhdsa::{
+            SlhDsaSha2_128f, SlhDsaSha2_128s, SlhDsaSha2_192f, SlhDsaSha2_192s, SlhDsaSha2_256f,
+            SlhDsaSha2_256s, SlhDsaShake128f, SlhDsaShake128s, SlhDsaShake192f, SlhDsaShake192s,
+            SlhDsaShake256f, SlhDsaShake256s,
+        };
     }
 
     /// Algorithms a public key verifies with.
@@ -441,7 +447,10 @@ pub mod signature {
             ECDSA_P521_SHA384_ASN1, ECDSA_P521_SHA512_ASN1, ECDSA_P521_SHA512_FIXED, ED25519,
             ML_DSA_44, ML_DSA_65, ML_DSA_87, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512,
             RSA_PSS_SHA256, RSA_PSS_SHA256_ANY_SALT, RSA_PSS_SHA384, RSA_PSS_SHA384_ANY_SALT,
-            RSA_PSS_SHA512, RSA_PSS_SHA512_ANY_SALT,
+            RSA_PSS_SHA512, RSA_PSS_SHA512_ANY_SALT, SLH_DSA_SHA2_128F, SLH_DSA_SHA2_128S,
+            SLH_DSA_SHA2_192F, SLH_DSA_SHA2_192S, SLH_DSA_SHA2_256F, SLH_DSA_SHA2_256S,
+            SLH_DSA_SHAKE_128F, SLH_DSA_SHAKE_128S, SLH_DSA_SHAKE_192F, SLH_DSA_SHAKE_192S,
+            SLH_DSA_SHAKE_256F, SLH_DSA_SHAKE_256S,
         };
 
         /// RSA algorithms with another modulus floor, or SHA-1, for old keys

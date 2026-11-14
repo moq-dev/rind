@@ -21,8 +21,9 @@ AES-NI, PCLMULQDQ, and SSE4.1 (Core 2); and SSE2 also SSSE3. Without ADX
 alone (Haswell), rind runs the same sources as x86_64, through s2n-bignum's
 routines that don't use it, except that Ed25519 verification runs
 curve25519-dalek ⚡ (see below).
-CPUs with AVX2 but without SHA-NI run [OpenSSL]'s AVX2 SHA-256, and CPUs
-with the SHA512 instructions its SHA-384 and SHA-512 for them. Intel CPUs
+CPUs with AVX2 but without SHA-NI run [OpenSSL]'s AVX2 SHA-256, and SLH-DSA's
+SHA-2 sets [SPHINCS+]'s AVX2 eight-way SHA-256, and CPUs with the SHA512
+instructions run OpenSSL's SHA-384 and SHA-512 for them. Intel CPUs
 without AVX2 run [aws-lc]'s AVX SHA-1, SHA-256, and verified ✓ SHA-384 and
 SHA-512.
 
@@ -54,6 +55,7 @@ SHA-512.
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  |  |  |  |
 | ML-KEM-768 | s2n-bignum ✓ + mlkem-native ✓ + Graviola ⚡ | mlkem-native ⚡ + s2n-bignum ✓ |  |  |  |
 | ML-DSA-44, ML-DSA-65, ML-DSA-87 | s2n-bignum ✓ + mldsa-native ⚡ | mldsa-native ⚡ + s2n-bignum ✓ |  |  |  |
+| SLH-DSA, over the SHA-2 and SHA-3 rows it builds on | SPHINCS+ |  |  |  |  |
 | RSA signatures, OAEP, blind signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + rind ⚡ | s2n-bignum ✓ + aws-lc ⚡ |  |  |  |
 
 - RSA: x86_64 with ADX multiplies 1024- and 2048-bit moduli by
@@ -84,6 +86,11 @@ SHA-512.
   Rust port of [mldsa-native]'s C, outside its CBMC proofs, rather than
   [libcrux]'s ML-DSA, which measured slower at every parameter set, with
   AVX2 and on the portable backend (see [ML-DSA](#ml-dsa)).
+- SLH-DSA: its SHAKE sets trail the [SPHINCS+] team's AVX2 C by up to 1.2x,
+  as their four-way Keccak-f is s2n-bignum's verified one, which transposes
+  its four states in and out on each call; XKCP's, which SPHINCS+ runs on
+  states it keeps transposed, measured 7% faster per call (see
+  [SLH-DSA](#slh-dsa)).
 
 aarch64 runs with the crypto extension and the SHA-512 and SHA-3
 instructions; no crypto denies them, as a Raspberry Pi 4 lacks them. armv7
@@ -121,6 +128,7 @@ with portable Rust in place of the assembly armv7 runs regardless.
 | P-521 ECDH, ECDSA | s2n-bignum ✓ + rind ⚡ |  | fiat-crypto ✓ + rind ⚡ |  |
 | ML-KEM-768 | s2n-bignum ✓ + Graviola ⚡ |  | mlkem-native ⚡ + OpenSSL ⚡ + Graviola ⚡ | mlkem-native ⚡ + rind + Graviola ⚡ |
 | ML-DSA-44, ML-DSA-65, ML-DSA-87 | s2n-bignum ✓ + mldsa-native ⚡ |  | mldsa-native ⚡ + OpenSSL ⚡ | mldsa-native ⚡ + rind |
+| SLH-DSA, over the SHA-2 and SHA-3 rows it builds on | SPHINCS+ |  |  |  |
 | RSA signatures, OAEP, blind signatures, key generation | s2n-bignum ✓ + aws-lc ⚡ + Graviola ⚡ |  | aws-lc ⚡ + Graviola ⚡ + rind ⚡ | Graviola ⚡ + rind ⚡ |
 
 - AES header protection on aarch64 pays the same indirect call as AES-GCM
@@ -167,6 +175,7 @@ tests use [Wycheproof]'s vectors.
 | [aws-lc] | copied, by `admin/import-aws-lc`: its SHA-384/512 assembly for x86_64 and aarch64, its x86_64 AVX SHA-256 routine and its aarch64 one for the SHA-256 instructions, Montgomery multiplication and the x86_64 exponentiation's `bn_power5` (with one deliberate change: rind's `bn_sqr8x_mont` and `bn_powerx5` zero two scratch words their `mulx` squaring reads unwritten, which valgrind reports though results and timing do not depend on them), AVX2 and dual AVX-512 RSAZ exponentiation, AES-NI AES-CTR, P-256's mixed addition for its generator multiplication, and SSE4.1 and AVX2 ChaCha20-Poly1305 (with one deliberate change: rind's copy reads the choice of AVX2 from the block rind passes it rather than aws-lc's `OPENSSL_ia32cap_P`), its aarch64 NEON ChaCha20-Poly1305 and eight-way AES-192-GCM, its x86_64 assembly for CPUs without AVX2 (SSSE3 ChaCha20, SSSE3 and AVX SHA-1, and SSSE3 SHA-256) without AES-NI (SSSE3 AES and GHASH), and without SSSE3 (integer SHA-1 and SHA-256), its aarch64 Montgomery multiplication, and its aarch64 assembly for CPUs without the crypto extension (NEON AES, NEON GHASH, and scalar SHA-1 and SHA-256), as Rust naked functions; its 32-bit ARM assembly for ChaCha20, SHA-1 and SHA-256 (NEON and integer), SHA-384/512, Montgomery multiplication, the ARMv8 crypto extension (AES, GHASH, SHA-1, SHA-256), and NEON Poly1305, in Rust `global_asm!`; and the C that drives that Poly1305, RSAZ, and `bn_power5`, that sets up its x86_64 SSSE3 GHASH table, and that computes its constant-time SSE2 AES and integer GHASH for x86_64 CPUs without SSSE3, ported to Rust, both also for armv7 without the crypto extension and the portable backend. aws-lc takes its Poly1305, ChaCha20-Poly1305, SSSE3 GHASH, and constant-time AES and GHASH from BoringSSL and the rest from OpenSSL | Apache-2.0; Poly1305, ChaCha20-Poly1305, SSSE3 and integer GHASH, and constant-time AES ISC | [SAW and NSym proofs](https://github.com/awslabs/aws-lc-verification/tree/797302470c1703cbb1a3a6fa98daffef0bfd3d80) that its x86_64 AVX and aarch64 scalar SHA-384/512 routines compute their specified result for all inputs. Their proof of its aarch64 routine for the SHA-512 instructions ends with the result in registers, before the routine stores it, so rind's own HOL Light proof covers that routine, of the object code rind's build emits, against s2n-bignum's FIPS 180-4 spec. `admin/prove bytes` checks that rind's copies of the first two routines assemble to the instructions of aws-lc's text at the revision the proofs pin, so the proofs are of rind's code. They do not cover its 32-bit ARM code. [`proofs/`](proofs/README.md) proves rind's SHA-384/512 around the AVX and both aarch64 routines. |
 | [BoringSSL] | copied, by `admin/import-boringssl`: its x86_64 VAES AES-GCM assembly, `aes-gcm-avx2-x86_64` and `aes-gcm-avx512-x86_64`, as Rust naked functions; its 32-bit ARM NEON X25519 assembly, in Rust `global_asm!`, which BoringSSL takes from [SUPERCOP]'s `neon2`, public domain | Apache-2.0 | nothing |
 | [OpenSSL] | copied, by `admin/import-openssl`: its x86_64 AVX2 SHA-256 and SHA-512 assembly and its SHA-512 assembly for the SHA512 instructions, from `sha512-x86_64`, as Rust naked functions; its 32-bit ARM Keccak-f assembly, integer and NEON, `keccak1600-armv4`, in Rust `global_asm!` | Apache-2.0 | nothing |
+| [SPHINCS+] | ported: the SPHINCS+ team's FIPS 205 code (`sign.c`, `fors.c`, `wots.c`, `merkle.c`, and its AVX2 builds' `treehashx4` and `treehashx8`, generalised over the lane count) on every CPU, and its x86_64 AVX2 eight-way SHA-256 (`sha256avx.c`), to Rust, from the `bas/fips205` branch | public domain, or CC0-1.0, 0BSD, or MIT-0 | nothing: no SLH-DSA implementation carries a proof of functional correctness |
 | [curve25519-dalek] | dependency, with its serial backend, for armv7 and the portable backend; ported: its AVX2 backend's field arithmetic, point formulas, and base point table, and its scalars' non-adjacent forms, to Rust intrinsics, for Ed25519 verification on x86_64 CPUs with AVX2 but without ADX | BSD-3-Clause | nothing: that backend's field arithmetic is hand-written, as is the AVX2 backend's. Its `fiat` backend would run [fiat-crypto]'s verified field arithmetic instead, but only a `--cfg` flag for the whole build selects it, so rind refuses it rather than let the build pick. |
 | [fiat-crypto] | dependency | MIT OR Apache-2.0 OR BSD-1-Clause | [Coq proofs](https://github.com/mit-plv/fiat-crypto/tree/67316f05d771f7f2db62beede59e9b56406a9efd) that each generated field operation is correct. rind's point formulas, inversion, and table lookup over them are not covered. |
 
@@ -631,6 +640,38 @@ verification at each parameter set. libcrux's, RustCrypto's, and
 OpenSSL's ML-DSA were slower than aws-lc-rs's with AVX2, and libcrux's
 portable ML-DSA was no faster than aws-lc-rs without assembly.
 
+### SLH-DSA
+SLH-DSA's twelve FIPS 205 parameter sets share one construction, generic
+over the set: a Rust port of the [SPHINCS+] team's FIPS 205 code, with its
+AVX2 builds' multi-lane tree hashing (`treehashx4` and `treehashx8`)
+generalised over the lane count, so that each tree's leaves, WOTS+ chains,
+and FORS nodes hash several at a time on every CPU.
+
+- The SHAKE sets hash four lanes at once on rind's four-way Keccak-f, as
+  ML-KEM does (see [ML-KEM-768](#ml-kem-768)), absorbing `PK.seed`, the
+  address, and the message where they lie, without copying them together.
+  A single lane, as verification's paths up each tree hash, runs one state.
+- The SHA-2 sets hash eight lanes, each continuing SHA-256 from the state
+  after the block `PK.seed || 0`, which every F, PRF, and category 1 H and
+  `T_l` start with. With SHA-NI they run one at a time, which on an Arrow
+  Lake core was 2.6x faster than [SPHINCS+]'s eight-way AVX2 code; without
+  SHA-NI but with AVX2 that code runs, about 4x faster than one at a time.
+  Categories 3 and 5 hash H and `T_l` with SHA-512, one at a time.
+
+A signature reveals its randomiser `R`, and with it the indices the message
+digest picks and each tree root the layers above sign, so signing
+declassifies them as it derives them. What stays secret is `SK.seed` and
+`SK.prf`, and the chain values and leaves derived from them, which only
+constant-time hashes touch.
+
+On an Intel Core Ultra 7 270K Plus (Arrow Lake) shared with other jobs, rind
+took 0.3-0.57x the time of the [SPHINCS+] team's AVX2 C, the fastest other
+code measured, for the SHA-2 sets' key generation, signing, and
+verification, and 0.57-1.2x for the SHAKE sets', faster at key generation
+and 128f signing and slower at the rest, as above. OpenSSL 3.5's SLH-DSA took
+2.1-3.8x rind's time, RustCrypto's `slh-dsa` 1.8-5.4x, and integritychain's
+`fips205` 2.6-5.4x.
+
 ### Symmetric cryptography
 SHA1 and SHA256 have straightforward implementations using hashing intrinsics
 (aka "SHA-NI" on x86_64, "sha" extension on aarch64), except that aarch64 runs
@@ -840,6 +881,7 @@ HACL*'s verified Poly1305 without NEON.
 [fiat-crypto]: https://github.com/mit-plv/fiat-crypto
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [OpenSSL]: https://github.com/openssl/openssl
+[SPHINCS+]: https://github.com/sphincs/sphincsplus/tree/bas/fips205
 [SUPERCOP]: https://bench.cr.yp.to/supercop.html
 [curve25519-dalek]: https://github.com/dalek-cryptography/curve25519-dalek
 [Wycheproof]: https://github.com/C2SP/wycheproof

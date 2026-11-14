@@ -173,6 +173,7 @@ pub(crate) mod sha1;
 pub(crate) mod sha1_mux;
 pub(crate) mod sha256;
 pub(crate) mod sha256_mux;
+pub(crate) mod sha256x8;
 pub(crate) mod sha3_keccak4_f1600_alt;
 pub(crate) mod sha3_keccak4_f1600_shim;
 pub(crate) mod sha3_keccak_f1600;

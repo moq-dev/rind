@@ -225,6 +225,15 @@ curve25519-dalek <https://github.com/dalek-cryptography/curve25519-dalek>
   Copyright (c) 2016-2021 Henry de Valence. All rights reserved.
   License: BSD-3-Clause.
 
+SPHINCS+ <https://github.com/sphincs/sphincsplus>
+
+  What: rind/src/mid/slhdsa.rs, a port of the SPHINCS+ team's FIPS 205
+  code on its bas/fips205 branch (sign.c, fors.c, wots.c, merkle.c, and
+  its AVX2 builds' treehashx4 and treehashx8), and
+  rind/src/low/x86_64/sha256x8.rs, a port of its sha2-avx2 sha256avx.c.
+  License: public domain, or at your option CC0-1.0, 0BSD, or MIT-0. The
+  ports are under rind's own license.
+
 --
 
 SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0

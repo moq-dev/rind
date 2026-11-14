@@ -223,6 +223,12 @@ pub(crate) fn cctv_value<'a>(record: &'a [(String, Vec<u8>)], name: &str) -> &'a
         .1
 }
 
+/// Whether this is ctgrind's debug build, under which valgrind runs SLH-DSA
+/// hundreds of times slower than it runs natively: hours for its tests. Its
+/// tests then check only the 128f sets, which take every code path the
+/// others do, and whose secrets the others handle alike.
+pub(crate) const CTGRIND_DEBUG: bool = cfg!(all(feature = "__ctgrind", debug_assertions));
+
 pub(crate) mod bignum;
 mod binsec;
 pub(crate) mod file_test;
