@@ -116,7 +116,23 @@
           armv7-cc = pkgs.pkgsCross.armv7l-hf-multiplatform.stdenv.cc;
           armv7-prefix = "${armv7-cc}/bin/${armv7-cc.targetPrefix}";
 
+          # Puts mbx's Cargo shim ahead of a shell's own toolchain on any host
+          # that set one up, so Cargo builds through mbx's shared compile cache
+          # and managed target, the merge queue's included. `just ci` enters
+          # several shells, each prepending its toolchain, so each needs this.
+          # `setup --status` names the shim on its first line even when it is
+          # missing, and its exit code also fails over unrelated setup, so only
+          # the shim existing decides.
+          mbx-shim = ''
+            shim=$(mbx setup --status 2>/dev/null | sed -n '1s/.*: //p' || true)
+            if [ -x "$shim" ]; then
+              export PATH="''${shim%/*}:$PATH"
+            fi
+            unset shim
+          '';
+
           armv7-shell = {
+            shellHook = mbx-shim;
             packages = [
               (rust-stable.minimal.override {
                 extensions = [ "clippy" ];
@@ -162,6 +178,7 @@
               native = pkgs.stdenv.hostPlatform.canExecute cross.stdenv.hostPlatform;
             in
             pkgs.mkShell {
+              shellHook = mbx-shim;
               packages = [
                 (rust-stable.minimal.override {
                   extensions = [ "clippy" ];
@@ -458,6 +475,7 @@
                 # project's shell.
                 IN_RIND_DEV_SHELL = "1";
               };
+              shellHook = mbx-shim;
             };
 
             # dudect needs only Rust, without Marvin's Python and toolkit fetches.
@@ -539,6 +557,7 @@
                   ];
                 })
               ];
+              shellHook = mbx-shim;
             };
 
             # The `dart` module of `just check` runs rind-dart's Dart package
@@ -549,6 +568,7 @@
                 rust-toolchain
                 pkgs.dart
               ];
+              shellHook = mbx-shim;
             };
 
             # `coverage.yml` runs `admin/coverage` in it. On x86_64 Linux it
@@ -600,6 +620,7 @@
                 })
                 pkgs.python3
               ];
+              shellHook = mbx-shim;
             };
           }
           # Linux only, since valgrind and qemu-user need a Linux host.

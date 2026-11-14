@@ -33,5 +33,5 @@ if [[ ! "$packages" =~ $expected ]]; then
     exit 1
 fi
 
-cargo clippy "${args[@]}" --target-dir target -- --deny warnings
-cargo run "${args[@]}" --target-dir target
+cargo clippy "${args[@]}" -- --deny warnings
+cargo run "${args[@]}"

@@ -248,7 +248,9 @@ def run(cmd, **kw):
 def build(targets):
     """Each target's rlibs: rind's, then every other crate's it links."""
     libs = {target: ([], []) for target in targets}
-    # Each backend's flags apply to the whole build, so each gets its own.
+    # Each backend's flags apply to the whole build, so each gets its own
+    # target directory, inside `target`, which mbx links to its managed
+    # target, so these stay warm across checkouts too.
     for backend in sorted({t.partition("+")[2] for t in targets}):
         cmd = ["cargo", "build", "-p", "rind", "--lib", "--release"]
         cmd += ["--target-dir", "target/ct-vartime/" + (backend or "native")]

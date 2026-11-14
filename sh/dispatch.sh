@@ -335,10 +335,10 @@ for module in "${selected[@]}"; do
             python3 admin/bench-report-test
             python3 admin/bench-report render --check
             ;;
-        # Each fixture is its own workspace and resolves its own lockfile.
+        # Each fixture is its own workspace, with its own lockfile and target.
         check:fixtures)
-            cargo check --manifest-path admin/build-cost-fixtures/rind/Cargo.toml --target-dir target
-            cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind --target-dir target
+            cargo check --manifest-path admin/build-cost-fixtures/rind/Cargo.toml
+            cargo check --manifest-path admin/build-cost-fixtures/rustls/Cargo.toml --features rind
             ;;
         check:patch) sh/patch.sh ;;
         check:py) sh/python.sh test ;;
