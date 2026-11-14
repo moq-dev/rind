@@ -145,8 +145,18 @@ impl HaveSha3 {
 }
 
 /// Returns the first CPU feature we require unconditionally that this CPU lacks.
+///
+/// The FIPS module also requires the crypto extension, which every core it
+/// is tested on has, so its vpaes and NEON GHASH paths, which no tested core
+/// runs, need no ACVP run of their own.
 pub(crate) fn missing_cpu_feature() -> Option<&'static str> {
-    (features() & NEON == 0).then_some("neon")
+    if features() & NEON == 0 {
+        return Some("neon");
+    }
+    if cfg!(rind_fips) && features() & CRYPTO_EXT == 0 {
+        return Some("aes, pmull, and sha2");
+    }
+    None
 }
 
 const NEON: u8 = 1 << 0;
@@ -154,6 +164,8 @@ const CRYPTO_EXT: u8 = 1 << 1;
 const SHA3: u8 = 1 << 2;
 #[cfg(target_vendor = "apple")]
 const DIT: u8 = 1 << 3;
+#[cfg(target_vendor = "apple")]
+const SB: u8 = 1 << 4;
 const DETECTED: u8 = 1 << 7;
 
 static FEATURES: AtomicU8 = AtomicU8::new(0);
@@ -192,6 +204,11 @@ fn detect() -> u8 {
     let features = features
         | if test_toggle("dit", detected!("dit")) {
             DIT
+        } else {
+            0
+        }
+        | if test_toggle("sb", detected!("sb")) {
+            SB
         } else {
             0
         };
@@ -249,10 +266,27 @@ mod dit {
         if on > 0 {
             // SAFETY: `msr DIT, _` is defined only if `dit` cpu feature is supported
             unsafe { core::arch::asm!("msr DIT, #1") }
+            // Arm requires no barrier after a PSTATE write, but Apple asks
+            // for a speculation barrier after setting DIT, so that nothing
+            // after it runs speculatively without DIT.
+            if super::features() & super::SB != 0 {
+                // SAFETY: in this branch, we verified `sb` cpu feature is supported
+                unsafe { speculation_barrier() }
+            } else {
+                // SAFETY: Armv8.0 barriers, Apple's choice for cores without `sb`.
+                unsafe { core::arch::asm!("dsb nsh", "isb sy", options(nostack, preserves_flags)) }
+            }
         } else {
             // SAFETY: `msr DIT, _` is defined only if `dit` cpu feature is supported
             unsafe { core::arch::asm!("msr DIT, #0") }
         }
+    }
+
+    /// Runs nothing after it speculatively until everything before it completes.
+    #[target_feature(enable = "sb")]
+    pub(super) fn speculation_barrier() {
+        // SAFETY: `sb` is defined only if `sb` cpu feature is supported
+        unsafe { core::arch::asm!("sb", options(nostack, preserves_flags)) }
     }
 }
 
@@ -267,6 +301,9 @@ fn test_toggle(_id: &str, detected: bool) -> bool {
 #[cfg(any(debug_assertions, rind_cpu_disable))]
 fn test_toggle(id: &str, detected: bool) -> bool {
     if std::env::var(format!("RIND_CPU_DISABLE_{id}")).is_ok() {
+        // The FIPS module honours the mask in its release build, where its
+        // caller's stdout is not its own.
+        #[cfg(not(rind_fips))]
         println!("DEBUG: denying cpuid {id:?}");
         false
     } else {
@@ -307,6 +344,11 @@ mod tests {
                 call!(unsafe dit::write, on);
             }
         }
+        #[cfg(target_vendor = "apple")]
+        if std::arch::is_aarch64_feature_detected!("sb") {
+            // SAFETY: the CPU has SB.
+            unsafe { call!(unsafe dit::speculation_barrier) };
+        }
         let (a, b) = ([1u8; 37], [2u8; 37]);
         assert_ne!(call!(ct_compare_bytes, &a, &b), 0);
         assert_ne!(call!(ct_compare_16, &[1; 16], &[2; 16]), 0);
@@ -335,6 +377,8 @@ mod tests {
             available!("aes", "pmull", "sha2")
         );
         assert_eq!(HaveSha3::check().is_some(), available!("sha3"));
+        #[cfg(target_vendor = "apple")]
+        assert_eq!(features() & SB != 0, available!("sb"));
     }
 
     // CI runs the aarch64 suite on a CPU with the crypto extension, then

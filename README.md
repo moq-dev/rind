@@ -196,7 +196,8 @@ AI reviews and contributions are welcome. rind plans its work as quests,
 Markdown files under [`quest/`][quests], with skills for Claude Code and
 Codex. With [quest][quest-setup] installed, have your agent run
 `/quest-plan` to propose a change or report a finding, or `/quest-start` to
-take a quest from the backlog. [CONTRIBUTING.md][contributing] covers
+take a quest from the backlog. Report a vulnerability privately instead, as
+[SECURITY.md][security] says. [CONTRIBUTING.md][contributing] covers
 building, testing, and how a PR lands.
 
 ## Learn more
@@ -266,6 +267,7 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [quests]: https://github.com/kixel-ai/rind/blob/main/quest/README.md
 [launch-post]: https://moq.dev/blog/rind/
 [contributing]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md
+[security]: https://github.com/kixel-ai/rind/blob/main/SECURITY.md
 [migrating]: https://github.com/kixel-ai/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md
 [gaps]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#known-gaps

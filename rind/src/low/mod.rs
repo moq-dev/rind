@@ -185,9 +185,9 @@ pub(crate) use generic::{
         p384_montjmixadd,
     },
     limbs::p521::{
-        bignum_add_p521, bignum_aff_point_select_p521, bignum_inv_p521, bignum_mod_n521,
-        bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd, p521_jdouble, p521_jmixadd,
-        p521_jscalarmul,
+        Naf as P521Naf, bignum_add_p521, bignum_aff_point_select_p521, bignum_inv_p521,
+        bignum_mod_n521, bignum_mul_p521, bignum_neg_p521, bignum_sqr_p521, p521_jadd,
+        p521_jdouble, p521_jmixadd, p521_jscalarmul, p521_public_twin_multiply,
     },
     mldsa_poly::{
         mldsa_caddq, mldsa_chknorm, mldsa_decompose_32, mldsa_decompose_88, mldsa_intt, mldsa_ntt,
@@ -244,7 +244,9 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::bignum_copy_row_from_table::bignum_copy_row_from_table;
         pub(crate) use x86_64::bignum_ctz::bignum_ctz;
         pub(crate) use x86_64::bignum_demont::bignum_demont;
-        pub(crate) use x86_64::bignum_point_select::{bignum_aff_point_select_p384, bignum_aff_point_select_p521};
+        pub(crate) use x86_64::bignum_point_select::{
+            bignum_aff_point_select_p256, bignum_aff_point_select_p384, bignum_aff_point_select_p521,
+        };
         pub(crate) use x86_64::adx_mux::bignum_demont_p256;
         pub(crate) use x86_64::adx_mux::bignum_demont_p384;
         pub(crate) use x86_64::bignum_digitsize::bignum_digitsize;
@@ -323,7 +325,7 @@ cfg_if::cfg_if! {
         pub(crate) use x86_64::adx_mux::p256_montjdouble;
         pub(crate) use x86_64::adx_mux::p256_montjmixadd;
         pub(crate) use x86_64::adx_mux::p256_scalarmul;
-        pub(crate) use x86_64::ecp_nistz256::{P256GeneratorRow, p256_point_add_affine, p256_select_w7};
+        pub(crate) use x86_64::ecp_nistz256::p256_point_add_affine;
         pub(crate) use x86_64::adx_mux::p384_montjadd;
         pub(crate) use x86_64::adx_mux::p384_montjmixadd;
         pub(crate) use x86_64::adx_mux::p384_montjdouble;
