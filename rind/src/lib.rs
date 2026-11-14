@@ -631,8 +631,9 @@ pub mod pbkdf2 {
 /// Authenticated encryption.
 ///
 /// An [`aead::Key`] is built from an algorithm constant and key bytes, and
-/// seals with the caller's nonces, which must never repeat under one key. An
-/// [`aead::RandomizedNonceKey`] picks its own.
+/// seals with the caller's nonces, which must never repeat under one key.
+/// [`aead::Nonce::from_sequence`] builds TLS 1.3's, QUIC's, and HPKE's from an
+/// IV and a sequence number. An [`aead::RandomizedNonceKey`] picks its own.
 ///
 /// ```
 /// use rind::aead::*;
