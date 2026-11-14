@@ -44,3 +44,5 @@ Only the latest release of each package rind publishes gets fixes: the
 `rind` crate and its `rind-<consumer>` adapter crates on crates.io, and its
 packages on pub.dev and PyPI. A fix ships as a new release of each package
 it affects.
+
+A fixed vulnerability gets a GitHub security advisory and a RustSec advisory.
