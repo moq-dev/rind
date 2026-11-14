@@ -177,6 +177,40 @@ SECTIONS = [
             "p521-ecdsa-verify/{lib}",
         ],
     ),
+    (
+        "HPKE",
+        [
+            "hpke-x25519-setup-sender/{lib}",
+            "hpke-x25519-setup-recipient/{lib}",
+            "hpke-x25519-aes128-gcm-seal/{lib}/1350B",
+            "hpke-x25519-aes128-gcm-open/{lib}/1350B",
+        ],
+    ),
+    (
+        "Blind RSA",
+        [
+            "blind-rsa2048-blind/{lib}",
+            "blind-rsa2048-sign/{lib}",
+            "blind-rsa2048-finalize/{lib}",
+            "blind-rsa2048-verify/{lib}",
+        ],
+    ),
+    (
+        "OPRF",
+        [
+            f"{mode}-{group}-{step}/{{lib}}"
+            for mode, group in [("oprf", "ristretto255"), ("voprf", "p384")]
+            for step in ["blind", "evaluate", "finalize"]
+        ],
+    ),
+    (
+        "VRF",
+        [f"vrf-{curve}-{step}/{{lib}}" for curve in ["edwards25519", "p256"] for step in ["prove", "verify"]],
+    ),
+    (
+        "SPAKE2+",
+        [f"spake2plus-p256-{side}-{step}/{{lib}}" for step in ["start", "finish"] for side in ["prover", "verifier"]],
+    ),
 ]
 OPERATIONS = [op for _, ops in SECTIONS for op in ops]
 
@@ -226,6 +260,12 @@ CRATES = {
         "ml-kem",
         "ed25519-dalek",
         "x25519-dalek",
+        # Protocols, each on RustCrypto's primitives.
+        "hpke",
+        "blind-rsa-signatures",
+        "voprf",
+        "vrf-rfc9381",
+        "spake2plus",
     ],
     "graviola": ["graviola", "rustls-graviola"],
     "libcrux": [
@@ -241,6 +281,8 @@ CRATES = {
         "libcrux-rsa",
         "libcrux-sha2",
         "libcrux-sha3",
+        "hpke-rs",
+        "hpke-rs-libcrux",
     ],
     "openssl": ["openssl", "openssl-sys", "rustls-openssl"],
     "tls": ["rustls"],
@@ -749,6 +791,28 @@ NAMES = {
     "p521-ecdh": "P-521 ECDH",
     "p521-ecdsa-sign": "P-521 ECDSA sign",
     "p521-ecdsa-verify": "P-521 ECDSA verify",
+    "hpke-x25519-setup-sender": "HPKE X25519 sender setup",
+    "hpke-x25519-setup-recipient": "HPKE X25519 recipient setup",
+    "hpke-x25519-aes128-gcm-seal": "HPKE AES-128-GCM seal",
+    "hpke-x25519-aes128-gcm-open": "HPKE AES-128-GCM open",
+    "blind-rsa2048-blind": "Blind RSA-2048 blind",
+    "blind-rsa2048-sign": "Blind RSA-2048 sign",
+    "blind-rsa2048-finalize": "Blind RSA-2048 finalize",
+    "blind-rsa2048-verify": "Blind RSA-2048 verify",
+    "oprf-ristretto255-blind": "OPRF ristretto255 blind",
+    "oprf-ristretto255-evaluate": "OPRF ristretto255 evaluate",
+    "oprf-ristretto255-finalize": "OPRF ristretto255 finalize",
+    "voprf-p384-blind": "VOPRF P-384 blind",
+    "voprf-p384-evaluate": "VOPRF P-384 evaluate",
+    "voprf-p384-finalize": "VOPRF P-384 finalize",
+    "vrf-edwards25519-prove": "ECVRF edwards25519 prove",
+    "vrf-edwards25519-verify": "ECVRF edwards25519 verify",
+    "vrf-p256-prove": "ECVRF P-256 prove",
+    "vrf-p256-verify": "ECVRF P-256 verify",
+    "spake2plus-p256-prover-start": "SPAKE2+ P-256 prover share",
+    "spake2plus-p256-verifier-start": "SPAKE2+ P-256 verifier share and confirmation",
+    "spake2plus-p256-prover-finish": "SPAKE2+ P-256 prover confirmation and key",
+    "spake2plus-p256-verifier-finish": "SPAKE2+ P-256 verifier key",
 }
 
 # Each build of admin/build-cost, as the report names it.
@@ -824,6 +888,7 @@ TIER_ROWS = [
     ("ML-DSA", r"mldsa(44|65|87)-"),
     ("RSA signatures", r"rsa\d+-(pkcs1|pss|load)"),
     ("RSA-OAEP", r"rsa\d+-oaep-"),
+    ("HPKE", r"hpke-"),
     ("JSON Web Tokens", r"jwt-[^/]+/\*/token$"),
     ("rind-rustls handshakes", r"rustls-(full|resumed)-"),
     ("rind-rustls 1 MB transfer", r"rustls-bulk/"),
@@ -834,6 +899,10 @@ TIER_ROWS = [
 UNRANKED = [
     (r"rsa\d+-key-generation", "RSA key generation varies too much from run to run to rank"),
     (r"jwt-[^/]+/\*/load$", "a token's key loading, the part of `token` spent on the key"),
+    (
+        r"(blind-rsa\d+|v?oprf|vrf|spake2plus)-",
+        "neither aws-lc-rs nor ring offers the protocol, so no baseline; the report's hosts compare it",
+    ),
 ]
 
 # rind's time over the fastest library's above which benchmarks/gaps.toml
