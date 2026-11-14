@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.4](https://github.com/kixel-ai/rind/compare/rind-ring-v0.17.3...rind-ring-v0.17.4) - 2026-11-14
+
+### Added
+
+- *(agreement)* [**breaking**] keys keep their public key and algorithm ([#529](https://github.com/kixel-ai/rind/pull/529))
+
+### Fixed
+
+- *(release)* return rind to 0.3.2 and set four adapter patch versions by hand ([#548](https://github.com/kixel-ai/rind/pull/548))
+- *(rind-ring)* [**breaking**] offer exactly ring 0.17's API and features ([#516](https://github.com/kixel-ai/rind/pull/516))
+
+### Other
+
+- diff each adapter's API against its upstream's ([#698](https://github.com/kixel-ai/rind/pull/698))
+- release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
+
 ## [0.17.3](https://github.com/kixel-ai/rind/compare/rind-ring-v0.17.2...rind-ring-v0.17.3) - 2026-11-08
 
 ### Other

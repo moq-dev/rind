@@ -16,7 +16,7 @@ module = "crypto::aws_lc"
 features = ["aws_lc_rs"]
 
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.4.0", path = "../rind" }
 jsonwebtoken = { version = "11.1", default-features = false }
 pkcs1 = { version = "0.7.5", default-features = false, features = ["alloc"] }
 

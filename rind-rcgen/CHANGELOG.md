@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.4](https://github.com/kixel-ai/rind/compare/rind-rcgen-v0.14.3...rind-rcgen-v0.14.4) - 2026-11-14
+
+### Fixed
+
+- *(release)* return rind to 0.3.2 and set four adapter patch versions by hand ([#548](https://github.com/kixel-ai/rind/pull/548))
+- *(rcgen)* [**breaking**] KeyPair offers rcgen's KeyPair API ([#515](https://github.com/kixel-ai/rind/pull/515))
+- *(rustls)* [**breaking**] rind-rustls is rustls's aws-lc-rs provider, item for item ([#521](https://github.com/kixel-ai/rind/pull/521))
+
+### Other
+
+- diff each adapter's API against its upstream's ([#698](https://github.com/kixel-ai/rind/pull/698))
+- release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
+
 ## [0.14.3](https://github.com/kixel-ai/rind/compare/rind-rcgen-v0.14.2...rind-rcgen-v0.14.3) - 2026-11-08
 
 ### Other

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.4](https://github.com/kixel-ai/rind/compare/rind-object-store-v0.14.3...rind-object-store-v0.14.4) - 2026-11-14
+
+### Fixed
+
+- *(adapters)* [**breaking**] rind-dimpl, rind-str0m, rind-jsonwebtoken, and rind-object-store match their upstream providers ([#519](https://github.com/kixel-ai/rind/pull/519))
+
+### Other
+
+- release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
+
 ## [0.14.3](https://github.com/kixel-ai/rind/compare/rind-object-store-v0.14.2...rind-object-store-v0.14.3) - 2026-11-08
 
 ### Other

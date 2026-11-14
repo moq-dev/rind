@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [11.0.4](https://github.com/kixel-ai/rind/compare/rind-jsonwebtoken-v11.0.3...rind-jsonwebtoken-v11.0.4) - 2026-11-14
+
+### Fixed
+
+- *(adapters)* [**breaking**] rind-dimpl, rind-str0m, rind-jsonwebtoken, and rind-object-store match their upstream providers ([#519](https://github.com/kixel-ai/rind/pull/519))
+
+### Other
+
+- diff each adapter's API against its upstream's ([#698](https://github.com/kixel-ai/rind/pull/698))
+- release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
+
 ## [11.0.3](https://github.com/kixel-ai/rind/compare/rind-jsonwebtoken-v11.0.2...rind-jsonwebtoken-v11.0.3) - 2026-11-08
 
 ### Other

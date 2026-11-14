@@ -18,7 +18,7 @@ name = "rind_dart"
 crate-type = ["cdylib"]
 
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.4.0", path = "../rind" }
 
 [dev-dependencies]
 # Requests reach valgrind only once `rind/__ctgrind` turns on crabgrind's default
