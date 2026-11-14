@@ -34,7 +34,7 @@
 # graviola has none. Its X25519 and Ed25519 run only s2n-bignum's verified
 # routines, but convert between bytes and limbs in unverified Rust.
 #
-# rind: X25519, P-256 ECDH and ECDSA on aarch64, SHA-256, HMAC-SHA256, and
+# rind: X25519, P-256 ECDH and ECDSA on aarch64, P-384 ECDH, SHA-256, HMAC-SHA256, and
 # HKDF-SHA256 on aarch64 with the crypto extension, SHA3-256 and SHA3-512,
 # whose Rust sponge `proofs/` proves against SymCrypt's Lean FIPS 202 spec
 # and s2n-bignum's Keccak-f theorems, and SHA-512 and Ed25519 on aarch64 and
@@ -116,14 +116,28 @@ library = "rind"
 operations = ["p256-ecdh"]
 arch = "aarch64"
 proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of key generation's draws through a dyn RandomSource, which Aeneas cannot translate, of its agreement API's P-256 key generation, public key, and agreement down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_scalarmul_alt, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, and bignum_mod_n256_4, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of bignum_eq, of the object code rind's build emits, with rind's generator table proven to hold the multiples of G that s2n-bignum's proof assumes"
-link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/P256.lean"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/P256.lean"
 
 [[verified]]
 library = "rind"
 operations = ["p256-ecdsa-sign", "p256-ecdsa-verify"]
 arch = "aarch64"
 proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch and of the nonces' draws through a dyn RandomSource, which Aeneas cannot translate, of its signature API's P-256 ECDSA with SHA-256 and fixed-length signatures, key generation and loading, signing, and verification, down to s2n-bignum's routines, composed with s2n-bignum's HOL Light proofs of p256_scalarmulbase_alt, p256_montjadd_alt, p256_montjdouble_alt, p256_montjmixadd_alt, bignum_inv_p256, bignum_neg_p256, bignum_tomont_p256, bignum_demont_p256, bignum_add_p256, bignum_montmul_p256, bignum_montsqr_p256, bignum_mod_n256_4, bignum_modadd, bignum_montmul, bignum_demont, and bignum_modinv, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of bignum_eq, of the object code rind's build emits, with the group laws its twin multiplication relies on proven from Mathlib's, the generator's order n proven, and HOL Light's P256_GROUP_ELEMENT_ORDER, that every finite point has order n, proven by counting the curve's points, and proving a signature right when signing returns, as its nonce loop has no bound"
-link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/Aarch64/P256Signature.lean"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/P256Signature.lean"
+
+[[verified]]
+library = "rind"
+operations = ["p384-ecdh"]
+arch = "x86_64"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of key generation's draws through a dyn RandomSource, and of the AVX2 and SSE2 comb table select, whose intrinsics' models rind tests against the CPU, which Aeneas cannot translate, of its agreement API's P-384 key generation, public key, and agreement down to s2n-bignum's routines, its own comb for k·G and its tables included, composed with s2n-bignum's HOL Light proofs of p384_montjscalarmul, p384_montjdouble, p384_montjmixadd, bignum_tomont_p384, bignum_demont_p384, bignum_montmul_p384, bignum_montsqr_p384, and their _alt forms without BMI2 and ADX, bignum_add_p384, bignum_inv_p384, bignum_neg_p384, bignum_mod_n384_6, bignum_mux, and bignum_eq, of s2n-bignum's own object code, which rind transliterates, with the generator's order n proven by Pratt certificates"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/P384Keygen.lean"
+
+[[verified]]
+library = "rind"
+operations = ["p384-ecdh"]
+arch = "aarch64"
+proof = "rind's Lean proof, through Aeneas and hand models of the function-pointer dispatch, of key generation's draws through a dyn RandomSource, and of the NEON comb table select, whose intrinsics' models rind tests against the CPU, which Aeneas cannot translate, of its agreement API's P-384 key generation, public key, and agreement down to s2n-bignum's routines, its own comb for k·G and its tables included, composed with s2n-bignum's HOL Light proofs of p384_montjscalarmul_alt, p384_montjdouble_alt, p384_montjmixadd_alt, bignum_tomont_p384, bignum_demont_p384, bignum_add_p384, bignum_montmul_p384_alt, bignum_montsqr_p384_alt, bignum_inv_p384, bignum_neg_p384, bignum_mod_n384_6, and bignum_mux, of s2n-bignum's own object code, which rind transliterates, and rind's HOL Light proof of bignum_eq, of the object code rind's build emits, with the generator's order n proven by Pratt certificates"
+link = "https://github.com/kixel-ai/rind/blob/main/proofs/Rind/X86_64/P384Keygen.lean"
 
 [[verified]]
 library = "rind"

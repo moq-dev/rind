@@ -20,8 +20,8 @@ there of aws-lc's routine for the SHA-512 instructions; rind's HOL Light proof
 of SHA-256's routine for the crypto extension in `Rind.Aarch64.Sha256Hw`, for
 the theorems over every HMAC algorithm; rind's HOL Light proofs of its
 constant-time compares in `Rind.Aarch64.CtEqual` for HMAC's and PBKDF2's
-`verify`; and nothing else. P-384's key generation also takes its table
-select as the hypothesis `AffSelect`, which no axiom states.
+`verify`; and nothing else. P-384's comb table select rests on no axiom,
+only on the hand model in `Rind.Aarch64.PointSelectModel`.
 A change here is a change to the trust base.
 -/
 
@@ -155,6 +155,10 @@ A change here is a change to the trust base.
 /-- info: 'rind.aarch64.p384_shared_secret' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms p384_shared_secret
+
+/-- info: 'rind.aarch64.bignum_aff_point_select_p384_spec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms bignum_aff_point_select_p384_spec
 
 /-- info: 'rind.aarch64.sha512_family_digest' depends on axioms: [propext,
  Classical.choice,

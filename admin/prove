@@ -754,6 +754,8 @@ select_items() {
     items rind/src/low/x86_64/cpu.rs 'pub(crate) fn prefetch<'
 }
 check_quote X86_64/PointSelectModel select_items
+check_quote Aarch64/PointSelectModel items rind/src/low/aarch64/bignum_point_select.rs \
+    'pub(crate) fn bignum_aff_point_select_p384(' 'fn select<' '#[target_feature(enable = "neon")]'
 check_quote X86_64/AeadDispatch items rind/src/aead.rs 'pub struct Algorithm ' 'impl Algorithm {' \
     'pub static AES_128_GCM:' 'pub static AES_192_GCM:' 'pub static AES_256_GCM:' 'pub static CHACHA20_POLY1305:' 'impl Key {' \
     'struct Sealer<' 'type Seal<' 'type Open<' 'struct Ops<' 'impl<C: Cipher> Sealer<C> {' \
@@ -1068,6 +1070,13 @@ extract x86_64 X86_64 \
     --start-from '{impl crate::high::curve::PublicKey for crate::mid::p256::VerifyingKey}' \
     --start-from '{impl crate::high::curve::Scalar for crate::mid::p256::Scalar}' \
     --start-from crate::mid::p256::StaticPrivateKey::from_bytes \
+    --start-from '{impl core::clone::Clone for crate::mid::p384::VerifyingKey}' \
+    --start-from '{impl crate::high::hash::SignatureHash for crate::high::hash::Sha384}' \
+    --start-from '{impl crate::high::curve::Curve for crate::high::curve::P384}' \
+    --start-from '{impl crate::high::curve::PrivateKey for crate::mid::p384::StaticPrivateKey}' \
+    --start-from '{impl crate::high::curve::PublicKey for crate::mid::p384::VerifyingKey}' \
+    --start-from '{impl crate::high::curve::Scalar for crate::mid::p384::Scalar}' \
+    --start-from crate::mid::p384::StaticPrivateKey::from_bytes \
     --opaque 'crate::high::curve::_::generate_random_key' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
@@ -1181,6 +1190,13 @@ extract aarch64 Aarch64 \
     --start-from '{impl crate::high::curve::PublicKey for crate::mid::p256::VerifyingKey}' \
     --start-from '{impl crate::high::curve::Scalar for crate::mid::p256::Scalar}' \
     --start-from crate::mid::p256::StaticPrivateKey::from_bytes \
+    --start-from '{impl core::clone::Clone for crate::mid::p384::VerifyingKey}' \
+    --start-from '{impl crate::high::hash::SignatureHash for crate::high::hash::Sha384}' \
+    --start-from '{impl crate::high::curve::Curve for crate::high::curve::P384}' \
+    --start-from '{impl crate::high::curve::PrivateKey for crate::mid::p384::StaticPrivateKey}' \
+    --start-from '{impl crate::high::curve::PublicKey for crate::mid::p384::VerifyingKey}' \
+    --start-from '{impl crate::high::curve::Scalar for crate::mid::p384::Scalar}' \
+    --start-from crate::mid::p384::StaticPrivateKey::from_bytes \
     --opaque 'crate::high::curve::_::generate_random_key' \
     --opaque 'crate::mid::p256::_::generate' \
     --opaque 'crate::mid::p256::_::new_random' \
@@ -1227,7 +1243,7 @@ mkdir -p proofs/Rind/Aarch64/Kdf
 for file in Dispatch P256Dispatch P256Agree P384Dispatch X25519 P384 P384Table P384Keygen DigestAlgorithm \
     DigestDispatch Sha512 ChaCha20 SignatureDispatch Ed25519 \
     Blockwise Sha Hmac HmacDispatch HkdfExpand Kdf/TypesExternal Kdf/FunsExternal \
-    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes P256 EcdsaDispatch P256Ecdsa P256Signature; do
+    CtEqual HmacApi DigestApi Hkdf Pbkdf2 Sha3 AesCipher HkdfAes P256 EcdsaDispatch Naf P256Ecdsa P256Signature; do
     sed 's/X86_64/Aarch64/g; s/x86_64/aarch64/g' "proofs/Rind/X86_64/$file.lean" >"proofs/Rind/Aarch64/$file.lean"
 done
 # The AEAD model imports nothing aarch64 has, and no aarch64 translation reaches it.

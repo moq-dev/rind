@@ -2,13 +2,15 @@ module
 public import Aeneas
 public import Rind.Aarch64.Types
 public import Rind.Aarch64.Neon
+public import Rind.Aarch64.PointSelectModel
 @[expose] public section
 open Aeneas Aeneas.Std Result
 set_option linter.dupNamespace false
 
 /-!
-The rind functions the aarch64 translation leaves opaque. No proof assumes anything
-about them beyond what `Rind.Aarch64.S2nBignum` and `Rind.Aarch64.AwsLc` state for
+The rind functions the aarch64 translation leaves opaque, beside those
+`Rind.Aarch64.PointSelectModel` models. No proof assumes anything about them
+beyond what `Rind.Aarch64.S2nBignum` and `Rind.Aarch64.AwsLc` state for
 s2n-bignum's and aws-lc's routines and what each theorem takes as a hypothesis.
 -/
 
@@ -292,11 +294,6 @@ opaque low.aarch64.bignum_neg_p384.bignum_neg_p384
   Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
     6#usize)
 
-opaque low.aarch64.bignum_point_select.bignum_aff_point_select_p384
-  :
-  Array Std.U64 12#usize → Slice Std.U64 → Std.U8 → Result (Array Std.U64
-    12#usize)
-
 opaque low.aarch64.bignum_tomont_p384.bignum_tomont_p384
   :
   Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
@@ -322,8 +319,18 @@ opaque low.aarch64.bignum_mod_n384.bignum_mod_n384
   Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
     6#usize)
 
+opaque low.aarch64.p384_montjadd.p384_montjadd
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
 opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
+
+/-- P-384's ECDSA key generation, which the signing theorems model. -/
+opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key
+  {T0 : Type _} (midrngRandomSourceInst : mid.rng.RandomSource T0) :
+  T0 → Result ((core.result.Result mid.p384.StaticPrivateKey error.Error) × T0)
 
 /-! The other curves, which X25519's and P-256's results never depend on. -/
 

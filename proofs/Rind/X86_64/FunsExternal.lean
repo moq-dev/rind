@@ -423,6 +423,16 @@ opaque low.x86_64.bignum_mod_n384.bignum_mod_n384
   Array Std.U64 6#usize → Array Std.U64 6#usize → Result (Array Std.U64
     6#usize)
 
+opaque low.x86_64.p384_montjadd.p384_montjadd
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
+opaque low.x86_64.p384_montjadd_alt.p384_montjadd_alt
+  :
+  Array Std.U64 18#usize → Array Std.U64 18#usize → Array Std.U64 18#usize
+    → Result (Array Std.U64 18#usize)
+
 opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
 
@@ -433,6 +443,11 @@ opaque high.curve.P256.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScala
 
 opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.oid
   : Result high.asn1.ObjectId
+
+/-- P-384's ECDSA key generation, which the signing theorems model. -/
+opaque high.curve.P384.Insts.RindHighCurveCurveStaticPrivateKeyVerifyingKeyScalar.generate_random_key
+  {T0 : Type _} (midrngRandomSourceInst : mid.rng.RandomSource T0) :
+  T0 → Result ((core.result.Result mid.p384.StaticPrivateKey error.Error) × T0)
 
 /-! P-256's s2n-bignum routines. -/
 

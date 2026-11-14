@@ -260,27 +260,29 @@ digits sum to the scalar and that no mixed addition meets the equal points
 s2n-bignum's `p384_montjmixadd` excludes, for a scalar below n, and
 `Rind/X86_64/P384Table.lean` has the kernel check the translated tables
 against G. The draws are modelled in `Rind/X86_64/P384Dispatch.lean`, as
-P-256's are. The theorems take `AffSelect`, what the table lookup computes, as
-a hypothesis: rind's AVX2, SSE2, and NEON selects load through raw pointers,
-which Aeneas cannot translate, and are not modelled yet.
+P-256's are. The table lookup is rind's AVX2, SSE2, or NEON select, below,
+which each target's `Rind/<Arch>/P384Select.lean` states under `Runs`.
 
 `p384Pow` is HOL Light's `group_pow p384_group`, whose group law
 `Rind/Spec.lean` defines once for the NIST curves, and `Rind/NistGroup.lean`
 proves it is multiplication in Mathlib's group of points on such a curve. `Rind/P384Group.lean` proves p and n prime,
 by Pratt certificates that `Rind/Pratt.lean` checks, and G's order n.
 
-The comb's constant-time row select on x86_64, `bignum_aff_point_select_p384`,
-and P-256's and P-521's, in `Rind/X86_64/PointSelect.lean`:
+The comb's constant-time row select, `bignum_aff_point_select_p384`, on
+x86_64 with P-256's and P-521's in `Rind/X86_64/PointSelect.lean`, and on
+aarch64 in `Rind/Aarch64/PointSelect.lean`, over the lemmas both share in
+`Rind/RowSelect.lean`:
 
 - `bignum_aff_point_select_p256_spec`, `_p384_spec`, `_p521_spec`: the select
   returns row `index` of a table of 8-, 12-, or 18-word affine points,
-  counting from 1, or zeros for an index of 0 or past the last row, on both
-  its AVX2 and SSE2 paths, for a table of fewer than 2^32 rows;
+  counting from 1, or zeros for an index of 0 or past the last row, on
+  x86_64's AVX2 and SSE2 paths and aarch64's NEON one (P-384's alone), for a
+  table of fewer than 2^32 rows;
 - `bignum_aff_point_select_p384_rows16`: the same on P-384's 16-row comb
   tables, as P-384's key generation takes it.
 
-They assume `RunsSelect`: `HaveAvx2::check` returns, as `Runs` assumes of
-`HaveBmi2Adx::check`. aarch64's NEON select has no model yet.
+On x86_64 they assume `RunsSelect`: `HaveAvx2::check` returns, as `Runs`
+assumes of `HaveBmi2Adx::check`. aarch64's select assumes nothing.
 
 ChaCha20 QUIC header protection on x86_64 and aarch64, from
 `HeaderProtectionKey` to HACL*'s rounds, in `Rind/X86_64/ChaCha20.lean`:
@@ -749,9 +751,12 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   `Rind/X86_64/PointSelectModel.lean`, of its AVX2 and SSE2 point selects,
   whose raw-pointer loads and `as_chunks` Aeneas cannot translate, and
   `Rind/X86_64/PointSelect.lean`, their proofs;
-  `Rind/Aarch64/Neon.lean`, of the aarch64 intrinsics rind's AES calls, and
-  `Rind/Aarch64/NeonVectors.lean`, the vectors `admin/neon-vectors.rs` tests
-  them with; `Rind/Lanes.lean`, both targets' vector lanes and bytes.
+  `Rind/Aarch64/Neon.lean`, of the aarch64 intrinsics rind's AES and point
+  select call, `Rind/Aarch64/NeonVectors.lean`, the vectors
+  `admin/neon-vectors.rs` tests them with, `Rind/Aarch64/PointSelectModel.lean`,
+  a hand model of its NEON point select, and `Rind/Aarch64/PointSelect.lean`,
+  its proof; `Rind/Lanes.lean`, both targets' vector lanes and bytes, and
+  `Rind/RowSelect.lean`, what both targets' select proofs share.
 - `Rind/Spec.lean` and `Rind/Bytes.lean`: the elliptic-curve, ChaCha20,
   Poly1305, and ChaCha20-Poly1305 specs and byte-conversion lemmas, and
   `Rind/ChaCha20Poly1305Test.lean`, the AEAD specs' known-answer tests; `Rind/Sha2.lean` and
@@ -815,7 +820,12 @@ mentions `Verification::Rsa(` or builds an `Rsa` outside them.
   finite point has order n, by counting the curve's points;
   `Rind/P256Group.lean`: that `p256` is prime, by a Pratt certificate;
   `Rind/N256Prime.lean`: that `n256` is prime; `Rind/P256Multiples.lean`: the
-  group laws and multiples ECDSA's twin multiplication relies on.
+  group laws and multiples ECDSA's twin multiplication relies on;
+  `Rind/P384Multiples.lean`: the same for P-384, which no ECDSA proof uses
+  yet.
+- `Rind/X86_64/Naf.lean`, on both targets: that `mid::util::public_naf`
+  writes a scalar's width-5 or width-6 non-adjacent form, for any number of
+  words, which P-256's ECDSA verification reads.
 - `Rind/X86_64/P256Dispatch.lean`, `Rind/X86_64/P256Agree.lean`, and
   `Rind/X86_64/P256.lean`: the hand model of P-256's key generation, and the
   P-256 agreement and key generation proofs, on both targets.
