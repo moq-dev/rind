@@ -16,12 +16,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # RIND_SCOPE=BASE skips the whole run when nothing the branch changed since
 # BASE reaches the target's backend, as sh/backends.sh decides. rind/build.rs
 # picks aarch64's own backend for aarch64, and the portable one for every
-# other target these shells name.
+# other target these shells name or under `--cfg rind_portable`.
 if [[ -n "${RIND_SCOPE:-}" ]]; then
     case "$target" in
         aarch64-*) backend=aarch64 ;;
         *) backend=portable ;;
     esac
+    [[ "${RUSTFLAGS:-}" != *rind_portable* ]] || backend=portable
     reached=$(sh/changed.sh "$RIND_SCOPE" | sh/backends.sh -)
     if ! grep -qxE "all|$backend" <<<"$reached"; then
         echo "qemu: nothing changed since $RIND_SCOPE reaches the $backend backend" >&2

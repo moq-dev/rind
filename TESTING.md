@@ -259,8 +259,7 @@ Miri, on x86_64, and `just miri s390x-unknown-linux-gnu` big-endian.
 With `RIND_SCOPE=BASE` set, such as `origin/main`, `just armv7`, `just qemu`,
 `just miri`, and `admin/ctgrind` skip their run when nothing the branch
 changed since BASE reaches the backend they build, as `sh/backends.sh`
-decides, and otherwise run in full; pull requests' armv7 and ctgrind jobs
-set it.
+decides, and otherwise run in full; pull requests' ctgrind job sets it.
 `nix develop .#ctgrind --command admin/ctgrind` runs the nightly
 constant-time checks under valgrind, `nix develop .#sde --command
 admin/ct-sde` those of the AVX-512, VAES, SHA extension, and SHA512 code
