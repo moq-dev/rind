@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
 use aws_lc_rs::aead::{
-    AES_128_GCM, Aad, LessSafeKey, NONCE_LEN, Nonce, RandomizedNonceKey, UnboundKey,
+    AES_128_GCM, Aad, LessSafeKey, NONCE_LEN, Nonce, RandomizedNonceKey, TlsProtocolId,
+    TlsRecordSealingKey, UnboundKey,
 };
 
 // rind-aws-lc-rs: these test aws-lc-rs's private `UnboundKey::seal_combined`
@@ -196,4 +197,27 @@ fn seal_combined_randnonce_rejects_shrinking_extend() {
         result.is_err(),
         "an Extend impl that shrinks the collection must be rejected"
     );
+}
+
+// rind-aws-lc-rs: added. AWS-LC's TLS AEAD records a nonce only once it seals,
+// so a buffer refused before that leaves the nonce free for a retry.
+#[test]
+fn tls_seal_rejected_extend_leaves_nonce_unused() {
+    for protocol in [TlsProtocolId::TLS12, TlsProtocolId::TLS13] {
+        let mut key = TlsRecordSealingKey::new(&AES_128_GCM, protocol, &[0x42u8; 16]).unwrap();
+        let mut refused = NoGrowBuffer(b"some plaintext".to_vec());
+        assert!(
+            key.seal_in_place_append_tag(test_nonce(), Aad::empty(), &mut refused)
+                .is_err()
+        );
+        assert_eq!(refused.0, b"some plaintext");
+
+        let mut in_out = b"some plaintext".to_vec();
+        key.seal_in_place_append_tag(test_nonce(), Aad::empty(), &mut in_out)
+            .expect("the refused seal must not have used the nonce");
+        let opened: &[u8] = test_key()
+            .open_within(test_nonce(), Aad::empty(), &mut in_out, 0..)
+            .unwrap();
+        assert_eq!(opened, b"some plaintext");
+    }
 }

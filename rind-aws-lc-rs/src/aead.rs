@@ -373,16 +373,7 @@ impl LessSafeKey {
         A: AsRef<[u8]>,
         InOut: AsMut<[u8]> + for<'in_out> Extend<&'in_out u8>,
     {
-        // `Extend` need not grow `in_out`, so room for the tag is made and
-        // checked before sealing, leaving the plaintext as it was if it is
-        // missing, as aws-lc-rs does.
-        let plaintext_len = in_out.as_mut().len();
-        in_out.extend(&[0; TAG_LEN]);
-        let in_out = in_out.as_mut();
-        if in_out.len() != plaintext_len + TAG_LEN {
-            return Err(error::Unspecified);
-        }
-        let (plaintext, tag_out) = in_out.split_at_mut(plaintext_len);
+        let (plaintext, tag_out) = append_tag_room(in_out)?;
         let tag = self.seal_in_place_separate_tag(nonce, aad, plaintext)?;
         tag_out.copy_from_slice(tag.as_ref());
         Ok(())
@@ -813,6 +804,23 @@ fn random_nonce() -> Result<[u8; NONCE_LEN], error::Unspecified> {
 /// Refuses scatter buffers whose lengths do not match, before a sealing key
 /// takes the nonce: `out_ciphertext` as long as `in_plaintext`, and
 /// `extra_out_and_tag` as `extra_in` and the tag.
+// Appends zeroed room for the tag and splits `in_out` into the plaintext and
+// that room. `Extend` need not grow `in_out`, so a buffer that is not then
+// exactly one tag longer fails before any key sees the nonce, leaving the
+// plaintext as it was, as aws-lc-rs does.
+fn append_tag_room<InOut>(in_out: &mut InOut) -> Result<(&mut [u8], &mut [u8]), error::Unspecified>
+where
+    InOut: AsMut<[u8]> + for<'in_out> Extend<&'in_out u8>,
+{
+    let plaintext_len = in_out.as_mut().len();
+    in_out.extend(&[0; TAG_LEN]);
+    let in_out = in_out.as_mut();
+    if in_out.len() != plaintext_len + TAG_LEN {
+        return Err(error::Unspecified);
+    }
+    Ok(in_out.split_at_mut(plaintext_len))
+}
+
 pub(crate) fn check_scatter(
     in_plaintext: &[u8],
     out_ciphertext: &[u8],
