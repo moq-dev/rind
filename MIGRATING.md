@@ -83,7 +83,7 @@ reuses it. `verify` refuses a stored value shorter than the HMAC output with
 | aws-lc-rs | rind |
 |---|---|
 | `LessSafeKey::new(UnboundKey::new(&alg, key)?)` | `Key::new(&alg, key)?` |
-| `SealingKey`, `OpeningKey`, `BoundKey`, `NonceSequence`, `nonce_sequence::{Counter32, Counter64}` and their builders | `Key`, given a `Nonce` per call from a sequence number the protocol keeps |
+| `SealingKey`, `OpeningKey`, `BoundKey`, `NonceSequence`, `nonce_sequence::{Counter32, Counter64}` and their builders | `Key`, given a `Nonce` per call from a sequence number the protocol keeps: `Nonce::from_sequence(&iv, seq)` XORs it into the IV's last eight bytes, as TLS 1.3, QUIC, and HPKE do, and gives `Counter64`'s nonce from an IV of its identifier then eight zero bytes |
 | `seal_in_place_append_tag(nonce, Aad::from(aad), in_out)` | `seal_in_place_append_tag(nonce, aad, in_out)`, with `aad: &[u8]` |
 | `seal_in_place_separate_tag`, `open_in_place` | the same, with `aad: &[u8]` |
 | `open_in_place_separate_tag(nonce, aad, tag, in_out)`, which ring takes as `(nonce, aad, tag, in_out, range)` | `open_in_place_separate_tag(nonce, aad, Tag::try_from(tag)?, ciphertext)` |

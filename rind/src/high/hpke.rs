@@ -594,14 +594,8 @@ impl Sealing {
         // RFC 9180 allows 2^96 - 1 messages; a u64 counter stops at its own
         // limit, which no context reaches.
         let next = self.seq.checked_add(1).ok_or(Error::MessageLimitReached)?;
-        let mut nonce = self.base_nonce;
-        for (n, s) in nonce[NONCE_LEN - 8..]
-            .iter_mut()
-            .zip(self.seq.to_be_bytes())
-        {
-            *n ^= s;
-        }
-        let result = f(&self.key, aead::Nonce::assume_unique_for_key(nonce))?;
+        let nonce = aead::Nonce::from_sequence(&self.base_nonce, self.seq);
+        let result = f(&self.key, nonce)?;
         self.seq = next;
         Ok(result)
     }
