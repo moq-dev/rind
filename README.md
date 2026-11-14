@@ -190,6 +190,33 @@ error naming it instead.
 [PLATFORMS.md][platforms] lists what each architecture runs without each
 feature.
 
+## Versions
+
+rind is below 1.0, so a minor release is its breaking one. There is no date
+for 1.0.
+
+- A patch release, such as 0.3.1 to 0.3.2, adds API and fixes bugs: code
+  that built against an earlier patch of the same minor still builds. A fix
+  can make rind refuse input it wrongly accepted.
+- A minor release, such as 0.3 to 0.4, may break the API. rind batches
+  breaking changes so that few minor releases are needed, the changelog
+  marks each as **breaking**, and [MIGRATING.md][migrating] maps ring's and
+  aws-lc-rs's names onto the API as it now stands.
+- The minimum supported Rust version is each crate's `rust-version`, shown on
+  its crates.io page. rind's is 1.90, and CI checks rind and every crate that
+  shares it on 1.90. It rises only in a minor release, and only to a Rust at
+  least nine releases (about a year) older than the latest stable, the window
+  rustls allows itself. Correcting a `rust-version` the code never built on
+  is a fix, which a patch can ship.
+- Each adapter's version follows the upstream it adapts, as
+  [CONTRIBUTING.md][releases] says. rind is not part of an adapter's API, so
+  an adapter's patch release may move it to rind's next minor, and to that
+  minor's `rust-version`. An adapter whose upstream needs a newer Rust than
+  rind declares that one, as rind-openmls declares OpenMLS's 1.91, and CI
+  does not yet check such a crate on its own `rust-version`.
+- [SECURITY.md][supported-versions] says which releases get security fixes,
+  and [PLATFORMS.md][platforms] which targets and CPUs rind supports.
+
 ## Contributing
 
 AI reviews and contributions are welcome. rind plans its work as quests,
@@ -266,6 +293,8 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [quests]: https://github.com/kixel-ai/rind/blob/main/quest/README.md
 [launch-post]: https://moq.dev/blog/rind/
 [contributing]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md
+[releases]: https://github.com/kixel-ai/rind/blob/main/CONTRIBUTING.md#releases
+[supported-versions]: https://github.com/kixel-ai/rind/blob/main/SECURITY.md#supported-versions
 [migrating]: https://github.com/kixel-ai/rind/blob/main/MIGRATING.md
 [benchmarks]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md
 [gaps]: https://github.com/kixel-ai/rind/blob/main/BENCHMARKS.md#known-gaps
