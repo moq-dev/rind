@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.4](https://github.com/kixel-ai/rind/compare/rind-rustls-v0.23.3...rind-rustls-v0.23.4) - 2026-11-14
+
+### Added
+
+- HPKE (RFC 9180), and rind-rustls's HPKE suites for ECH ([#585](https://github.com/kixel-ai/rind/pull/585))
+- *(agreement)* [**breaking**] keys keep their public key and algorithm ([#529](https://github.com/kixel-ai/rind/pull/529))
+
+### Fixed
+
+- *(release)* return rind to 0.3.2 and set four adapter patch versions by hand ([#548](https://github.com/kixel-ai/rind/pull/548))
+- *(rustls)* [**breaking**] rind-rustls is rustls's aws-lc-rs provider, item for item ([#521](https://github.com/kixel-ai/rind/pull/521))
+
+### Other
+
+- diff each adapter's API against its upstream's ([#698](https://github.com/kixel-ai/rind/pull/698))
+- release and queue from the kixel-ai org ([#711](https://github.com/kixel-ai/rind/pull/711))
+
 ## [0.23.3](https://github.com/kixel-ai/rind/compare/rind-rustls-v0.23.2...rind-rustls-v0.23.3) - 2026-11-08
 
 ### Other

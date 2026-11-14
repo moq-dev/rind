@@ -35,7 +35,7 @@ zeroize = []
 [dependencies]
 base64ct = { version = "1.8", optional = true, features = ["alloc"] }
 rcgen = { version = "0.14", default-features = false }
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.4.0", path = "../rind" }
 rustls-pki-types = "1.12"
 zeroize = "1.9"
 

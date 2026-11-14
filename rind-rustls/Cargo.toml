@@ -21,7 +21,7 @@ omitted = [
 ]
 
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.4.0", path = "../rind" }
 rustls = { version = "0.23.20", default-features = false, features = ["std", "tls12"] }
 
 [dev-dependencies]

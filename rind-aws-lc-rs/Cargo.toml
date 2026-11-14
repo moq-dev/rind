@@ -103,7 +103,7 @@ unstable = []
 wipe = ["rind/wipe"]
 
 [dependencies]
-rind = { version = "0.3.2", path = "../rind" }
+rind = { version = "0.4.0", path = "../rind" }
 untrusted = "0.7.1"
 zeroize = "1.9"
 
