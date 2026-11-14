@@ -40,8 +40,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/vectors
-
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:

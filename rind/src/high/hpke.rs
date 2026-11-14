@@ -1019,7 +1019,7 @@ mod tests {
         // `crate::test::wycheproof` reads tests alone; these need their
         // group's suite.
         let path = format!(
-            "{}/../thirdparty/wycheproof/testvectors_v1/{name}",
+            "{}/../thirdparty/vectors/wycheproof/testvectors_v1/{name}",
             env!("CARGO_MANIFEST_DIR")
         );
         #[derive(Deserialize)]

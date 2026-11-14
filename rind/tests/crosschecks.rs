@@ -1877,7 +1877,7 @@ mod rsa {
             "rsa_pkcs1_2048_sig_gen_test.json",
         ] {
             let path = format!(
-                "{}/../thirdparty/wycheproof/testvectors_v1/{file}",
+                "{}/../thirdparty/vectors/wycheproof/testvectors_v1/{file}",
                 env!("CARGO_MANIFEST_DIR")
             );
             let tests: serde_json::Value =

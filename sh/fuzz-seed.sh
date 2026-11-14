@@ -86,7 +86,7 @@ unhex() {
 # Wycheproof FILE, in hex: the selector byte, then the key.
 wycheproof() {
     local selector=$1 file=$2 filter=$3 key
-    jq -r "[$filter] | unique[]" "thirdparty/wycheproof/testvectors_v1/$file" | while read -r key; do
+    jq -r "[$filter] | unique[]" "thirdparty/vectors/wycheproof/testvectors_v1/$file" | while read -r key; do
         printf %02x%s "$selector" "$key" | unhex >"$corpus/$selector-${file%_test.json}-${key: -16}"
     done
 }
@@ -128,7 +128,7 @@ pkcs8_v2 12 "$rsa/rsa3072.pkcs8.der" "$field"
 
 corpus=fuzz/corpus/verify
 mkdir -p "$corpus"
-wycheproof=thirdparty/wycheproof/testvectors_v1
+wycheproof=thirdparty/vectors/wycheproof/testvectors_v1
 
 # verify SELECTOR FILE [SHA]: a seed for each test in the Wycheproof FILE, or
 # in its groups hashing with SHA: the selector byte, then the key and the

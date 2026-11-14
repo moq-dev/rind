@@ -51,8 +51,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/vectors
-
       - uses: ./.github/actions/nix
 
       - name: ctgrind tests
@@ -104,8 +102,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/vectors
-
       - uses: ./.github/actions/nix
 
       # A denial set to any value takes effect, so a row's extra variables
@@ -136,8 +132,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: ./.github/actions/vectors
 
       - uses: ./.github/actions/nix
 
@@ -182,8 +176,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: ./.github/actions/vectors
 
       - uses: ./.github/actions/nix
 
@@ -231,8 +223,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: ./.github/actions/vectors
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1

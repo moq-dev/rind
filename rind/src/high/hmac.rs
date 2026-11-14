@@ -699,7 +699,10 @@ mod tests {
             }
         }
 
-        process_cavp("../thirdparty/cavp/hmac/HMAC.rsp", &mut Cavp::default());
+        process_cavp(
+            "../thirdparty/vectors/cavp/hmac/HMAC.rsp",
+            &mut Cavp::default(),
+        );
     }
 
     static ALGORITHMS: [&Algorithm; 4] = [&HMAC_SHA1, &HMAC_SHA256, &HMAC_SHA384, &HMAC_SHA512];

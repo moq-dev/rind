@@ -92,7 +92,7 @@ pub(crate) fn wycheproof_groups<G: serde::de::DeserializeOwned>(name: &str) -> V
     }
 
     let path = format!(
-        "{}/../thirdparty/wycheproof/testvectors_v1/{name}",
+        "{}/../thirdparty/vectors/wycheproof/testvectors_v1/{name}",
         env!("CARGO_MANIFEST_DIR")
     );
     let file = File::open(&path).unwrap_or_else(|_| panic!("cannot open {path}"));
@@ -189,7 +189,10 @@ pub(crate) enum Expected {
 
 /// The path of `name` in C2SP's CCTV vectors.
 pub(crate) fn cctv(name: &str) -> String {
-    format!("{}/../thirdparty/cctv/{name}", env!("CARGO_MANIFEST_DIR"))
+    format!(
+        "{}/../thirdparty/vectors/cctv/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 /// Reads a CCTV file of `name = hex` lines, each blank-line-separated record

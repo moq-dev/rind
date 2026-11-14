@@ -635,23 +635,53 @@ mod tests {
         for (file, algorithm) in [
             ("../thirdparty/cavp-sha1/SHA1ShortMsg.rsp", &SHA1),
             ("../thirdparty/cavp-sha1/SHA1LongMsg.rsp", &SHA1),
-            ("../thirdparty/cavp/sha2/SHA256ShortMsg.rsp", &SHA256),
-            ("../thirdparty/cavp/sha2/SHA256LongMsg.rsp", &SHA256),
-            ("../thirdparty/cavp/sha2/SHA384ShortMsg.rsp", &SHA384),
-            ("../thirdparty/cavp/sha2/SHA384LongMsg.rsp", &SHA384),
-            ("../thirdparty/cavp/sha2/SHA512ShortMsg.rsp", &SHA512),
-            ("../thirdparty/cavp/sha2/SHA512LongMsg.rsp", &SHA512),
             (
-                "../thirdparty/cavp/sha2/SHA512_256ShortMsg.rsp",
+                "../thirdparty/vectors/cavp/sha2/SHA256ShortMsg.rsp",
+                &SHA256,
+            ),
+            ("../thirdparty/vectors/cavp/sha2/SHA256LongMsg.rsp", &SHA256),
+            (
+                "../thirdparty/vectors/cavp/sha2/SHA384ShortMsg.rsp",
+                &SHA384,
+            ),
+            ("../thirdparty/vectors/cavp/sha2/SHA384LongMsg.rsp", &SHA384),
+            (
+                "../thirdparty/vectors/cavp/sha2/SHA512ShortMsg.rsp",
+                &SHA512,
+            ),
+            ("../thirdparty/vectors/cavp/sha2/SHA512LongMsg.rsp", &SHA512),
+            (
+                "../thirdparty/vectors/cavp/sha2/SHA512_256ShortMsg.rsp",
                 &SHA512_256,
             ),
-            ("../thirdparty/cavp/sha2/SHA512_256LongMsg.rsp", &SHA512_256),
-            ("../thirdparty/cavp/sha3/SHA3_256ShortMsg.rsp", &SHA3_256),
-            ("../thirdparty/cavp/sha3/SHA3_256LongMsg.rsp", &SHA3_256),
-            ("../thirdparty/cavp/sha3/SHA3_384ShortMsg.rsp", &SHA3_384),
-            ("../thirdparty/cavp/sha3/SHA3_384LongMsg.rsp", &SHA3_384),
-            ("../thirdparty/cavp/sha3/SHA3_512ShortMsg.rsp", &SHA3_512),
-            ("../thirdparty/cavp/sha3/SHA3_512LongMsg.rsp", &SHA3_512),
+            (
+                "../thirdparty/vectors/cavp/sha2/SHA512_256LongMsg.rsp",
+                &SHA512_256,
+            ),
+            (
+                "../thirdparty/vectors/cavp/sha3/SHA3_256ShortMsg.rsp",
+                &SHA3_256,
+            ),
+            (
+                "../thirdparty/vectors/cavp/sha3/SHA3_256LongMsg.rsp",
+                &SHA3_256,
+            ),
+            (
+                "../thirdparty/vectors/cavp/sha3/SHA3_384ShortMsg.rsp",
+                &SHA3_384,
+            ),
+            (
+                "../thirdparty/vectors/cavp/sha3/SHA3_384LongMsg.rsp",
+                &SHA3_384,
+            ),
+            (
+                "../thirdparty/vectors/cavp/sha3/SHA3_512ShortMsg.rsp",
+                &SHA3_512,
+            ),
+            (
+                "../thirdparty/vectors/cavp/sha3/SHA3_512LongMsg.rsp",
+                &SHA3_512,
+            ),
         ] {
             process_cavp(
                 file,
@@ -773,13 +803,25 @@ mod tests {
         if std::env::var_os("SLOW_TESTS").is_some() {
             for (file, algorithm) in [
                 ("../thirdparty/cavp-sha1/SHA1Monte.rsp", &SHA1),
-                ("../thirdparty/cavp/sha2/SHA256Monte.rsp", &SHA256),
-                ("../thirdparty/cavp/sha2/SHA384Monte.rsp", &SHA384),
-                ("../thirdparty/cavp/sha2/SHA512Monte.rsp", &SHA512),
-                ("../thirdparty/cavp/sha2/SHA512_256Monte.rsp", &SHA512_256),
-                ("../thirdparty/cavp/sha3/SHA3_256Monte.rsp", &SHA3_256),
-                ("../thirdparty/cavp/sha3/SHA3_384Monte.rsp", &SHA3_384),
-                ("../thirdparty/cavp/sha3/SHA3_512Monte.rsp", &SHA3_512),
+                ("../thirdparty/vectors/cavp/sha2/SHA256Monte.rsp", &SHA256),
+                ("../thirdparty/vectors/cavp/sha2/SHA384Monte.rsp", &SHA384),
+                ("../thirdparty/vectors/cavp/sha2/SHA512Monte.rsp", &SHA512),
+                (
+                    "../thirdparty/vectors/cavp/sha2/SHA512_256Monte.rsp",
+                    &SHA512_256,
+                ),
+                (
+                    "../thirdparty/vectors/cavp/sha3/SHA3_256Monte.rsp",
+                    &SHA3_256,
+                ),
+                (
+                    "../thirdparty/vectors/cavp/sha3/SHA3_384Monte.rsp",
+                    &SHA3_384,
+                ),
+                (
+                    "../thirdparty/vectors/cavp/sha3/SHA3_512Monte.rsp",
+                    &SHA3_512,
+                ),
             ] {
                 process_cavp(
                     file,

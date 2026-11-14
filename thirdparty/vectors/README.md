@@ -1,15 +1,23 @@
 # Vector files
 
-Copies of the vector files in [aws-lc] and [BoringSSL] that cover an
-algorithm rind offers. `admin/sync-vectors` fetches them, unmodified, from the
-revisions it pins, and lists every file. Both repositories are hundreds of
-megabytes, so rind keeps these copies rather than submodules.
+Copies of the vector files rind's tests read from [aws-lc], [BoringSSL],
+[Wycheproof], NIST's [CAVP] through the [ctz/cavp] mirror, and [CCTV].
+`admin/sync-vectors` fetches them, unmodified, from the revisions it pins,
+and lists every file. The tests read a small part of each repository, so
+rind keeps these copies rather than submodules, and a plain clone runs every
+test. Each test opens its files by name and fails on a missing one.
 
-The aws-lc and BoringSSL directories each hold their upstream's `LICENSE`.
+Each upstream's directory keeps its upstream's paths, a `REVISION` file
+naming the commit it was copied from, and its license: aws-lc's, BoringSSL's,
+and Wycheproof's `LICENSE` (Apache 2.0 for Wycheproof); CAVP's `README.md`,
+which names NIST's sources, whose sample files are U.S. government works;
+CCTV's `ed25519/LICENSE` for its Ed25519 vectors, and `ML-KEM/README.md`,
+which puts its ML-KEM vectors under CC0 1.0.
 To update, bump a revision in `admin/sync-vectors` and rerun it.
 
-The tests read them through `rind/src/test/file_test.rs`, which parses the
-FileTest format both projects share.
+The tests read the aws-lc and BoringSSL files through
+`rind/src/test/file_test.rs`, which parses the FileTest format both projects
+share.
 
 `rfc9180/test-vectors.json` holds [RFC 9180]'s HPKE vectors, from the
 CFRG draft's repository at the revision `admin/sync-vectors` pins: the base
@@ -35,6 +43,10 @@ suites, without decaf448 and the POPRF mode, which rind does not offer.
 They are IETF contributions, under [BCP 78].
 
 [aws-lc]: https://github.com/aws/aws-lc
+[Wycheproof]: https://github.com/C2SP/wycheproof
+[CAVP]: https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program
+[ctz/cavp]: https://github.com/ctz/cavp
+[CCTV]: https://github.com/C2SP/CCTV
 [BoringSSL]: https://boringssl.googlesource.com/boringssl
 [RFC 9180]: https://www.rfc-editor.org/rfc/rfc9180.html
 [RFC 9380]: https://www.rfc-editor.org/rfc/rfc9380.html

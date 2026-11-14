@@ -652,21 +652,21 @@ mod tests {
         }
 
         process_cavp(
-            "../thirdparty/cavp/sha3/SHAKE128ShortMsg.rsp",
+            "../thirdparty/vectors/cavp/sha3/SHAKE128ShortMsg.rsp",
             &mut Cavp {
                 kind: Kind::Shake128,
                 ..Cavp::default()
             },
         );
         process_cavp(
-            "../thirdparty/cavp/sha3/SHAKE128LongMsg.rsp",
+            "../thirdparty/vectors/cavp/sha3/SHAKE128LongMsg.rsp",
             &mut Cavp {
                 kind: Kind::Shake128,
                 ..Cavp::default()
             },
         );
         process_cavp(
-            "../thirdparty/cavp/sha3/SHAKE128VariableOut.rsp",
+            "../thirdparty/vectors/cavp/sha3/SHAKE128VariableOut.rsp",
             &mut Cavp {
                 kind: Kind::Shake128,
                 ..Cavp::default()
@@ -674,21 +674,21 @@ mod tests {
         );
 
         process_cavp(
-            "../thirdparty/cavp/sha3/SHAKE256ShortMsg.rsp",
+            "../thirdparty/vectors/cavp/sha3/SHAKE256ShortMsg.rsp",
             &mut Cavp {
                 kind: Kind::Shake256,
                 ..Cavp::default()
             },
         );
         process_cavp(
-            "../thirdparty/cavp/sha3/SHAKE256LongMsg.rsp",
+            "../thirdparty/vectors/cavp/sha3/SHAKE256LongMsg.rsp",
             &mut Cavp {
                 kind: Kind::Shake256,
                 ..Cavp::default()
             },
         );
         process_cavp(
-            "../thirdparty/cavp/sha3/SHAKE256VariableOut.rsp",
+            "../thirdparty/vectors/cavp/sha3/SHAKE256VariableOut.rsp",
             &mut Cavp {
                 kind: Kind::Shake256,
                 ..Cavp::default()

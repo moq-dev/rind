@@ -7,8 +7,8 @@ and [ALGORITHMS.md](ALGORITHMS.md) whose code each tier runs.
 A primitive is checked five ways:
 
 - **Vectors**: published known-answer tests, from [Wycheproof] (each file's
-  name below, in `thirdparty/wycheproof/testvectors_v1/`), NIST's CAVP
-  (`thirdparty/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
+  name below, in `thirdparty/vectors/wycheproof/testvectors_v1/`), NIST's CAVP
+  (`thirdparty/vectors/cavp/`) and [ACVP](thirdparty/acvp/README.md) samples, the RFCs, [CCTV], and the [aws-lc and BoringSSL
   files](thirdparty/vectors/README.md), run by `cargo test`.
 - **Fuzz target**: a `fuzz/fuzzer/` target that compares rind with aws-lc-rs
   on fuzzed input. `fuzz.yml` runs each nightly, then replays its corpus on
@@ -238,9 +238,9 @@ published code its own tests run: the `rind` crate and its adapters under
 `cargo test`, rind-dart under `dart test`, and pyrind under
 `sh/python.sh test`, leaving out the tools (rind-bench, rind-cpuid,
 rind-timing, and the fuzzer). A function it lists as never run is published
-code no test reaches. It runs the suites as the nightly jobs do, with the
-vector submodules, `SLOW_TESTS=1`, and again with CPU features denied (on
-x86_64, under Intel SDE too), so a plain `cargo llvm-cov` reports less. The
+code no test reaches. It runs the suites as the nightly jobs do, with
+`SLOW_TESTS=1`, and again with CPU features denied (on x86_64, under Intel
+SDE too), so a plain `cargo llvm-cov` reports less. The
 nightly `coverage` workflow runs it on Linux and macOS; the summary table in
 its "Measure coverage" step's log is the report.
 

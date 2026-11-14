@@ -10,8 +10,9 @@ under the files they change.
 
 # Building and testing
 
-`thirdparty/vectors` holds aws-lc's and BoringSSL's vector files, which
-`admin/sync-vectors` copies from the revisions it pins. `SLOW_TESTS=1` adds
+`thirdparty/vectors` holds the aws-lc, BoringSSL, Wycheproof, CAVP, and CCTV
+vector files the tests read, which `admin/sync-vectors` copies from the
+revisions it pins, so a plain clone runs every test. `SLOW_TESTS=1` adds
 the large sets, such as CCTV's million ML-KEM vectors, which the nightly
 `build` workflow runs on every CPU tier.
 
