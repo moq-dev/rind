@@ -36,7 +36,7 @@ fn rsa2048_pkcs1_sha256_verify(c: &mut Criterion) {
         use rsa::pkcs1::DecodeRsaPublicKey;
         use rsa::signature::Verifier;
         let peer_public_key = rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(
-            rsa::RsaPublicKey::from_pkcs1_der(public_key).unwrap(),
+            rsa::PublicKey::from_pkcs1_der(public_key).unwrap(),
         );
 
         b.iter(|| {
@@ -189,7 +189,7 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
 
         b.iter(|| {
             let peer_public_key = rsa::pss::VerifyingKey::<sha2::Sha256>::new(
-                rsa::RsaPublicKey::from_pkcs1_der(public_key).unwrap(),
+                rsa::PublicKey::from_pkcs1_der(public_key).unwrap(),
             );
             let signature = rsa::pss::Signature::try_from(signature).unwrap();
             black_box(peer_public_key.verify(message, &signature)).unwrap();
@@ -210,7 +210,7 @@ fn rsa2048_pss_sha256_verify(c: &mut Criterion) {
     group.bench_function("libcrux", |b| {
         use rsa::pkcs1::DecodeRsaPublicKey;
         use rsa::traits::PublicKeyParts;
-        let n = rsa::RsaPublicKey::from_pkcs1_der(public_key)
+        let n = rsa::PublicKey::from_pkcs1_der(public_key)
             .unwrap()
             .n_bytes();
         let signature = signature.try_into().unwrap();

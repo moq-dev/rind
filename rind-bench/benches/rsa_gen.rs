@@ -51,10 +51,9 @@ fn rsa_key_generation(c: &mut Criterion) {
         if bits == 2048 {
             group.bench_function("rustcrypto", |b| {
                 use getrandom::{SysRng, rand_core::UnwrapErr};
-                use rsa::RsaPrivateKey;
 
                 b.iter(|| {
-                    black_box(RsaPrivateKey::new(&mut UnwrapErr(SysRng), bits).unwrap());
+                    black_box(rsa::PrivateKey::new(&mut UnwrapErr(SysRng), bits).unwrap());
                 })
             });
         }

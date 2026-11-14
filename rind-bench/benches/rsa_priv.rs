@@ -8,7 +8,7 @@ use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 fn libcrux_key(private_key: &[u8]) -> libcrux_rsa::PrivateKey<256> {
     use rsa::pkcs1::DecodeRsaPrivateKey;
     use rsa::traits::{PrivateKeyParts, PublicKeyParts};
-    let key = rsa::RsaPrivateKey::from_pkcs1_der(private_key).unwrap();
+    let key = rsa::PrivateKey::from_pkcs1_der(private_key).unwrap();
     let be = |bytes: &[u8]| {
         let mut out = [0u8; 256];
         out[256 - bytes.len()..].copy_from_slice(bytes);
@@ -58,7 +58,7 @@ fn rsa2048_pkcs1_sha256_sign(c: &mut Criterion) {
         use rsa::pkcs1::DecodeRsaPrivateKey;
         use rsa::signature::Signer;
         let key = rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new(
-            rsa::RsaPrivateKey::from_pkcs1_der(private_key).unwrap(),
+            rsa::PrivateKey::from_pkcs1_der(private_key).unwrap(),
         );
 
         b.iter(|| {
@@ -146,7 +146,7 @@ fn rsa2048_pss_sha256_sign(c: &mut Criterion) {
         use rsa::pkcs1::DecodeRsaPrivateKey;
         use rsa::signature::RandomizedSigner;
         let key = rsa::pss::SigningKey::<sha2::Sha256>::new(
-            rsa::RsaPrivateKey::from_pkcs1_der(private_key).unwrap(),
+            rsa::PrivateKey::from_pkcs1_der(private_key).unwrap(),
         );
 
         b.iter(|| {
@@ -316,7 +316,7 @@ fn rsa2048_oaep_sha256_decrypt(c: &mut Criterion) {
 
     group.bench_function("rustcrypto", |b| {
         use rsa::pkcs1::DecodeRsaPrivateKey;
-        let key = rsa::RsaPrivateKey::from_pkcs1_der(private_key).unwrap();
+        let key = rsa::PrivateKey::from_pkcs1_der(private_key).unwrap();
 
         b.iter(|| {
             black_box(key.decrypt(rsa::Oaep::<sha2::Sha256>::new(), ciphertext)).unwrap();
