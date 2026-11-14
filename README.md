@@ -17,8 +17,8 @@
 </p>
 
 - 🏎️ **As fast as aws-lc-rs and ring.** rind matches or beats both on
-  nearly every operation TLS and QUIC run, from the handshake to each
-  packet's AEAD.
+  [nearly every operation][benchmarks] TLS and QUIC run, from the handshake
+  to each packet's AEAD.
 - 🛡️ **Verified where it counts.** On x86_64 and aarch64, rind's
   elliptic-curve, RSA, ML-KEM, and ML-DSA arithmetic builds on [s2n-bignum]'s
   formally verified assembly, and rind's own [Lean proofs][proofs] carry
@@ -133,6 +133,20 @@ Each crate's README shows its setup.
 | [rind_cryptography][] | Dart and Flutter, as the `rind_cryptography` package, with the `cryptography` package's API on rind |
 | [rind-python][] | Python, as the `pyrind` package on PyPI, with rind's own API |
 | [pyrind-cryptography][] | Python, as the `pyrind-cryptography` package on PyPI, with pyca/cryptography's `hazmat` API on pyrind |
+
+## Before you depend on it
+
+rind was written with AI coding agents, and no one outside the project has
+audited it. It is not FIPS 140-3 validated. The established libraries each
+have something it lacks:
+
+- **aws-lc-rs** has a FIPS 140-3 validated module behind its `fips` feature.
+- **ring** has run in production for years, and builds without `std`.
+- **RustCrypto** builds without `std`, covers far more algorithms, and some
+  of its crates have had independent audits.
+
+Where another library is faster, [Known gaps][gaps] says why and what closes
+it.
 
 ## Wiping keys
 

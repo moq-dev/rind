@@ -43,3 +43,6 @@ proofs/Rind/Aarch64/P256Ecdsa.lean
 proofs/Rind/Aarch64/P256Signature.lean
 patch/*/Cargo.lock
 __pycache__/
+site/node_modules/
+site/dist/
+site/.astro/

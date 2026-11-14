@@ -94,6 +94,9 @@ declare -A scope=(
     [py]='^(rind-python/|sh/python\.sh$|flake\.lock$)'
     # rind-dart's Dart package, whose build hook compiles the crate.
     [dart]='^rind-dart/'
+    # The landing page, and every repository file it reads or links, which
+    # site/scripts/check.ts holds this pattern to.
+    [site]='^(site/|sh/site\.sh$|README\.md$|BENCHMARKS\.md$|MIGRATING\.md$|MIGRATE\.md$|proofs/README\.md$|admin/wordmark(-light)?\.svg$)'
     # Quest documents form one graph, so any change validates the whole tree,
     # as does a bump of the flake-pinned validator.
     [quest]='^(quest/|flake\.lock$)'
@@ -129,6 +132,7 @@ declare -A tools=(
     [patch]='cargo jq git'
     [py]='cargo jq maturin python3'
     [dart]='nix'
+    [site]='bun'
     [quest]='quest'
     [gh]='actionlint yq jq'
     [shell]='shellcheck'
@@ -139,7 +143,7 @@ verb=$action
 [[ "$verb" != ci ]] || verb=check
 
 case "$verb" in
-    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart quest gh shell nix) ;;
+    check) modules=(rs structure msrv cross vartime deny versions adapters license inplace mutants testing compat bench fixtures patch py dart site quest gh shell nix) ;;
     fix) modules=(rs compat patch dart nix) ;;
 esac
 
@@ -343,6 +347,7 @@ for module in "${selected[@]}"; do
         check:patch) sh/patch.sh ;;
         check:py) sh/python.sh test ;;
         check:dart) nix develop .#dart --command sh/dart.sh check ;;
+        check:site) sh/site.sh ;;
         fix:dart) nix develop .#dart --command sh/dart.sh fix ;;
         fix:patch) cargo fmt --manifest-path patch/fixture/Cargo.toml ;;
         check:gh)

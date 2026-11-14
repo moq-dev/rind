@@ -25,4 +25,5 @@ The comparison:
 - Every cell comes from a file that already states it and is checked: ALGORITHMS.md, PLATFORMS.md, BENCHMARKS.md's build-cost section, and `benchmarks/verified.toml`. Generate it or test it the way the README's heatmap is kept current, so it cannot drift. A cell with no source is left out, not written from memory.
 - It states the other libraries' strengths as plainly as rind's, each with a link to that project's own page: the FIPS 140-3 validation behind aws-lc-rs's `fips` feature, which rind lacks, and the audits ring and RustCrypto's crates have had.
 - The validation belongs to particular AWS-LC-FIPS module versions, which that feature builds against, not to every aws-lc-rs build. Name the feature and take the module and its status from aws-lc-rs's own page.
+- The README's "Before you depend on it" section, which the landing page quotes, names one strength of each library by hand. Once the table states them from its sources, replace those bullets with a link to it, so the site links it too.
 - The README's first line stays as the maintainer wrote it.

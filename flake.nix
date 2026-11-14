@@ -409,56 +409,66 @@
           devShells = {
             inherit hol-light;
 
-            default = pkgs.mkShell {
-              packages =
-                with pkgs;
-                [
-                  rust-toolchain
-                  just
-                  git
-                  jq
-                  # aws-lc-rs (dev-dependency, the differential-test oracle),
-                  # libfuzzer-sys, and the OpenSSL benchmarks build C.
-                  cmake
-                  pkg-config
-                  openssl
-                  cargo-deny
-                  # admin/mutants and the mutants workflow.
-                  cargo-mutants
-                  cargo-nextest
-                  cargo-semver-checks
-                  # Linters used by `just check` and `just fix`, which skip a
-                  # module whose tools aren't on $PATH. CI sets CI_STRICT=1, which
-                  # turns that skip into an error (see sh/dispatch.sh).
-                  shellcheck
-                  actionlint
-                  # sh/alert.sh reads the workflows.
-                  yq-go
-                  nixfmt
-                  # admin/bench-report-test runs the script that holds a
-                  # leased host.
-                  flock
-                  cargo-modules
-                  rustfmt-unstable
-                  quest-cli
-                ]
-                ++ python-shell.packages
-                ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
-                  # Marked broken on Darwin in nixpkgs.
-                  # See UPSTREAM.md, "nixpkgs marks release-plz broken on
-                  # Darwin".
-                  release-plz
-                  # admin/ctgrind's constant-time checks.
-                  valgrind
-                ];
+            default =
+              assert pkgs.lib.assertMsg
+                (
+                  (builtins.fromJSON (builtins.readFile ./site/package.json)).packageManager
+                  == "bun@${pkgs.bun.version}"
+                )
+                "Bun pins disagree: site/package.json's packageManager must be bun@${pkgs.bun.version}, the Bun in the pinned nixpkgs, which CI's site job also reads. Update them together.";
+              pkgs.mkShell {
+                packages =
+                  with pkgs;
+                  [
+                    rust-toolchain
+                    just
+                    git
+                    jq
+                    # aws-lc-rs (dev-dependency, the differential-test oracle),
+                    # libfuzzer-sys, and the OpenSSL benchmarks build C.
+                    cmake
+                    pkg-config
+                    openssl
+                    cargo-deny
+                    # admin/mutants and the mutants workflow.
+                    cargo-mutants
+                    cargo-nextest
+                    cargo-semver-checks
+                    # Linters used by `just check` and `just fix`, which skip a
+                    # module whose tools aren't on $PATH. CI sets CI_STRICT=1, which
+                    # turns that skip into an error (see sh/dispatch.sh).
+                    shellcheck
+                    actionlint
+                    # sh/alert.sh reads the workflows.
+                    yq-go
+                    nixfmt
+                    # admin/bench-report-test runs the script that holds a
+                    # leased host.
+                    flock
+                    cargo-modules
+                    rustfmt-unstable
+                    quest-cli
+                    # Builds and checks site/, the landing page, running Astro
+                    # on its own runtime.
+                    bun
+                  ]
+                  ++ python-shell.packages
+                  ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
+                    # Marked broken on Darwin in nixpkgs.
+                    # See UPSTREAM.md, "nixpkgs marks release-plz broken on
+                    # Darwin".
+                    release-plz
+                    # admin/ctgrind's constant-time checks.
+                    valgrind
+                  ];
 
-              env = python-shell.env // {
-                # What sh/dispatch.sh checks before a scoped `just check` or
-                # `just fix`. IN_NIX_SHELL would also pass inside another
-                # project's shell.
-                IN_RIND_DEV_SHELL = "1";
+                env = python-shell.env // {
+                  # What sh/dispatch.sh checks before a scoped `just check` or
+                  # `just fix`. IN_NIX_SHELL would also pass inside another
+                  # project's shell.
+                  IN_RIND_DEV_SHELL = "1";
+                };
               };
-            };
 
             # dudect needs only Rust, without Marvin's Python and toolkit fetches.
             dudect = pkgs.mkShell timing-shell;
