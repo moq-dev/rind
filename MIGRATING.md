@@ -248,10 +248,10 @@ curve's length, as ring does, where aws-lc-rs takes leading zeros added or
 stripped.
 
 Every private key loader refuses bytes after the encoded key, which
-aws-lc-rs ignores and ring refuses. The ECDSA and RSA PKCS#8 loaders take
-version 1 only, as ring does, and the Ed25519 one also takes version 2 with
-its public key. Each refuses version 2 without a public key, which aws-lc-rs
-takes: RFC 5958 sets version 2 only when the public key is present.
+aws-lc-rs ignores and ring refuses. Every PKCS#8 loader takes version 2
+without a public key, as aws-lc-rs does, and the Ed25519 one also takes
+version 2 with its public key; ring, and so rind-ring, takes only version 1
+for ECDSA and RSA, and version 2 only with its public key for Ed25519.
 
 ## rsa
 

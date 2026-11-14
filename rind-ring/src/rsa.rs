@@ -19,6 +19,7 @@ impl KeyPair {
     /// Loads a PKCS#8 RSA private key, named `rsaEncryption`, `id-RSAES-OAEP`,
     /// or `id-ea-rsa`.
     pub fn from_pkcs8(pkcs8: &[u8]) -> Result<Self, error::KeyRejected> {
+        der::pkcs8_v1_only(pkcs8)?;
         rind::signature::RsaKeyPair::from_pkcs8(pkcs8)
             .map_err(error::KeyRejected::rind)
             .and_then(Self::new)

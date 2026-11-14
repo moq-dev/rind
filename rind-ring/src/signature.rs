@@ -312,6 +312,7 @@ impl EcdsaKeyPair {
         rng: &dyn rand::SecureRandom,
     ) -> Result<Self, error::KeyRejected> {
         let _ = rng;
+        der::pkcs8_v1_only(pkcs8)?;
         let key = rind::signature::EcdsaKeyPair::from_pkcs8(alg.rind, pkcs8)
             .map_err(error::KeyRejected::rind)?;
         // ring requires the public key, uncompressed, where rind also takes
