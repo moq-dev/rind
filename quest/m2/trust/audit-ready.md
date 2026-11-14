@@ -14,7 +14,7 @@ Decided 2026-11-12 (maintainer, /quest-audit): ✅ write the package. No audit i
 - For each check, one honest line on its limits, in the manner of PLATFORMS.md's "constant time is unchecked on wasm": what ctgrind's coverage depends on, what a proof's hand model assumes, which code only fuzzing reaches.
 - The list an auditor most wants is where the checks are thinnest. Build it from the coverage report and the proofs table, not from memory: hand-written arithmetic with neither a proof nor a differential test, and public functions the unit tests never call. Lacking one check is not lacking all of them, so each entry says what does reach it (Wycheproof vectors, a unit test, a fuzz target), and only code none of them reaches is listed as unchecked.
 - The `unsafe` in the tree, counted by area, with what justifies each area (`rind::doc::inline_assembly_safety` for the assembly).
-- Link it from SECURITY.md once [that exists](/quest/m2/trust/security-policy.md) and from the README.
+- Link it from SECURITY.md and from the README.
 
 ## Related
 
