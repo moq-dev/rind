@@ -19,10 +19,21 @@ fn oprf(c: &mut Criterion) {
     // DeriveKeyPair.
     let rind_server = rind::oprf::ServerKey::derive(&RISTRETTO255_SHA512, &SEED, INFO).unwrap();
     let server = OprfServer::<Ristretto255>::new_from_seed(&SEED, INFO).unwrap();
+    let output = server.evaluate(INPUT).unwrap();
     assert_eq!(
         rind_server.evaluate(INPUT).unwrap().as_ref(),
-        server.evaluate(INPUT).unwrap().as_slice()
+        output.as_slice()
     );
+    // The timed path, blind to finalize, gives that same output on both.
+    let (blind, blinded) = rind::oprf::Blind::new(&RISTRETTO255_SHA512, INPUT).unwrap();
+    let evaluated = rind_server.blind_evaluate(blinded.as_ref()).unwrap();
+    assert_eq!(
+        blind.finalize(evaluated.as_ref()).unwrap().as_ref(),
+        output.as_slice()
+    );
+    let blinded = OprfClient::<Ristretto255>::blind(INPUT, &mut SysRng).unwrap();
+    let evaluated = server.blind_evaluate(&blinded.message);
+    assert_eq!(blinded.state.finalize(INPUT, &evaluated).unwrap(), output);
 
     let mut group = c.benchmark_group("oprf-ristretto255-blind");
     group.throughput(Throughput::Elements(1));
@@ -72,10 +83,34 @@ fn voprf(c: &mut Criterion) {
     let rind_server = rind_voprf::ServerKey::derive(suite, &SEED, INFO).unwrap();
     let rind_public = rind_voprf::PublicKey::new(suite, rind_server.public_key().as_ref()).unwrap();
     let server = VoprfServer::<NistP384>::new_from_seed(&SEED, INFO).unwrap();
+    let output = server.evaluate(INPUT).unwrap();
     assert_eq!(
         rind_server.evaluate(INPUT).unwrap().as_ref(),
-        server.evaluate(INPUT).unwrap().as_slice()
+        output.as_slice()
     );
+    // The timed path, blind to finalize with the proof, gives that same
+    // output on both.
+    let (blind, blinded) = rind_voprf::Blind::new(suite, INPUT).unwrap();
+    let (evaluated, proof) = rind_server.blind_evaluate(blinded.as_ref()).unwrap();
+    assert_eq!(
+        blind
+            .finalize(evaluated.as_ref(), proof.as_ref(), &rind_public)
+            .unwrap()
+            .as_ref(),
+        output.as_slice()
+    );
+    let blinded = VoprfClient::<NistP384>::blind(INPUT, &mut SysRng).unwrap();
+    let evaluated = server.blind_evaluate(&mut SysRng, &blinded.message);
+    let finalized = blinded
+        .state
+        .finalize(
+            INPUT,
+            &evaluated.message,
+            &evaluated.proof,
+            server.get_public_key(),
+        )
+        .unwrap();
+    assert_eq!(finalized, output);
 
     let mut group = c.benchmark_group("voprf-p384-blind");
     group.throughput(Throughput::Elements(1));

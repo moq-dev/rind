@@ -34,8 +34,80 @@ fn libcrux_hpke() -> hpke_rs::Hpke<hpke_rs::libcrux::HpkeLibcrux> {
 const AWS_LC_RS: &dyn rustls::crypto::hpke::Hpke =
     rustls::crypto::aws_lc_rs::hpke::DH_KEM_X25519_HKDF_SHA256_AES_128;
 
+// Checks, untimed, that every library speaks the same suite as rind: each
+// opens a message rind sealed to it, and rind opens one each sealed to rind.
+fn check_interop() {
+    use hpke::{Deserializable, Kem, OpModeR, OpModeS, Serializable};
+    use rind::hpke::{DHKEM_X25519_HKDF_SHA256, PrivateKey, PublicKey, Recipient, Sender};
+
+    // rind's sender, sealing to another library's public key.
+    let rind_seal = |public_key: &[u8]| {
+        let public_key = PublicKey::new(&DHKEM_X25519_HKDF_SHA256, public_key).unwrap();
+        let (enc, mut sender) = Sender::new(rind_suite(), &public_key, INFO).unwrap();
+        let mut ciphertext = MESSAGE.to_vec();
+        sender
+            .seal_in_place_append_tag(AAD, &mut ciphertext)
+            .unwrap();
+        (enc.as_ref().to_vec(), ciphertext)
+    };
+    // rind's recipient, opening what another library sealed to it.
+    let private_key = PrivateKey::generate(&DHKEM_X25519_HKDF_SHA256).unwrap();
+    let rind_public = private_key.public_key().as_ref().to_vec();
+    let rind_open = |enc: &[u8], mut ciphertext: Vec<u8>| {
+        let mut recipient = Recipient::new(rind_suite(), &private_key, enc, INFO).unwrap();
+        assert_eq!(
+            recipient.open_in_place(AAD, &mut ciphertext).unwrap(),
+            MESSAGE
+        );
+    };
+
+    // aws-lc-rs, through rustls.
+    let (public_key, private_key) = AWS_LC_RS.generate_key_pair().unwrap();
+    let (enc, ciphertext) = rind_seal(&public_key.0);
+    let mut opener = AWS_LC_RS
+        .setup_opener(
+            &rustls::crypto::hpke::EncapsulatedSecret(enc),
+            INFO,
+            &private_key,
+        )
+        .unwrap();
+    assert_eq!(opener.open(AAD, &ciphertext).unwrap(), MESSAGE);
+    let public_key = rustls::crypto::hpke::HpkePublicKey(rind_public.clone());
+    let (enc, mut sealer) = AWS_LC_RS.setup_sealer(INFO, &public_key).unwrap();
+    rind_open(&enc.0, sealer.seal(AAD, &MESSAGE).unwrap());
+
+    // hpke.
+    let (private_key, public_key) = RcKem::gen_keypair();
+    let (enc, ciphertext) = rind_seal(&public_key.to_bytes());
+    let enc = <RcKem as Kem>::EncappedKey::from_bytes(&enc).unwrap();
+    let mut recipient =
+        hpke::setup_receiver::<RcAead, RcKdf, RcKem>(&OpModeR::Base, &private_key, &enc, INFO)
+            .unwrap();
+    assert_eq!(recipient.open(&ciphertext, AAD).unwrap(), MESSAGE);
+    let public_key = <RcKem as Kem>::PublicKey::from_bytes(&rind_public).unwrap();
+    let (enc, mut sender) =
+        hpke::setup_sender::<RcAead, RcKdf, RcKem>(&OpModeS::Base, &public_key, INFO).unwrap();
+    rind_open(&enc.to_bytes(), sender.seal(&MESSAGE, AAD).unwrap());
+
+    // hpke-rs.
+    let mut hpke = libcrux_hpke();
+    let key_pair = hpke.generate_key_pair().unwrap();
+    let (enc, ciphertext) = rind_seal(key_pair.public_key().as_slice());
+    let mut recipient = hpke
+        .setup_receiver(&enc, key_pair.private_key(), INFO, None, None, None)
+        .unwrap();
+    assert_eq!(recipient.open(AAD, &ciphertext).unwrap(), MESSAGE);
+    let public_key = hpke_rs::HpkePublicKey::from(rind_public.as_slice());
+    let (enc, mut sender) = hpke
+        .setup_sender(&public_key, INFO, None, None, None)
+        .unwrap();
+    rind_open(&enc, sender.seal(AAD, &MESSAGE).unwrap());
+}
+
 // Encapsulate to the recipient's parsed public key and derive the context.
 fn setup_sender(c: &mut Criterion) {
+    check_interop();
+
     let mut group = c.benchmark_group("hpke-x25519-setup-sender");
     group.throughput(Throughput::Elements(1));
 
