@@ -38,6 +38,12 @@ Out of scope:
 - A flaw in a crate an adapter plugs into, such as rustls: report it to that
   project.
 
+## Reviewing rind
+
+[AUDIT.md](AUDIT.md) is where a security review of rind starts: its threat
+model, where its code came from, what each check establishes, and where the
+checks are thinnest.
+
 ## Supported versions
 
 Only the latest release of each package rind publishes gets fixes: the

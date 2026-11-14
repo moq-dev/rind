@@ -211,6 +211,9 @@ building, testing, and how a PR lands.
   layers beneath them.
 - [BENCHMARKS.md][benchmarks]: every operation's time, build time, and binary
   size, against the other libraries.
+- [AUDIT.md][audit]: where a security review starts: the threat model, each
+  line's source and pin, what each check does and does not establish, and
+  where the checks are thinnest.
 
 ## Built on great work
 
@@ -279,3 +282,4 @@ from other projects keeps its source's license, which [LICENSE] lists.
 [sources]: https://github.com/kixel-ai/rind/blob/main/ALGORITHMS.md#sources
 [platforms]: https://github.com/kixel-ai/rind/blob/main/PLATFORMS.md
 [architecture]: https://github.com/kixel-ai/rind/blob/main/ARCHITECTURE.md
+[audit]: https://github.com/kixel-ai/rind/blob/main/AUDIT.md
