@@ -19,11 +19,11 @@ changed=$1
 [[ "$changed" != - ]] || changed=/dev/stdin
 
 # Outside rind's crate, these reach every backend: the dependencies, the
-# toolchain, the test vectors, the scripts, workflows, and local actions that
-# run the suites, and the adapters, whose tests the suites run too, along with
-# any Rust crate nested in one, such as the FIPS module in rind-fips/module/
-# (Dart's lib/src/ is not one).
-shared='^(Cargo\.(toml|lock)$|flake\.(nix|lock)$|rust-toolchain(\.toml)?$|\.cargo/|thirdparty/|sh/(backends|changed|qemu|armv7|miri)\.sh$|admin/ctgrind|\.github/(workflows/(ctgrind|ctgrind-debug|miri|build)\.yml$|actions/)|rind-[a-z0-9-]+/((src/|tests/|build\.rs$|Cargo\.toml$)|([^/]+/)+(src/.*\.rs$|build\.rs$|Cargo\.toml$)))'
+# toolchain, the test vectors, the recipes, scripts, workflows, and local
+# actions that run the suites, and the adapters, whose tests the suites run
+# too, along with any Rust crate nested in one, such as the FIPS module in
+# rind-fips/module/ (Dart's lib/src/ is not one).
+shared='^(Cargo\.(toml|lock)$|flake\.(nix|lock)$|rust-toolchain(\.toml)?$|\.cargo/|justfile$|thirdparty/|sh/(backends|changed|qemu|armv7|miri)\.sh$|admin/ctgrind|\.github/(workflows/(ctgrind|ctgrind-debug|miri|build)\.yml$|actions/)|rind-[a-z0-9-]+/((src/|tests/|build\.rs$|Cargo\.toml$)|([^/]+/)+(src/.*\.rs$|build\.rs$|Cargo\.toml$)))'
 
 # It reads every line, even once it knows the answer, so a writer piping a
 # long diff in never meets a closed pipe.
