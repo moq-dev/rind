@@ -299,9 +299,9 @@ not cover rind's in-place calls.
 | `bignum_tomont_p256_alt` | `bignum_tomont_p256_alt`: none | not imported |
 | `bignum_tomont_p384` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` | `bignum_tomont_p384`: `BIGNUM_TOMONT_P384_SUBROUTINE_SAFE` |
 | `bignum_tomont_p384_alt` | `bignum_tomont_p384_alt`: `BIGNUM_TOMONT_P384_ALT_SUBROUTINE_SAFE` | not imported |
-| `curve25519_x25519` | `curve25519_x25519`: `CURVE25519_X25519_SUBROUTINE_SAFE` | `curve25519_x25519_alt`: none |
+| `curve25519_x25519` | `curve25519_x25519`: `CURVE25519_X25519_SUBROUTINE_SAFE` | `curve25519_x25519_byte_alt`: `CURVE25519_X25519_BYTE_ALT_SUBROUTINE_SAFE` |
 | `curve25519_x25519_alt` | `curve25519_x25519_alt`: `CURVE25519_X25519_ALT_SUBROUTINE_SAFE` | not imported |
-| `curve25519_x25519base` | `curve25519_x25519base`: `CURVE25519_X25519BASE_SUBROUTINE_SAFE` | `curve25519_x25519base_alt`: none |
+| `curve25519_x25519base` | `curve25519_x25519base`: `CURVE25519_X25519BASE_SUBROUTINE_SAFE` | `curve25519_x25519base_byte_alt`: `CURVE25519_X25519BASE_BYTE_ALT_SUBROUTINE_SAFE` |
 | `curve25519_x25519base_alt` | `curve25519_x25519base_alt`: `CURVE25519_X25519BASE_ALT_SUBROUTINE_SAFE` | not imported |
 | `edwards25519_decode` | `edwards25519_decode`: `EDWARDS25519_DECODE_SUBROUTINE_SAFE` | `edwards25519_decode_alt`: `EDWARDS25519_DECODE_ALT_SUBROUTINE_SAFE` |
 | `edwards25519_decode_alt` | `edwards25519_decode_alt`: `EDWARDS25519_DECODE_ALT_SUBROUTINE_SAFE` | not imported |
@@ -514,7 +514,12 @@ multiples, so every addition is a mixed one. A key's second verification
 also builds 17Q to 31Q, so that `u2`'s digits widen to 6 from then on: a key
 verified once never pays for them. s2n-bignum's point
 additions are proven only for unequal points, so each addition first
-compares x's and settles equal or opposite points by cases.
+compares x's and settles equal or opposite points by cases. The portable
+backend's P521 runs the whole chain in fiat-crypto's limbs, rather than
+converting each coordinate to and from words at every point routine, and
+reads the x's difference from the addition's own first steps. Each curve
+then checks `r` against `X / Z²` as `r Z² = X`, and `(r + n) Z² = X` when
+`r + n < p`, without an inversion.
 Those checks cost a key parsed and verified once, as TLS does with each
 certificate key, about 5-6% against verifying without them (aarch64 and
 x86_64 P-256 runs 41907443804 and 41907448202); keys verified more than once

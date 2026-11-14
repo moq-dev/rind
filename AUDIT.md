@@ -58,9 +58,10 @@ Outside the model:
   countermeasure is RSA's: a private-key operation checks its result before
   returning it, as aws-lc does.
 - Power, electromagnetic, and acoustic analysis, and physical access.
-- Speculative execution beyond what the constant-time rule gives: rind adds
-  no speculation barriers, so only secret-independent control flow and
-  addresses stand against it.
+- Speculative execution beyond what the constant-time rule gives: only
+  secret-independent control flow and addresses stand against it. The one
+  speculation barrier rind adds follows setting DIT on Apple's platforms, as
+  Apple asks, so no instruction after it runs speculatively without DIT.
 - A compromised toolchain, build machine, or dependency. `cargo deny`
   checks crates against RustSec's advisories, licenses, and sources; nothing
   checks a release's build is reproducible.
@@ -284,9 +285,7 @@ Constant time is checked by no tool on:
 - AES-GCM and ML-DSA on aarch64 under BINSEC, which cannot finish them in a
   nightly's time, and the paths whose instructions BINSEC cannot decode,
   which ctgrind, `admin/ct-sde`, and `admin/ct-qemu` cover for one or two
-  secrets;
-- Apple's DIT taking effect before the code after it,
-  [planned](/quest/m2/confidence/apple-dit-barrier.md).
+  secrets.
 
 Functions no test runs, from the nightly coverage report: in the `rind`
 crate, 80 of 2,889 on Linux and 76 of 2,589 on macOS, most in `high/`

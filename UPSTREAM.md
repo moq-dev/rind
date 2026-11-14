@@ -236,6 +236,13 @@ rind's own bugs, deliberate choices, and plain version pins are not listed.
 - **Reported:** [rhysd/actionlint#657](https://github.com/rhysd/actionlint/issues/657), with a fix in [rhysd/actionlint#654](https://github.com/rhysd/actionlint/pull/654).
 - **Goes when:** an actionlint release in nixpkgs accepts `queue`.
 
+### Dependabot's Cargo lockfile updates skip its cooldown
+
+- **Breaks:** Dependabot pins the crate it bumps to a release older than its cooldown, but not the crates that release newly needs, which `cargo update` resolves to their newest compatible releases, however young. It does not pin a crate declared in `[workspace.dependencies]` either, so one would take its newest release too; rind declares none.
+- **Workaround:** REVIEW.md has a Dependabot PR's reviewer run `sh/cooldown.sh`, which lists each release its `Cargo.lock` gains that is younger than the cooldown.
+- **Reported:** [dependabot/dependabot-core#16428](https://github.com/dependabot/dependabot-core/issues/16428), for `[workspace.dependencies]`; no, for the crates a release newly needs.
+- **Goes when:** Dependabot holds its whole lockfile update to the cooldown.
+
 ## CI runner images
 
 ### Ubuntu's AppArmor denies Intel SDE's sandbox
