@@ -256,6 +256,15 @@ fn resumed_handshake(c: &mut Criterion) {
 /// provider sets up on first use, such as aws-lc's, is not timed.
 fn threaded_handshake(c: &mut Criterion) {
     let threads = thread::available_parallelism().unwrap().get();
+    // bench-report reports these rows as running on every logical CPU, so a
+    // run held to fewer, by affinity or a cgroup quota, must not pass for one.
+    if let Ok(cpus) = std::env::var("RIND_BENCH_CPUS") {
+        let cpus: usize = cpus.parse().expect("RIND_BENCH_CPUS is a count");
+        assert_eq!(
+            threads, cpus,
+            "this process may use {threads} of the host's {cpus} logical CPUs"
+        );
+    }
     for (bench, resumption, kind) in [
         ("rustls-full-handshake-threads", false, HandshakeKind::Full),
         (

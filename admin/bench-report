@@ -409,6 +409,9 @@ def run(args):
 
     env = dict(os.environ, CARGO_BUILD_JOBS=str(args.jobs), CARGO_TERM_COLOR="never")
     env["CARGO_TARGET_DIR"] = os.path.abspath(args.target_dir)
+    # The every-logical-CPU rows refuse to run on fewer CPUs than this, so the
+    # report's "all N logical CPUs" is what they measured.
+    env["RIND_BENCH_CPUS"] = str(result["cpu"]["logical_cpus"])
     cargo, versions, openssl = toolchain(env)
     result["toolchain"] = versions
     locked = locked_versions()
